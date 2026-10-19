@@ -79,7 +79,9 @@ Not test-first: this is tooling.
   - **`scripts/each-module.sh <command>`:** runs a command in every workspace module.
   - **`scripts/check-go-versions.sh`:** runs the tests on Go 1.26 (through `mise exec go@1.26 --`) and on the latest Go.
   - **`scripts/check-gowork-off.sh`:** builds and tests each module with `GOWORK=off`.
+  - **`scripts/check-licenses.sh`:** every module has a `LICENSE` identical to the root one.
   - **`scripts/check-deps.sh`:** the dependency budget, added in M6.
+  - **bash 3.2:** the scripts run on the bash that macOS ships, so they avoid `mapfile` and empty arrays under `set -u`.
 - **lefthook:**
   - **Loop over the modules:** `go-mod-tidy`, `go-lint`, `go-test`, `golangci-lint` and `govulncheck`, as listed in
     [project-layout.md](project-layout.md#tooling-changes).
@@ -93,7 +95,8 @@ Not test-first: this is tooling.
   - **`README.md`:** a stub, filled in at M11.
   - **`SECURITY.md`:** how to report a vulnerability privately, and which versions get fixes.
   - **A CHANGELOG convention:** one `CHANGELOG.md` per module, built from the Conventional Commits that lefthook already
-    enforces. A commit's scope names its module, for example `feat(format/toml): …`.
+    enforces. A commit's scope names its module, for example `feat(format/toml): …`, and `core` is the scope for the
+    core module.
 - **Tooling fixes:**
   - **`.golangci.yml`:** goimports `local-prefixes` is set to `github.com/kittomic/agentic-platform`, which belongs to
     another project. It becomes `github.com/kittomic/cascadingconfig`.
