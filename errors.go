@@ -222,9 +222,11 @@ func (e *NotFoundError) Is(target error) bool {
 // ErrNotFound is the sentinel for *NotFoundError.
 var ErrNotFound = errors.New("cascadingconfig: not found")
 
-// ConflictError reports several formats in one slot under the error conflict policy.
+// ConflictError reports more than one file in one slot under ConflictFail. Path is the highest-ranked file.
 type ConflictError struct {
 	BaseError
+
+	Files []string // every file in the slot, highest-ranked first
 }
 
 // Code returns CodeConflict.
@@ -295,9 +297,13 @@ func (e *DecodeError) Is(target error) bool {
 // ErrDecode is the sentinel for *DecodeError.
 var ErrDecode = errors.New("cascadingconfig: decode error")
 
-// MergeError reports a merge rule that met the wrong type, or a Func rule that failed.
+// MergeError reports a merge rule that met the wrong type, or a MergeFunc that returned an error. Path is the higher
+// layer's file, and the message names both files.
 type MergeError struct {
 	BaseError
+
+	Key   Path   // where in the tree
+	Lower string // the lower layer's file
 }
 
 // Code returns CodeUnprocessable.
