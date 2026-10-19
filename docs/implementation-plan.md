@@ -120,9 +120,10 @@ Not test-first: this is tooling.
 
 - **`Tree`** and the canonical value types (§ [Core types](api.md#tree-and-values)).
 - **`Path`, `PathSpec` and `ParsePath`.**
-- **The error model:** `Code`, `Coder`, the base `Error`, every error type with its sentinel, `CodeOf` and `Errors` (§
-  [Errors](api.md#errors)).
-- **The `Decoder` and `PositionError` interfaces,** and the JSON decoder in `format/json`.
+- **The error model:** `Code`, `Coder`, the base `BaseError`, every error type with its sentinel, `CodeOf` and `Errors`
+  (§ [Errors](api.md#errors)).
+- **The `Decoder` and `PositionError` interfaces,** `Document`, `DecodeDocument`, `Warning`, and the JSON decoder in
+  `format/json`.
 
 **Acceptance tests:**
 
@@ -134,7 +135,10 @@ Not test-first: this is tooling.
   - a leading byte-order mark is stripped, and non-UTF-8 input is a `*ParseError`
   - a top-level array or scalar is a `*ParseError`
   - whitespace-only and `null` documents are empty, and `{}` is not
-- **Paths:** `ParsePath("server.tls")` and `Path{"plugins", "foo.bar"}` round-trip through `String()`.
+- **Paths:** `ParsePath("server.tls")` and `Path{"plugins", "foo.bar"}` round-trip through `String()`; the empty string
+  is the root; empty segments are errors (DL-85).
+- **`DecodeDocument`** (DL-82): the byte-order mark is stripped before the decoder sees the input; a decoder error
+  becomes a `*ParseError` with the decoder's position; a non-canonical type from a decoder is a 500.
 - **Errors:** for every error type, `errors.Is(err, ErrX)`, `errors.As(err, &xErr)` and `CodeOf(err)` give the
   documented code. Joined errors keep working with `Is`, `As` and `Errors`.
 - **Parse errors:** a JSON syntax error becomes a `*ParseError` with line and column.

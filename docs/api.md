@@ -491,32 +491,68 @@ type Coder interface {
 	Code() Code
 }
 
-// Error is the base type that every specific error embeds.
-type Error struct {
-	code  Code
+// Code constants, for CodeOf comparisons.
+const (
+	CodeBadRequest           Code = 400
+	CodeForbidden            Code = 403
+	CodeNotFound             Code = 404
+	CodeConflict             Code = 409
+	CodeTooLarge             Code = 413
+	CodeUnsupportedMediaType Code = 415
+	CodeUnprocessable        Code = 422
+	CodeCanceled             Code = 499 // nginx's "client closed request"
+	CodeInternal             Code = 500
+	CodeNotImplemented       Code = 501
+	CodeBadGateway           Code = 502
+	CodeGatewayTimeout       Code = 504
+	CodeLoopDetected         Code = 508
+)
+
+// BaseError is the base type that every specific error embeds. Its fields are exported, so other modules (resolvers,
+// decoders) can build cascadingconfig errors themselves. It isn't called Error: a struct can't have a field and a method
+// with the same name, so an embedded field named Error would hide the Error() method.
+type BaseError struct {
 	Op    string // "load", "decode", "include", "reload", …
 	Path  string // the file or reference involved, if any
 	Scope string // the scope involved, if any
 	Err   error  // the underlying cause
+	code  Code   // set only by NewError; specific types define their own Code
 }
 
-func (e *Error) Code() Code     { return e.code }
-func (e *Error) Unwrap() error  { return e.Err }
-func (e *Error) Error() string  { /* "cascadingconfig: <op> <path>: <cause>" */ }
+// NewError builds a base error for situations with no specific type, such as cancellation (CodeCanceled) or a failed
+// app callback (CodeInternal).
+func NewError(code Code, op, path string, err error) *BaseError
 
-// Specific errors embed *Error and add their own fields and sentinel.
+func (e *BaseError) Code() Code    // the code given to NewError
+func (e *BaseError) Unwrap() error // e.Err
+// Error returns "cascadingconfig: <op> <path>: <cause>", or "cascadingconfig: <op>: <cause>" without a path.
+func (e *BaseError) Error() string
+
+// Specific errors embed BaseError (by value) and define their own Code, so each type's code is fixed.
 type ParseError struct {
-	*Error
+	BaseError
 	Format       string
-	Line, Column int
+	Line, Column int // 1-based; 0 when the decoder doesn't know
 }
+
+func (e *ParseError) Code() Code { return CodeBadRequest }
+func (e *ParseError) Is(target error) bool { return target == ErrParse }
+func (e *ParseError) Error() string // "cascadingconfig: <op> <path>:<line>:<col>: <cause>" when the position is known
 
 var ErrParse = errors.New("cascadingconfig: parse error")
 
-func (e *ParseError) Is(target error) bool { return target == ErrParse }
+// Built from another module, for example:
+err := &cascadingconfig.FetchError{
+	BaseError: cascadingconfig.BaseError{Op: "fetch", Path: ref, Err: cause},
+	Timeout: true, // Code() is then CodeGatewayTimeout; otherwise CodeBadGateway
+}
 
 // CodeOf returns the code of the first cascadingconfig error in err's chain, or 0.
 func CodeOf(err error) Code
+
+// Errors splits err into its individual errors: any error with an Unwrap() []error method, such as one from
+// errors.Join, is split, recursively. A single error is returned on its own, and nil gives nil.
+func Errors(err error) []error
 ```
 
 **Error types:**
@@ -542,10 +578,10 @@ func CodeOf(err error) Code
 **Other errors:**
 
 - **Cancellation:** a load stopped by its context returns an error for which `errors.Is(err, context.Canceled)` or
-  `errors.Is(err, context.DeadlineExceeded)` holds. It's a base `*Error`, with code 499 for a cancellation, following
+  `errors.Is(err, context.DeadlineExceeded)` holds. It's a `*BaseError`, with code 499 for a cancellation, following
   nginx's "client closed request", and 504 for a deadline.
 - **Errors from app callbacks** (trust stores, `ValuesFunc`, `MapEnv`, custom `Scope`s, matchers, merge-rule `Func`s)
-  are wrapped in a base `*Error`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error.
+  are wrapped in a `*BaseError`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error.
   Transform errors keep their own type, `*TransformError`.
 
 **A failed load still returns a result.** `loader.Load` returns a non-nil `*Result` alongside the error. Its report
@@ -658,12 +694,19 @@ type Path []string
 type PathSpec interface{ ~string | ~[]string }
 
 func ParsePath(s string) (Path, error) // "server.tls" → Path{"server", "tls"}
-func (p Path) String() string          // the dotted form
+func (p Path) String() string          // the dotted form, quoting segments where needed
 ```
 
 - **Two forms, one parameter.** Functions that take a path are generic over `PathSpec`, so both
   `WithMergeRule("tools.*", Replace)` and `WithMergeRule(Path{"plugins", "foo.bar"}, Replace)` work. The string form is
   dot-separated. The list form is for keys that contain dots.
+- **Parsing rules:**
+  - **The empty string** is the root path, `Path{}`.
+  - **Empty segments are an error:** `"a..b"`, `".a"` and `"a."` are `*OptionError`s where they come from options.
+  - **Quoting:** a segment can be double-quoted, as in TOML dotted keys: `plugins."foo.bar"` is
+    `Path{"plugins", "foo.bar"}`. Inside quotes, `\"` and `\\` escape a quote and a backslash.
+  - **`String()`** quotes any segment that is empty or contains `.`, `"` or `\`, so every `Path` round-trips through
+    `ParsePath(p.String())`.
 - **Wildcards:** in merge rules, a segment of exactly `*` matches one key. A literal `*` key can't be addressed by a
   rule, which is a rare enough case to accept.
 
@@ -756,8 +799,34 @@ type Decoder interface {
 	Format() string        // "toml"
 	Extensions() []string  // "toml"; for YAML "yaml", "yml": listed in rank order, highest first
 	MediaTypes() []string  // "application/toml", for http(s) includes without an extension
-	Decode(data []byte) (Tree, error) // canonical values only
+	Decode(data []byte) (Document, error) // canonical values only
 }
+
+// Document is one decoded file.
+type Document struct {
+	Tree     Tree      // nil when Empty
+	Empty    bool      // whitespace, comments only, or a null document; {} is not empty
+	Warnings []Warning // for example a JSON duplicate key
+}
+
+// DecodeDocument runs a decoder with the rules every format shares: it strips a leading UTF-8 byte-order mark, rejects
+// input that isn't UTF-8, turns any decoder error into a *ParseError (with the position, if the error has one), and
+// checks that only canonical value types came out. A decoder that produces a non-canonical type is a bug in that
+// decoder, reported as a *BaseError with CodeInternal. The loader decodes every file through it, and decoder modules
+// test against it.
+func DecodeDocument(d Decoder, path string, data []byte) (Document, error)
+
+// Warning is a non-fatal problem. Warnings go to the logger and the report.
+type Warning struct {
+	Code    WarningCode // what kind of problem
+	Path    string      // the file; DecodeDocument fills it in when a decoder leaves it empty
+	Key     Path        // where in the file, if known
+	Message string
+}
+
+type WarningCode string
+
+const WarnDuplicateKey WarningCode = "duplicate-key" // more codes are added by the milestones that need them
 
 // PositionError is implemented by decode errors that know where they happened.
 // The loader turns any error into a *ParseError and copies the position when it's available.
@@ -825,6 +894,8 @@ type Source struct {
 }
 ```
 
+- **The top-level-map rule lives in each decoder,** because a `Tree` can only hold a map. The other shared rules live in
+  `DecodeDocument`, so no decoder has to repeat them.
 - **Built-in kinds use the same interfaces.** `FixedDir`, `Walk` and the rest implement `Scope`, and the built-in
   decoders and resolvers implement `Decoder` and `IncludeResolver`. Nothing built in is special-cased.
 - **Files go through the pipeline.** A `Source` with a `Path` is read by the loader, through the filesystem hook, so a
