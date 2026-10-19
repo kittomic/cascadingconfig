@@ -209,7 +209,8 @@ Each later milestone settles its own options at its test review and adds them to
 - **Validation:** every problem is reported at once, as `*OptionError`s whose `Op` names the option (DL-104):
   - unknown scopes, duplicates in `WithScopes`, name clashes and bad placement (DL-100)
   - an unsafe app name, and unsafe `WithEnvs` names (DL-99)
-  - invalid formats, duplicates, formats with no decoder, and an extension claimed twice (DL-101)
+  - invalid formats, duplicates, formats with no decoder, and an extension claimed twice (DL-101); `WithDefaultFormats`
+    skips formats with no decoder instead (DL-105)
   - invalid merge options and ambiguous rules (DL-102)
   - non-canonical `Values` trees (DL-103)
   - a loader with no scopes, the first [bare-loader](api.md#a-loader-without-a-preset) check. The other two arrive with

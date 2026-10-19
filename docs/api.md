@@ -60,9 +60,9 @@ So **layouts live in the core, and ready-to-use presets live in a separate modul
 | `cascadingconfig.CosmiconfigLayout`| `cosmiconfig.Preset`                  | YAML, fsnotify (no TOML, no remotes, as cosmiconfig)            |
 
 - **Format order with missing decoders:** a layout's default format order names formats that may not have a decoder
-  registered. A format without a decoder is simply not searched. This only applies to the *layout's default* order. An
-  order set by the app, an env var or a bootstrap file still errors on an unregistered format
-  ([design.md](design.md#file-format-precedence)).
+  registered. A format without a decoder is simply not searched. This only applies to the *layout's default* order, set
+  with `WithDefaultFormats` (DL-105). An order set by the app's `WithFormats`, an env var or a bootstrap file still
+  errors on an unregistered format ([design.md](design.md#file-format-precedence)).
 - **Names in design.md:** design.md uses the same names: `mise.Preset`, `misehardened.Preset` and `cosmiconfig.Preset`
   for the ready-to-use presets, and the `…Layout` names for the core layouts.
 
@@ -305,6 +305,7 @@ func Values(tree Tree) ScopeKind // DL-103
 // Formats (DL-101)
 func WithDecoder(d Decoder) Option
 func WithFormats(formats ...string) Option
+func WithDefaultFormats(formats ...string) Option // a layout's default order: formats with no decoder are skipped
 func WithFormatConflict(policy FormatConflict) Option
 
 // Merging (DL-102)
@@ -352,7 +353,7 @@ func WithoutEnvBinding(b Binding) Option
 | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Scopes        | `WithScopes`, `WithoutScopes`, `WithScope`, `WithDefaults`, `WithStartDir` (default: the current directory at each `Load`), `WithWalkStop`, `WithCeilingPaths`, `WithIgnoredPaths`, `WithSearchStrategy`, `WithStopDir`, `WithRootMarker` |
 | Environments  | `WithEnvs`                                                                                                                  |
-| Formats       | `WithDecoder`, `WithFormats`, `WithFormatConflict`, `WithExtensionlessFormat`                                              |
+| Formats       | `WithDecoder`, `WithFormats`, `WithDefaultFormats`, `WithFormatConflict`, `WithExtensionlessFormat`                                              |
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
 | Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |

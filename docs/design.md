@@ -625,7 +625,7 @@ places. Highest precedence first:
 | 1 | Environment variable                     | `MYAPP_CONFIG_FORMATS=yaml,toml` |
 | 2 | Bootstrap file (see [D14](config-locations.md#4-divergences)) | `formats = ["yaml", "toml"]` |
 | 3 | The app's programmatic option            | `WithFormats("toml", "json")` |
-| 4 | Preset default                           | `toml, yaml, json`           |
+| 4 | Preset default                           | `WithDefaultFormats("toml", "yaml", "json")` |
 
 This mirrors mise. There, `MISE_ENV` beats `env = [...]` in `.miserc.toml`, and `.miserc.toml` beats mise's built-in
 defaults.
@@ -643,6 +643,9 @@ defaults.
 - **The app's option** (DL-101): `WithFormats` takes the variable's syntax too: an extension stands for its format, and
   leading dots and surrounding spaces are allowed. A format listed twice is an `*OptionError`, and every listed format
   needs a registered decoder, checked at `New` after every option has run, so their order doesn't matter.
+- **The preset default** (DL-105) is set with `WithDefaultFormats`, which takes the same syntax. Unlike `WithFormats`,
+  it may name formats with no registered decoder, which are simply not searched, so a layout can list TOML and YAML
+  before any decoder for them is added. A `WithFormats` from any option replaces it, whatever their order.
 - **Decoders:** `WithDecoder` for a format that already has one replaces it, so an app can swap a layout's decoder. Two
   formats claiming the same extension are an `*OptionError`.
 - **Locking the order:** an app author who wants to fix the order can turn off both overrides, with
@@ -1486,6 +1489,7 @@ There are no open questions.
 | 102 | Merge options                               | Generic `WithMergeRule` and `WithMergeFunc`; bad paths, nil functions and ambiguous rules are errors; `WithArrayMerge` takes `Replace`, `Append` or `Prepend`; `WithUnsetKey("")` is an error, and it shares one setting with `WithoutUnset`. |
 | 103 | The `Values` kind                           | Copied when called; non-canonical values are an `*OptionError` naming the key; trust `TrustUser`. `ValuesFunc` and the other kinds come in M4a. |
 | 104 | Option errors                               | Each problem is an `*OptionError` whose `Op` is the option's name; all problems from one `New` are joined. |
+| 105 | A layout's default format order             | `WithDefaultFormats`, which may name formats with no decoder; they're skipped. `WithFormats` stays strict and replaces it (see [File format precedence](#file-format-precedence)). |
 
 ---
 
