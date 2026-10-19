@@ -18,6 +18,15 @@ type PathSpec interface{ ~string | ~[]string }
 // double-quoted, as in TOML dotted keys, so plugins."foo.bar" is Path{"plugins", "foo.bar"}. Inside quotes, \" and \\
 // escape a quote and a backslash. A quote can't appear in an unquoted segment.
 func ParsePath(s string) (Path, error) {
+	p, err := parsePath(s)
+	if err != nil {
+		return nil, fmt.Errorf("cascadingconfig: %w", err)
+	}
+	return p, nil
+}
+
+// parsePath is ParsePath without the package prefix on errors, for callers that wrap them in their own errors.
+func parsePath(s string) (Path, error) {
 	if s == "" {
 		return Path{}, nil
 	}
@@ -31,7 +40,7 @@ func ParsePath(s string) (Path, error) {
 			segment, i, err = parseBareSegment(s, i)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("cascadingconfig: invalid path %q: %w", s, err)
+			return nil, fmt.Errorf("invalid path %q: %w", s, err)
 		}
 		p = append(p, segment)
 
@@ -39,11 +48,11 @@ func ParsePath(s string) (Path, error) {
 			return p, nil
 		}
 		if s[i] != '.' {
-			return nil, fmt.Errorf("cascadingconfig: invalid path %q: unexpected %q after a quoted segment", s, s[i])
+			return nil, fmt.Errorf("invalid path %q: unexpected %q after a quoted segment", s, s[i])
 		}
 		i++
 		if i == len(s) {
-			return nil, fmt.Errorf("cascadingconfig: invalid path %q: %w", s, errEmptySegment)
+			return nil, fmt.Errorf("invalid path %q: %w", s, errEmptySegment)
 		}
 	}
 }
