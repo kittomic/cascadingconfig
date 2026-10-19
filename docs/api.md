@@ -6,7 +6,7 @@ decided or proposed. Names and signatures may still be refined while the API is 
 ## Overview
 
 ```go
-loader, err := cascadingconfig.New("myapp", mise.Preset /*, opts... */)
+loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset /*, opts... */)
 
 // typed: the main use case
 cfg, err := cascadingconfig.Load[Config](ctx, loader)
@@ -22,14 +22,14 @@ w, err := cascadingconfig.Watch[Config](ctx, loader, func(c cascadingconfig.Chan
 defer w.Close()
 ```
 
-- **`New` validates every option** and returns an error straight away, so a misconfigured loader fails at start-up, not
-  on the first `Load`.
+- **`New` and `NewWithPreset` validate every option** and returns an error straight away, so a misconfigured loader
+  fails at start-up, not on the first `Load`.
 - **Typed entry points are free functions** (`Load[T]`, `Watch[T]`), because Go methods can't have type parameters.
 
 ## Package layout
 
-**Status: proposed.** The open questions are at the end of this section. The repository tree, tooling and measured
-dependency counts are in [project-layout.md](project-layout.md).
+**Status: decided** (see [Package layout decisions](#package-layout-decisions)). The repository tree, tooling and
+measured dependency counts are in [project-layout.md](project-layout.md).
 
 The goal is that **consumers pay only for what they use**.
 
@@ -94,7 +94,7 @@ So **layouts live in the core, and ready-to-use presets live in a separate modul
 // Batteries included: everything mise does.
 import "github.com/kittomic/cascadingconfig/presets/mise"
 
-loader, err := cascadingconfig.New("myapp", mise.Preset)
+loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset)
 ```
 
 ```go
@@ -105,7 +105,7 @@ import (
 	"github.com/kittomic/cascadingconfig/format/toml"
 )
 
-loader, err := cascadingconfig.New("myapp", cascadingconfig.MiseHardenedLayout.Extend(
+loader, err := cascadingconfig.NewWithPreset("myapp", cascadingconfig.MiseHardenedLayout.Extend(
 	cascadingconfig.WithDecoder(toml.Decoder()),
 ))
 ```
@@ -118,7 +118,7 @@ loader, err := cascadingconfig.New("myapp", cascadingconfig.MiseHardenedLayout.E
 - **Tooling:** `go test ./...`, `golangci-lint run ./...`, `go mod tidy` and `govulncheck ./...` don't cross module
   boundaries. The lefthook commands and CI must loop over the modules (`go work` can list them).
 
-### Open questions
+### Package layout decisions
 
 1. **Layout names.** **Decided:**
 
@@ -143,6 +143,170 @@ loader, err := cascadingconfig.New("myapp", cascadingconfig.MiseHardenedLayout.E
    [traversal design](design.md#traversal-protection) already relies on git commands. The `git` program must be
    installed at run time.
 
+## Building a loader
+
+**Status: decided.**
+
+### `New` and `NewWithPreset`
+
+```go
+func New(name string, opts ...Option) (*Loader, error)
+func NewWithPreset(name string, preset Preset, opts ...Option) (*Loader, error)
+```
+
+- **`name`** is the app name, `{name}` in every pattern. It must pass the
+  [safe-name check](design.md#safe-environment-names), and `{NAME}`, the env-var prefix, is derived from it.
+- **`NewWithPreset`** starts from a preset. Its `opts` are applied after the preset, so `NewWithPreset(n, p, a, b)`
+  behaves exactly like `NewWithPreset(n, p.Extend(a, b))`.
+- **`New`** starts from nothing but the engine defaults. It's up to the app to add scopes, decoders and everything else
+  (see [A loader without a preset](#a-loader-without-a-preset)).
+- **Validation happens here.** Every option is checked. All the problems found are returned together, joined into
+  `*OptionError`s (code 400), so a misconfigured loader fails at start-up.
+- **The returned `*Loader` is immutable.** It is safe for concurrent `Load` calls. Each `Load` reads the current
+  directory, env vars and files afresh.
+
+### A loader without a preset
+
+Settings come from two places:
+
+- **Engine defaults** live in the core and apply even without a preset: deep merging with arrays replaced, `_unset`,
+  null semantics, `FormatConflict: merge`, the `koanf` tag, warnings for unknown keys, `slog.Default()`, and the
+  debounce timings.
+- **Layout settings** come only from a preset: scopes and their patterns, bootstrap files, the include key, decoders and
+  format order, resolvers, policies, and env-var bindings.
+
+`New` has only the engine defaults. Without layout settings, most failures would be **silent**:
+
+| Missing                        | What happens                                                                                   | Silent?            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------ |
+| Scopes                         | Nothing is searched. `Load` returns an empty result, and the app runs on zero values.          | Yes                |
+| Built-in scope definitions     | `WithScopes(ScopeUser)` names an undefined scope.                                              | No: error at `New` |
+| Decoders                       | Only formats with a decoder are searched, so files exist but never load.                       | Yes                |
+| An include key                 | `include = [...]` is plain data and ends up in the result.                                     | Yes                |
+| The `file` resolver (with an include key) | Every local include fails.                                                          | No                 |
+| Env-var bindings               | `MYAPP_CONFIG_DIR` and the rest have no effect.                                                | Yes                |
+| Bootstrap files                | `.myapprc.toml` is never read.                                                                 | Yes                |
+
+**Decided:** `New` and `NewWithPreset` reject the combinations that can only be mistakes, as `*OptionError`s:
+
+1. **No scopes at all.**
+2. **A file-reading scope with no registered decoder.** `New` doesn't register JSON implicitly, so a bare loader stays
+   bare.
+3. **An include key with no `file` resolver.**
+
+Everything else, such as no env bindings or no bootstrap files, is a legitimate minimal setup. `Describe()` reports "no
+preset" and lists the empty layout settings, so what the loader was configured to do is visible.
+
+### `Preset` and `Extend`
+
+```go
+type Preset struct { /* name, and an ordered list of options */ }
+
+func (p Preset) Extend(opts ...Option) Preset
+func (p Preset) Name() string
+```
+
+- **A preset is a name plus an ordered list of options.** Nothing is applied until `New`, which runs the preset's
+  options, then the extensions, then `New`'s own `opts`, in that order, onto a fresh configuration.
+- **That makes "applied in order" literally true.** `WithScopes(A, B, C)` followed by `WithoutScopes(B)` selects `A` and
+  `C`, because the options run one after another.
+- **`Extend` never changes its receiver.** It returns a new `Preset` with a copied option list, so shared package-level
+  presets such as `mise.Preset` can't be altered through an extension.
+- **`Name()`** appears in `Describe()`, for example "`misehardened` (extends `MiseHardenedLayout`)".
+- **Layouts and ready-to-use presets are the same type,** as decided in [Package layout](#package-layout).
+
+### Option rules
+
+- **Sealed.** `Option` is an interface with an unexported method, so only this package can create options. The set can
+  grow later without breaking anyone. Other modules don't need their own options: they provide *values* that core
+  options take, as in `cascadingconfig.WithDecoder(toml.Decoder())`.
+- **Naming says how an option combines:**
+  - **`With…` for a single setting** (`WithLogger`, `WithTag`): the last one wins.
+  - **`With…` for a list entry** (`WithDecoder`, `WithMergeRule`, `WithLayerTransform`): it is added.
+  - **`With…s` replaces a whole set** (`WithScopes`, `WithFormats`, `WithEnvs`, `WithConfigFiles`).
+  - **`Without…` removes** (`WithoutScopes`, `WithoutIncludeResolver`, `WithoutEnvBinding`, `WithoutUnset`).
+  - **`Require…` turns on a check** (`RequireConfig`).
+- **Grouping:** `Options(opts...)` bundles several options into one, so an app can share a group.
+- **Programmatic values only.** Options set the app's values. Env vars and bootstrap files override them where design.md
+  says so, for example [format precedence](design.md#file-format-precedence). Options never read the environment
+  themselves.
+
+### Option kinds
+
+Options that only make sense in one place get their own type, so the compiler rejects them anywhere else:
+
+| Type           | Passed to                                    | Examples                                                                                    |
+| -------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `Option`       | `New`, `Preset.Extend`                       | everything in the catalogue below                                                           |
+| `ScopeKind`    | `WithScope(name, kind, …)`                   | `FixedDir`, `Walk`, `ExplicitFile`, `Embedded`, `EmbeddedFS`, `EnvVars`, `Values`             |
+| `ScopeOption`  | `WithScope(name, kind, …)`                   | `Before`, `After`, `Trust`                                                                  |
+| `PolicyOption` | `WithDefaultPolicy`, `WithScopePolicy`       | `InheritDefault`, `AllowResolvers`, `Allow`, `AllowFor`, `RequirePinned`, `Confine`, `RequireTrust`, `FilePermissions` |
+| `Matcher`      | `Allow`, `AllowFor`                          | `Prefix`, `Glob`, `Regexp`, `MatchFunc`                                                      |
+| `WatchOption`  | `Watch`, `Watch[T]`                          | `WithDebounce`, `WithPolling`, `WithRemotePoll`, `WithReloadOnAnyEvent`                     |
+
+- **Watch options go on the `Watch` call,** not on the loader, because watching is optional. A loader that's never
+  watched never sees them. The file-change *source* (`WithNotifier`) is the exception and stays on the loader, because
+  it belongs to the filesystem hook, and presets register it.
+- **One policy option set for both levels.** `WithDefaultPolicy(policyOpts...)` and
+  `WithScopePolicy(scope, policyOpts...)` take exactly the same options.
+
+### Option catalogue
+
+| Area          | Options                                                                                                                     |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Scopes        | `WithScopes`, `WithoutScopes`, `WithScope`, `WithStartDir` (default: the current directory at each `Load`), `WithWalkStop`, `WithCeilingPaths`, `WithIgnoredPaths` |
+| Environments  | `WithEnvs`                                                                                                                  |
+| Formats       | `WithDecoder`, `WithFormats`, `WithFormatConflict`                                                                          |
+| Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`                                                                         |
+| Merging       | `WithMergeRule`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`                                |
+| Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |
+| Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`, `WithoutBootstrapKey`                                                                |
+| Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
+| Behaviour     | `RequireConfig`, `WithLogger`, `WithProbes`                                                                                 |
+
+### Example
+
+```go
+import (
+	"github.com/kittomic/cascadingconfig"
+	"github.com/kittomic/cascadingconfig/presets/mise"
+)
+
+var appPreset = mise.Preset.Extend(
+	cascadingconfig.WithScopes(cascadingconfig.ScopeUser, cascadingconfig.ScopeProject),
+	cascadingconfig.WithMergeRule("plugins.*", cascadingconfig.Replace),
+	cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
+		cascadingconfig.InheritDefault(),
+		cascadingconfig.AllowResolvers("file"),
+	),
+)
+
+func main() {
+	loader, err := cascadingconfig.NewWithPreset("myapp", appPreset,
+		cascadingconfig.WithConfigFiles(flagConfigFiles...),
+		cascadingconfig.WithEnvs(flagEnvs...),
+	)
+	// …
+	cfg, err := cascadingconfig.Load[Config](ctx, loader)
+	// …
+	w, err := cascadingconfig.Watch[Config](ctx, loader, onChange,
+		cascadingconfig.WithDebounce(200*time.Millisecond, 2*time.Second),
+	)
+}
+```
+
+### Decisions
+
+| # | Question                         | Decision                                                                                                 |
+| - | -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 1 | `New`'s signature                | The preset is optional: `New(name, opts...)` starts bare, and `NewWithPreset(name, preset, opts...)` starts from a preset. Both reject the three [mistaken combinations](#a-loader-without-a-preset). |
+| 2 | Applying presets                 | Only at `New` / `NewWithPreset`. A `Preset` is an ordered option list.                                   |
+| 3 | Sealed options                   | Yes: an unexported interface method. Other modules supply values, not options.                           |
+| 4 | Separate option kinds            | Yes: `ScopeKind`, `ScopeOption`, `PolicyOption`, `Matcher`, `WatchOption`.                               |
+| 5 | Watch options                    | On the `Watch` call, except `WithNotifier`, which stays on the loader.                                   |
+| 6 | Package-level presets            | Variables (`mise.Preset`), documented as "never reassign".                                               |
+| 7 | Policy options                   | `WithDefaultPolicy(...)` replaces `WithIncludeAllow` and `WithIncludeAllowFor`, and takes the same options as `WithScopePolicy`. design.md is updated. |
+
 ## Results
 
 **Status: decided.**
@@ -151,7 +315,8 @@ loader, err := cascadingconfig.New("myapp", cascadingconfig.MiseHardenedLayout.E
   it anyway, so exposing it costs nothing extra.
 - **Struct decoding is a thin layer** on top of the tree.
 - **Both are available:** `Load[T]` decodes straight into `T`. `loader.Load` returns a `*Result`, with `Tree()`,
-  `Decode(&v)`, `DecodeAt("server", &s)` (decode one subtree, like koanf's `Unmarshal(path, …)`) and `Describe()`.
+  `Decode(&v)` and `Describe()`. `cascadingconfig.DecodeAt(res, "server", &s)` decodes one subtree, like koanf's
+  `Unmarshal(path, …)`. It is a function rather than a method because it takes a generic path ([Core types](#path)).
 - **The tree type** is a plain nested `map[string]any`, the same shape koanf's `Provider.Read` returns. Keys are never
   flattened.
 
@@ -196,9 +361,19 @@ discovery and merging, and keep its koanf decoding code.
   config keeps the Go default rather than clearing it.
 - **Only Go-side defaults are affected.** Within the tree, null still replaces lower values
   ([design.md](design.md#null-values-yaml-and-json)). A default that lives in a config layer is cleared correctly.
-- **Telling null from unset:** use pointer fields with no Go-side default.
-- **Clearable defaults:** ship them as a defaults scope, such as `EmbeddedFS` ([design.md](design.md#custom-scopes)),
-  rather than as pre-filled struct values.
+- **`_unset` also leaves it untouched:** the key is absent from the tree, so mapstructure never visits the field.
+- **Pointer fields don't tell null from unset.** With no Go-side default, a `*int` stays `nil` after a `null`, after an
+  `_unset` and when the key was never set. It only tells "has a value" from "has none". A pre-filled pointer keeps its
+  default in all three cases.
+
+| To know…                              | Use                                                                                                  |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| null, unset or never set              | The tree: a key present with a nil value is null, and an absent key is unset or never set. `OriginOf` shows kind `Null`, or an unset step in its history. |
+| That config cleared a default         | Ship the default in a **defaults scope** (`EmbeddedFS`, [design.md](design.md#custom-scopes)), not as a pre-filled struct value. A higher `null` or `_unset` then removes it from the tree, and a pointer field reads `nil`. |
+| That `null` cleared a Go-side default | `WithDecoderConfig` with `ZeroFields: true`. Null then sets the field to its zero value. `_unset` still keeps the default, because the key is absent. `ZeroFields` also empties map fields before decoding into them, so pre-filled map entries are replaced, not merged. |
+
+There is **no three-state field type** (such as a `Nullable[T]`). The tree and `OriginOf` already tell null, unset and
+never-set apart, so one isn't needed.
 
 ## Load and Watch
 
@@ -309,7 +484,219 @@ Warnings are not errors. They go to the logger and the report.
   status (loaded, empty, ignored, untrusted, bad permissions), the reason for any skip, and its warnings. A remote layer
   also shows its reference and fetched identity.
 - **Searched locations where nothing was found** are listed only with `WithProbes()`, because that list can be long.
-- **Per-key lookup:** `res.Origin("server.port")` returns the layer that set the value, or the layers for
-  `Append`/`Prepend`, plus any `_unset` or null history.
+- **Per-key lookup:** `cascadingconfig.OriginOf(res, "server.port")` returns the layer that set the value, or the layers
+  for `Append`/`Prepend`, plus any `_unset` or null history.
 - **Context:** the report also lists the selected and unselected scopes, the active environments, the format order, each
   scope's effective policy, and the env-var bindings.
+
+## Core types
+
+**Status: decided.**
+
+### `Tree` and values
+
+```go
+type Tree = map[string]any
+```
+
+- **An alias, not a named type.** That way a `Tree` *is* a `map[string]any`. It passes straight to koanf, mapstructure,
+  `encoding/json` and the app's own code, with no conversion.
+- **Canonical values.** Every decoder must produce only these types, so that values from different formats merge,
+  compare and diff consistently. A TOML `port = 80` and a JSON `"port": 80` must be equal.
+
+| Kind             | Go type                    | Notes                                                                                   |
+| ---------------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| null             | `nil`                      | YAML and JSON only.                                                                     |
+| boolean          | `bool`                     |                                                                                         |
+| integer          | `int64`                    | JSON integers too. The JSON decoder uses `UseNumber` and converts whole numbers.         |
+| float            | `float64`                  |                                                                                         |
+| string           | `string`                   |                                                                                         |
+| date-time with offset | `time.Time`           | TOML offset date-times, YAML timestamps.                                                |
+| local date or time | `string`                 | TOML local dates and times, in their RFC 3339 text form, so nothing is lost. Decode hooks parse them. |
+| array            | `[]any`                    |                                                                                         |
+| table / map      | `map[string]any`           | Keys must be strings. A YAML map with non-string keys is a `*ParseError`.                |
+
+### `Path`
+
+```go
+type Path []string
+
+// PathSpec is accepted wherever the API takes a key path.
+type PathSpec interface{ ~string | ~[]string }
+
+func ParsePath(s string) (Path, error) // "server.tls" → Path{"server", "tls"}
+func (p Path) String() string          // the dotted form
+```
+
+- **Two forms, one parameter.** Functions that take a path are generic over `PathSpec`, so both
+  `WithMergeRule("tools.*", Replace)` and `WithMergeRule(Path{"plugins", "foo.bar"}, Replace)` work. The string form is
+  dot-separated. The list form is for keys that contain dots.
+- **Wildcards:** in merge rules, a segment of exactly `*` matches one key. A literal `*` key can't be addressed by a
+  rule, which is a rare enough case to accept.
+
+### `ScopeName`, `Variant` and `TrustLevel`
+
+```go
+type ScopeName string
+
+const (
+	ScopeSystem   ScopeName = "system"
+	ScopeUser     ScopeName = "user"
+	ScopeProject  ScopeName = "project"
+	ScopeOverride ScopeName = "override"
+)
+
+type Variant int  // VariantShared, VariantEnv, VariantLocal, VariantEnvLocal
+type TrustLevel int // TrustProject < TrustUser < TrustSystem
+```
+
+Custom scopes use their own `ScopeName`. Untyped string constants convert implicitly, so
+`WithScopes(ScopeUser, "mounted")` compiles.
+
+### `Layer`
+
+`Layer` is the metadata for one source. It is passed to layer transforms, carried in errors, and listed in the report.
+
+```go
+type Layer struct {
+	Path       string      // file path, or the reference as written for a remote include
+	Scope      ScopeName
+	Variant    Variant
+	Env        string      // for VariantEnv and VariantEnvLocal
+	Format     string      // "toml", "yaml", "json", …
+	ConfigRoot string
+	Pattern    string      // the pattern that matched, e.g. ".config/{name}/config.{ext}"
+	Trust      TrustLevel
+	Remote     *Remote     // set for remote includes: scheme, normalised reference, fetched identity
+	IncludedBy string      // Path of the including layer, if any
+	Status     LayerStatus // Loaded, Empty, Ignored, Untrusted, PermissionDenied, Unmatched, …
+	Reason     string      // why the layer was skipped, if it was
+	Warnings   []Warning
+}
+```
+
+- **Metadata only.** A `Layer` never contains the layer's tree, so it is safe to log and to keep.
+- **Order:** layers are always listed lowest precedence first, matching the order they merge in.
+
+### `Result`, `Report` and `Origin`
+
+```go
+func (r *Result) Tree() Tree
+func (r *Result) Decode(v any) error
+func (r *Result) Describe() *Report
+
+// Functions, not methods, because they take a generic path and Go methods can't have type parameters.
+func DecodeAt[P PathSpec](r *Result, path P, v any) error
+func OriginOf[P PathSpec](r *Result, path P) (Origin, bool) // "OriginOf" because the type is called Origin
+
+type Report struct {
+	Preset   string
+	Scopes   []ScopeInfo   // selected and unselected, with kind, trust and effective policy
+	Envs     EnvInfo       // selected and platform environments, with where each came from
+	Formats  []string      // effective format order
+	Layers   []Layer       // loaded and skipped, lowest precedence first
+	Probes   []Probe       // locations searched where nothing was found, only with WithProbes
+	Bindings []BindingInfo // env-var name, what it controls, whether it is set
+	Warnings []Warning
+}
+
+type Origin struct {
+	Layer   Layer        // the layer that set the current value
+	Kind    OriginKind   // Set, Appended, Prepended, Null, Func
+	History []OriginStep // earlier layers that set, unset or nulled it
+}
+```
+
+- **No config values in the report.** `Report.String()`, its JSON, `Origin` and the `String()` of a hot-reload `Diff`
+  contain paths, keys and layer metadata, never values, because config often holds secrets. Values are available only
+  through `Tree()`, `Decode` and the `Old`/`New` fields of `KeyDiff`. Env-var bindings report whether a variable is set,
+  not its value.
+
+### Extension interfaces
+
+These are the contract between the core and the other modules. A change to one of them means releasing every module that
+implements it.
+
+```go
+// Decoder parses one format. Implemented by format/json, format/toml, format/yaml.
+type Decoder interface {
+	Format() string        // "toml"
+	Extensions() []string  // "toml"
+	MediaTypes() []string  // "application/toml", for http(s) includes without an extension
+	Decode(data []byte) (Tree, error) // canonical values only
+}
+
+// PositionError is implemented by decode errors that know where they happened.
+// The loader turns any error into a *ParseError and copies the position when it's available.
+type PositionError interface {
+	error
+	Position() (line, column int)
+}
+
+// IncludeResolver fetches includes. Implemented by the file resolver, httpresolver, gitresolver and ociresolver.
+// (Defined in design.md: Resolver hooks.)
+type IncludeResolver interface {
+	Schemes() []string
+	Resolve(ctx context.Context, ref IncludeRef) (*Fetched, error)
+}
+
+// FileSystem carries every read (design.md: Filesystem hook).
+type FileSystem interface {
+	OpenRoot(dir string) (Root, error)              // os.Root-style, confined to dir
+	EvalSymlinks(path string) (string, error)
+}
+
+type Root interface {
+	fs.StatFS
+	fs.ReadDirFS
+	Close() error
+}
+
+// Notifier supplies file-change events for watching. Implemented by watch/fsnotify.
+type Notifier interface {
+	Add(dir string) error
+	Remove(dir string) error
+	Events() <-chan string // the path of a changed entry
+	Errors() <-chan error
+	Close() error
+}
+
+// Scope is the escape hatch for custom discovery (design.md: Custom scopes).
+type Scope interface {
+	Discover(ctx context.Context, d Discovery) ([]Source, error)
+}
+
+// Watchable is optionally implemented by a Scope that can report what to watch.
+type Watchable interface {
+	WatchDirs(ctx context.Context, d Discovery) ([]string, error)
+}
+
+// Discovery is what the loader passes to a Scope: app name, start dir, selected envs,
+// format order, the filesystem, and the logger.
+type Discovery struct { /* … */ }
+
+// Source is one candidate a Scope found, lowest precedence first.
+type Source struct {
+	Path    string    // read through the FileSystem, so permission checks and confinement apply
+	Tree    Tree      // or an already-decoded tree, for sources that aren't files (EnvVars, Values)
+	Variant Variant
+	Env     string
+	Format  string    // empty: from Path's extension
+	ConfigRoot string
+}
+```
+
+- **Built-in kinds use the same interfaces.** `FixedDir`, `Walk` and the rest implement `Scope`, and the built-in
+  decoders and resolvers implement `Decoder` and `IncludeResolver`. Nothing built in is special-cased.
+- **Files go through the pipeline.** A `Source` with a `Path` is read by the loader, through the filesystem hook, so a
+  custom scope gets permission checks, symlink handling and dedup for free. Only `Tree` sources skip file handling.
+
+### Core type decisions
+
+| # | Question                     | Decision                                                                                                   |
+| - | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 1 | `Tree`                       | An alias for `map[string]any`.                                                                             |
+| 2 | Canonical values             | As in the [table](#tree-and-values): `int64` for every integer, local TOML dates and times as strings, string keys only. |
+| 3 | Paths                        | One generic `PathSpec` parameter. `DecodeAt` and `OriginOf` are therefore package functions taking the `*Result`. |
+| 4 | Values in reports            | Never. Reports, origins and diff text carry paths, keys and metadata only.                                 |
+| 5 | Extension interfaces         | As sketched. Before 1.0 they evolve only by adding optional interfaces, as `Watchable` and `PositionError` do. |

@@ -458,8 +458,9 @@ is **not** the same as `_unset`:
 - **Same-slot formats:** null follows the normal order. If `myapp.yaml` has `port: ~` and `myapp.toml` has `port = 80`,
   TOML is applied last, so the result is `80`. If only the YAML file sets `port`, the result is `null`.
 - **Decoding into structs:** a null leaves the field untouched, as koanf does. In a fresh struct that means `nil` or the
-  zero value. In a struct pre-filled with Go defaults, the default stays (see [api.md](api.md#decoding)). An app that
-  needs to tell "set to null" from "not set" uses pointer fields or reads the merged tree.
+  zero value. In a struct pre-filled with Go defaults, the default stays (see [api.md](api.md#decoding)). Pointer fields
+  can't tell "set to null" from "not set". An app that needs to know reads the merged tree or uses `OriginOf` (see
+  [api.md](api.md#decoding)).
 
 ## Deviations from mise
 
@@ -656,14 +657,16 @@ with `WithoutIncludeResolver("git")`.
 Each resolver can have an allow-list. There is also an allow-list that applies to every scheme:
 
 ```go
-cascadingconfig.WithIncludeAllow( // every scheme
-	cascadingconfig.Prefix("https://config.example.com/"),
-)
-cascadingconfig.WithIncludeAllowFor("git",
-	cascadingconfig.Glob("git::https://github.com/acme/*"),
-	cascadingconfig.MatchFunc(func(ref cascadingconfig.IncludeRef) bool {
-		return ref.From.Scope != cascadingconfig.ScopeProject // only user/system files may fetch
-	}),
+cascadingconfig.WithDefaultPolicy(
+	cascadingconfig.Allow( // every scheme
+		cascadingconfig.Prefix("https://config.example.com/"),
+	),
+	cascadingconfig.AllowFor("git",
+		cascadingconfig.Glob("git::https://github.com/acme/*"),
+		cascadingconfig.MatchFunc(func(ref cascadingconfig.IncludeRef) bool {
+			return ref.From.Scope != cascadingconfig.ScopeProject // only user/system files may fetch
+		}),
+	),
 )
 ```
 
@@ -777,7 +780,7 @@ misehardened.Preset.Extend(
 
 **How policies combine:**
 
-- **The default policy** is made of the app-level settings (`WithIncludeAllow`, `WithIncludeAllowFor` and the rest). It
+- **The default policy** is set with `WithDefaultPolicy(...)`, which takes the same options as `WithScopePolicy`. It
   applies to every scope that has no policy of its own.
 - **A scope policy replaces the default for that scope** as a whole, so a scope can be *more or less* trusted than the
   default. If policies were merged, a scope could only ever narrow the default. `InheritDefault()` starts from the
