@@ -59,7 +59,7 @@ func newRuleSet(rules []mergeRule) (*ruleSet, error) {
 }
 
 func ruleError(msg string) error {
-	return &OptionError{BaseError: BaseError{Op: "merge rule", Err: errors.New(msg)}}
+	return &OptionError{BaseError: BaseError{Op: "WithMergeRule", Err: errors.New(msg)}}
 }
 
 // overlap reports whether two distinct rules are ambiguous: the same length, the same number of wildcards, and some key

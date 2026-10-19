@@ -34,8 +34,8 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
 │   ├── mise/                       package mise:         mise.Preset
 │   ├── misehardened/               package misehardened: misehardened.Preset
 │   └── cosmiconfig/                package cosmiconfig:  cosmiconfig.Preset
-├── internal/                       core-only helpers (tree copying, path safety, …); the merge engine is in the root
-│                                   package, because it uses the public types (DL-86)
+├── internal/                       core-only helpers (the JSON parser, tree copying, path safety, …); the merge
+│                                   engine is in the root package, because it uses the public types (DL-86)
 │   └── compat/
 │       └── go.mod                  module …/internal/compat (test-only, never released): koanf parity tests
 ├── examples/
@@ -57,9 +57,13 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
   `…/format/toml` *could* import `…/cascadingconfig/internal/…`. We don't allow it. A released `format/toml` must keep
   working with newer core releases, and internal packages carry no compatibility promise. The interfaces these modules
   implement (`Decoder`, `IncludeResolver`, the filesystem notifier) are public core API.
-- **JSON comes with every layout.** It uses only `encoding/json`, so the core layouts register `format/json` by default.
-  `MiseHardenedLayout` alone can therefore already load JSON files. TOML and YAML are added explicitly, or through a
-  preset.
+- **JSON comes with every layout.** It uses only `encoding/json`, so the core layouts register a JSON decoder by
+  default. `MiseHardenedLayout` alone can therefore already load JSON files. TOML and YAML are added explicitly, or
+  through a preset.
+- **Where the JSON parser lives:** `format/json` imports the core, so the core can't import it. The parser lives in
+  `internal/json`, which doesn't import the core. The core's layouts wrap it in a private decoder, and `format/json`
+  wraps the same parser, so both decode identically (DL-95). `format/json` is a package of the core module, so it may
+  use the core's internal packages.
 - **Testing:** core tests use JSON and an in-memory filesystem, so they don't need the TOML or YAML modules.
   Cross-module integration tests live in `presets`, which depends on everything.
 
@@ -163,5 +167,5 @@ stub blank-imports its real library. A small consumer app was then created for e
 | - | --------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | 1 | The `go` directive          | `go 1.26.0` in every module and in `go.work`: the oldest supported Go release, and the minimum consumers need. `filepath.IsLocal` (Go 1.20) and `os.Root` (Go 1.24) are both older. The dev toolchain stays at the latest Go, through mise. |
 | 2 | Committing `go.work`        | Committed, with the `GOWORK=off` release check (lefthook now, CI later).                                                        |
-| 3 | JSON in every layout        | Yes. `format/json` uses only `encoding/json`, so every core layout registers it.                           |
+| 3 | JSON in every layout        | Yes. JSON uses only `encoding/json`, so every core layout registers it, through the parser in `internal/json` that `format/json` also wraps (DL-95). |
 | 4 | One `presets` module        | One module for now. It may be reconsidered later, for example if SBOM noise from `go list -m all` becomes a problem. |
