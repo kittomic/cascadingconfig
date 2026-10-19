@@ -646,6 +646,7 @@ defaults.
 - **The preset default** (DL-105) is set with `WithDefaultFormats`, which takes the same syntax. Unlike `WithFormats`,
   it may name formats with no registered decoder, which are simply not searched, so a layout can list TOML and YAML
   before any decoder for them is added. A `WithFormats` from any option replaces it, whatever their order.
+- **Neither set:** every registered decoder's format is searched, in registration order.
 - **Decoders:** `WithDecoder` for a format that already has one replaces it, so an app can swap a layout's decoder. Two
   formats claiming the same extension are an `*OptionError`.
 - **Locking the order:** an app author who wants to fix the order can turn off both overrides, with
