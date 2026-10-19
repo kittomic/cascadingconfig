@@ -1,0 +1,7 @@
+[tools]
+gitleaks = "latest"
+golangci-lint = "latest"
+go = "latest"
+"go:golang.org/x/vuln/cmd/govulncheck" = "latest"
+lefthook = "latest"
+rumdl = "latest"

@@ -1,0 +1,54 @@
+# lefthook configuration
+# https://lefthook.dev/configuration/
+
+output:
+  - failure
+  - summary
+
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      run: gitleaks git --staged --redact --no-banner
+
+    rumdl:
+      glob: "*.md"
+      run: rumdl check {staged_files}
+
+    go-fmt:
+      glob: "*.go"
+      run: golangci-lint fmt {staged_files}
+      stage_fixed: true
+
+    go-lint:
+      glob: "*.go"
+      # only report issues introduced since HEAD, so staged work is checked quickly
+      run: golangci-lint run --new-from-rev=HEAD ./...
+
+    go-mod-tidy:
+      glob: "{go.mod,go.sum,*.go}"
+      run: go mod tidy -diff
+
+pre-push:
+  parallel: false
+  commands:
+    go-test:
+      files: git ls-files '*.go'
+      run: go test -race ./...
+
+    golangci-lint:
+      files: git ls-files '*.go'
+      run: golangci-lint run ./...
+
+    govulncheck:
+      files: git ls-files '*.go'
+      run: govulncheck ./...
+
+commit-msg:
+  commands:
+    conventional-commit:
+      run: |
+        head -n1 {1} | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+' || {
+          echo "Commit message must follow Conventional Commits, e.g. 'feat(scope): summary'" >&2
+          exit 1
+        }
