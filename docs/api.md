@@ -824,7 +824,7 @@ type OriginKind int
 
 - **What `OriginOf` reports** (DL-91):
   - **A key in the result:** the latest step and its history. A function's result is attributed to the higher layer,
-    with the lower one in the history.
+    with the lower one in the history. Keys inside a table a function returned have kind `OriginFunc` too.
   - **A key whose latest event was an unset:** kind `OriginUnset`, so `Describe()` can say "unset by `<file>`".
   - **Anything else** gives `false`: keys never set, the root, and path strings that don't parse.
   - **History restarts** when an enclosing table is replaced, set to null or unset. That event is in the table's own
