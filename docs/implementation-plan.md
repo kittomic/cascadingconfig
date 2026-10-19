@@ -28,7 +28,8 @@ Each milestone follows these steps:
    proves nothing.
 3. **Tests get their own commit** (`test(scope): …`), separate from the implementation.
 4. **Review gate.** You review the milestone's acceptance tests before implementation starts. This is the main point
-   where your judgement goes in.
+   where your judgement goes in. The review happens locally, before the branch is pushed: the pre-push hook runs the
+   tests, so red tests can't be pushed. The PR, with test and implementation commits kept separate, is the record.
 5. **Implementation.** Code is written until the acceptance tests pass. Internal unit tests are added freely along the
    way, without prior agreement.
 6. **Approved tests stay fixed.** If an approved test turns out to be wrong, the change goes in a separate commit
@@ -148,18 +149,23 @@ Not test-first: this is tooling.
 
 ## M2: Merge engine
 
-**Scope:** merging trees layer by layer, with provenance. No discovery yet: tests pass layers in directly.
+**Scope:** merging trees layer by layer, with provenance. No discovery yet: tests pass layers in directly, through one
+unexported entry point, and check the results only through `Result.Tree` and `OriginOf` (DL-86). This brings forward
+`Result` (`Tree` only), `Origin`, `OriginOf`, `MergeStrategy`, `MergeFunc`, `FormatConflict`, and the parts of `Layer`,
+`ScopeName`, `Variant` and `TrustLevel` that merging needs. The options that set merging up arrive in M3.
 
 **Acceptance tests:**
 
 - **Deep merge:** objects merge, arrays and scalars are replaced (DL-8, § [Merging](design.md#merging)).
 - **Per-key rules** (DL-10, § [Per-key merge rules](design.md#per-key-merge-rules)):
-  - every strategy
+  - every strategy, and `MergeFunc` (DL-87)
   - wildcard matching
-  - the most specific rule wins
-  - ambiguous rules are an error when registered
-  - `Replace` and `Func` cover their subtree
-  - type mismatches name both files
+  - the most specific rule wins, and the same path again replaces a rule (DL-88)
+  - ambiguous rules and a root rule are errors when registered
+  - `Replace` and functions cover their subtree
+  - type mismatches name the key and both files, and every mismatch is reported (DL-90)
+  - without a rule, merging never fails
+  - a function's error is a `*MergeError`, and a non-canonical result a 500 (DL-89)
 - **`_unset`** (DL-11, § [Unsetting keys](design.md#unsetting-keys)):
   - both path forms, and nested placement
   - removal happens before the layer's own values merge
@@ -167,14 +173,19 @@ Not test-first: this is tooling.
   - a missing key is a no-op
   - the key is stripped from the result
   - it can be renamed or turned off
+  - malformed values and `_unset` inside arrays are `*ParseError`s, and a table holding only `_unset` doesn't set its
+    key (DL-92)
 - **Null** (§ [Null values](design.md#null-values-yaml-and-json)):
   - replaces any type
   - is replaced by any value
   - is never a type mismatch
   - stays in the result
-- **Same-slot formats** (DL-3, § [File format precedence](design.md#file-format-precedence)): reverse-precedence merge
-  order, and the `merge`, `first` and `error` policies.
-- **Provenance:** `Origin` kinds and history for set, appended, null and unset values.
+- **Same-slot formats** (DL-3, DL-93, § [File format precedence](design.md#file-format-precedence)): reverse-precedence
+  merge order, extension rank within a format, and the `ConflictMerge`, `ConflictFirst` and `ConflictFail` policies,
+  with their warnings and errors.
+- **Provenance** (DL-91): `Origin` kinds, elements and history for set, merged, appended, prepended, function, null and
+  unset values, and history restarting below a replaced table.
+- **Ownership:** `Result.Tree()` returns a copy (§ [Concurrency and ownership](api.md#concurrency-and-ownership)).
 
 ## M3: Options, presets and `New`
 
@@ -484,7 +495,7 @@ Not test-first.
 
 | # | Question                  | Decision                                                                                                     |
 | - | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance-test commit is reviewed in the PR before the implementation is pushed. |
+| 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. |
 | 2 | CI                        | **Deferred** until M11, or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
 | 3 | Clock injection           | An internal clock interface, settable only through `cctest`. No public `WithClock` option.                    |
 | 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](api.md#test-helpers)). |

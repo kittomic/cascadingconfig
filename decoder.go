@@ -53,6 +53,10 @@ type WarningCode string
 const (
 	// WarnDuplicateKey reports a key that appears more than once in one JSON object. The last value wins.
 	WarnDuplicateKey WarningCode = "duplicate-key"
+
+	// WarnFormatConflict reports a file skipped because a higher-ranked file in the same slot was loaded, under
+	// ConflictFirst.
+	WarnFormatConflict WarningCode = "format-conflict"
 )
 
 // DecodeDocument runs d on data, with the rules every format shares:

@@ -170,8 +170,8 @@ func NewWithPreset(name string, preset Preset, opts ...Option) (*Loader, error)
 Settings come from two places:
 
 - **Engine defaults** live in the core and apply even without a preset: deep merging with arrays replaced, `_unset`,
-  null semantics, `FormatConflict: merge`, the `koanf` tag, warnings for unknown keys, `slog.Default()`, and the
-  debounce timings.
+  null semantics, `ConflictMerge` for same-slot files, the `koanf` tag, warnings for unknown keys, `slog.Default()`, and
+  the debounce timings.
 - **Layout settings** come only from a preset: scopes and their patterns, bootstrap files, the include key, decoders and
   format order, resolvers, policies, and env-var bindings.
 
@@ -222,7 +222,8 @@ func (p Preset) Name() string
   options take, as in `cascadingconfig.WithDecoder(toml.Decoder())`.
 - **Naming says how an option combines:**
   - **`With…` for a single setting** (`WithLogger`, `WithTag`): the last one wins.
-  - **`With…` for a list entry** (`WithDecoder`, `WithMergeRule`, `WithLayerTransform`): it is added.
+  - **`With…` for a list entry** (`WithDecoder`, `WithMergeRule`, `WithMergeFunc`, `WithLayerTransform`): it is added. A
+    merge rule or function for a path that already has one replaces it.
   - **`With…s` replaces a whole set** (`WithScopes`, `WithFormats`, `WithEnvs`, `WithConfigFiles`).
     - **Called with no arguments,** `WithEnvs()` and `WithConfigFiles()` mean *not set*, so an app can always pass its
       flag values, and an empty flag leaves `{NAME}_ENV` and `{NAME}_CONFIG_FILE` in charge. `WithScopes()` and
@@ -279,7 +280,7 @@ the exact signatures are settled at M3's test review.
 | Environments  | `WithEnvs`                                                                                                                  |
 | Formats       | `WithDecoder`, `WithFormats`, `WithFormatConflict`, `WithExtensionlessFormat`                                              |
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
-| Merging       | `WithMergeRule`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
+| Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |
 | Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`, `WithoutBootstrapKey`                                                                |
 | Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
@@ -466,8 +467,8 @@ cascadingconfig.WithDefaults(Config{
 **Status: decided.**
 
 - **The loader is safe for concurrent use.** Several goroutines can call `Load` at once, alongside a watcher.
-- **App callbacks must be too.** Transforms, matchers, merge-rule `Func`s, `ValuesFunc`, `MapEnv`, permission policies,
-  trust stores, and custom scopes, decoders and resolvers can all be called from several goroutines at once.
+- **App callbacks must be too.** Transforms, matchers, `MergeFunc`s, `ValuesFunc`, `MapEnv`, permission policies, trust
+  stores, and custom scopes, decoders and resolvers can all be called from several goroutines at once.
 - **Callers own what they get.** Every callback receives its own deep copy of any tree, so it can modify it freely.
   `Result.Tree()` also returns a copy, so changing it can't affect the report, a watch snapshot or another caller.
 - **Transforms run only on layers that will merge.** Layers that are ignored, untrusted, empty, or not chosen by a
@@ -541,6 +542,19 @@ func (e *ParseError) Error() string // "cascadingconfig: <op> <path>:<line>:<col
 
 var ErrParse = errors.New("cascadingconfig: parse error")
 
+// MergeError names both layers' files.
+type MergeError struct {
+	BaseError        // Path is the higher layer's file
+	Key   Path       // where in the tree
+	Lower string     // the lower layer's file
+}
+
+// ConflictError lists the files in a slot under ConflictFail.
+type ConflictError struct {
+	BaseError          // Path is the highest-ranked file
+	Files []string     // every file in the slot, highest-ranked first
+}
+
 // Built from another module, for example:
 err := &cascadingconfig.FetchError{
 	BaseError: cascadingconfig.BaseError{Op: "fetch", Path: ref, Err: cause},
@@ -564,11 +578,11 @@ func Errors(err error) []error
 | `*ReferenceError`         | 400  | `ErrInvalidReference`  | An include reference fails validation, including [traversal](design.md#traversal-protection). |
 | `*PolicyError`            | 403  | `ErrPolicy`            | Blocked by policy: allow-list, a scheme the policy doesn't allow, trust store, permission policy in error mode, confinement, unpinned remote. |
 | `*NotFoundError`          | 404  | `ErrNotFound`          | An explicit config file or an include target doesn't exist.                 |
-| `*ConflictError`          | 409  | `ErrConflict`          | Several formats in one slot with `FormatConflict: error`.                   |
+| `*ConflictError`          | 409  | `ErrConflict`          | More than one file in one slot with `ConflictFail`.                         |
 | `*TooLargeError`          | 413  | `ErrTooLarge`          | A remote include is over the size limit.                                    |
 | `*UnsupportedFormatError` | 415  | `ErrUnsupportedFormat` | No decoder for an extension or `Content-Type`.                              |
 | `*DecodeError`            | 422  | `ErrDecode`            | Decoding into a struct failed: type mismatch, or unknown keys in strict mode. |
-| `*MergeError`             | 422  | `ErrMerge`             | A merge rule met the wrong type, or a `Func` rule failed.                   |
+| `*MergeError`             | 422  | `ErrMerge`             | A merge rule met the wrong type, or a `MergeFunc` returned an error.        |
 | `*TransformError`         | 422  | `ErrTransform`         | A transform hook returned an error.                                         |
 | `*FetchError`             | 502 / 504 | `ErrFetch`        | A remote include couldn't be fetched (504 for a timeout).                   |
 | `*CycleError`             | 508  | `ErrIncludeCycle`      | An include cycle (`cosmiconfig.Preset`, which allows nesting).               |
@@ -580,9 +594,9 @@ func Errors(err error) []error
 - **Cancellation:** a load stopped by its context returns an error for which `errors.Is(err, context.Canceled)` or
   `errors.Is(err, context.DeadlineExceeded)` holds. It's a `*BaseError`, with code 499 for a cancellation, following
   nginx's "client closed request", and 504 for a deadline.
-- **Errors from app callbacks** (trust stores, `ValuesFunc`, `MapEnv`, custom `Scope`s, matchers, merge-rule `Func`s)
-  are wrapped in a `*BaseError`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error.
-  Transform errors keep their own type, `*TransformError`.
+- **Errors from app callbacks** (trust stores, `ValuesFunc`, `MapEnv`, custom `Scope`s, matchers) are wrapped in a
+  `*BaseError`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error. Transform errors
+  keep their own type, `*TransformError`.
 
 **A failed load still returns a result.** `loader.Load` returns a non-nil `*Result` alongside the error. Its report
 shows what was found, what loaded and what broke, which is what a diagnostic command needs. Its `Tree()` is `nil`, so
@@ -710,6 +724,21 @@ func (p Path) String() string          // the dotted form, quoting segments wher
 - **Wildcards:** in merge rules, a segment of exactly `*` matches one key. A literal `*` key can't be addressed by a
   rule, which is a rare enough case to accept.
 
+### `MergeStrategy`, `MergeFunc` and `FormatConflict`
+
+```go
+type MergeStrategy int // DeepMerge, Replace, Append, Prepend
+
+// MergeFunc is a custom merge, set with WithMergeFunc. It gets copies of both values, and runs only when both layers
+// set the path. An error it returns becomes a *MergeError.
+type MergeFunc func(path Path, lower, higher any) (any, error)
+
+type FormatConflict int // ConflictMerge (the default), ConflictFirst, ConflictFail
+```
+
+The rules for using them are in design.md's [Per-key merge rules](design.md#per-key-merge-rules) and
+[File format precedence](design.md#file-format-precedence).
+
 ### `ScopeName`, `Variant` and `TrustLevel`
 
 ```go
@@ -745,7 +774,7 @@ type Layer struct {
 	Trust      TrustLevel
 	Remote     *Remote     // set for remote includes: scheme, normalised reference, fetched identity
 	IncludedBy string      // Path of the including layer, if any
-	Status     LayerStatus // Loaded, Empty, Ignored, Untrusted, PermissionDenied, Unmatched, …
+	Status     LayerStatus // LayerLoaded, LayerEmpty, LayerIgnored, LayerUntrusted, LayerPermissionDenied, …
 	Reason     string      // why the layer was skipped, if it was
 	Warnings   []Warning
 }
@@ -777,11 +806,30 @@ type Report struct {
 }
 
 type Origin struct {
-	Layer   Layer        // the layer that set the current value
-	Kind    OriginKind   // Set, Appended, Prepended, Null, Func
-	History []OriginStep // earlier layers that set, unset or nulled it
+	Layer    Layer        // the latest layer to set, merge into, null or unset the value
+	Kind     OriginKind   // what that layer did
+	Elements []Layer      // OriginAppended and OriginPrepended only: each element's layer, in order
+	History  []OriginStep // the earlier steps, oldest first
 }
+
+type OriginStep struct {
+	Layer Layer
+	Kind  OriginKind
+}
+
+// OriginSet, OriginMerged (a table more than one layer contributed to), OriginAppended, OriginPrepended, OriginNull,
+// OriginFunc, OriginUnset
+type OriginKind int
 ```
+
+- **What `OriginOf` reports** (DL-91):
+  - **A key in the result:** the latest step and its history. A function's result is attributed to the higher layer,
+    with the lower one in the history. Keys inside a table a function returned have kind `OriginFunc` too.
+  - **A key whose latest event was an unset:** kind `OriginUnset`, so `Describe()` can say "unset by `<file>`".
+  - **Anything else** gives `false`: keys never set, the root, and path strings that don't parse.
+  - **History restarts** when an enclosing table is replaced, set to null or unset. That event is in the table's own
+    history, not repeated on every key below it.
+  - **A no-op unset,** of a key that wasn't there, leaves no step.
 
 - **No config values in the report.** `Report.String()`, its JSON, `Origin` and the `String()` of a hot-reload `Diff`
   contain paths, keys and layer metadata, never values, because config often holds secrets. Values are available only
