@@ -28,7 +28,8 @@ Each milestone follows these steps:
    proves nothing.
 3. **Tests get their own commit** (`test(scope): …`), separate from the implementation.
 4. **Review gate.** You review the milestone's acceptance tests before implementation starts. This is the main point
-   where your judgement goes in.
+   where your judgement goes in. The review happens locally, before the branch is pushed: the pre-push hook runs the
+   tests, so red tests can't be pushed. The PR, with test and implementation commits kept separate, is the record.
 5. **Implementation.** Code is written until the acceptance tests pass. Internal unit tests are added freely along the
    way, without prior agreement.
 6. **Approved tests stay fixed.** If an approved test turns out to be wrong, the change goes in a separate commit
@@ -484,7 +485,7 @@ Not test-first.
 
 | # | Question                  | Decision                                                                                                     |
 | - | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance-test commit is reviewed in the PR before the implementation is pushed. |
+| 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. |
 | 2 | CI                        | **Deferred** until M11, or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
 | 3 | Clock injection           | An internal clock interface, settable only through `cctest`. No public `WithClock` option.                    |
 | 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](api.md#test-helpers)). |
