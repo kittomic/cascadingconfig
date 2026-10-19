@@ -389,6 +389,22 @@ Highest precedence first:
 Several envs can be given, comma-separated (`ci,test`), and a later env wins. Selecting an env never sets environment
 variables by itself.
 
+**Environment names** (checked against `main` at `b756710`, 2026-10-19, with `auto_env` and `env_conf_d` on):
+
+- **Not validated:** the value is only split on commas. Dots are allowed on purpose: "Environment names themselves may
+  contain dots; active files are selected by exact glob patterns" (`conf_d_file_environment` in `src/config/mod.rs`).
+- **Matched literally, never combined:** `mise.dev.linux.local.toml` loads only when an environment named exactly
+  `dev.linux` is selected. Neither `-E dev` on Linux nor `-E dev,linux` loads it.
+- **Some filenames are ambiguous:** `mise.dev.local.toml` is the local file of `dev`, or the shared file of `dev.local`.
+  Whichever name is selected decides.
+- **No warning for unmatched files:** a file that no selected environment matches is silently not loaded. The only
+  related warnings belong to the switch-over periods (dotted `conf.d` names, and platform files before `auto_env` is on
+  by default), and they stop when the defaults change.
+- **`conf.d` fragments** split at the first dot once `env_conf_d` is on, so `conf.d/tools.dev.linux.toml` belongs to env
+  `dev.linux`.
+- **Explicit platform names:** a platform name that is also selected explicitly (`-E linux`) is removed from the
+  automatic list, so it ranks as a selected environment.
+
 ### 3.9 Includes
 
 - A top-level `include = [...]` names local `.toml` paths (relative to the including file), `git::…` or `oci::…`.

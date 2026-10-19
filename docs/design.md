@@ -52,17 +52,117 @@ The two presets, in these terms:
 | `MiseSecurePreset`  | as `MisePreset`                          | as `MisePreset`   | as `MisePreset`; remote includes disabled             |
 | `CosmiconfigPreset` | user, project (searched project-first)   | `shared` only     | first match; the walk is off unless a stop dir is set |
 
+## Environments
+
+Environments select the `env` and `env-local` [variants](#scope-terminology): files like `{name}.{env}.toml` and
+`{name}.{env}.local.toml`.
+
+**Selection**, highest precedence first, as in mise (flag > `MISE_ENV` > `.miserc.toml`):
+
+1. `WithEnvs(...)`, the app's option, normally fed from a `--env` / `-E` flag
+2. `{NAME}_ENV`, a comma list
+3. `env = [...]` in a bootstrap file
+
+**Platform environments** are always active (see [Deviations from mise](#deviations-from-mise)):
+
+- **Names:** `unix` (not on Windows), then `{os}` (`linux`, `macos`, `windows`), then `{os}-{arch}` (such as `linux-x64`
+  or `macos-arm64`; `x86_64` becomes `x64` and `aarch64` becomes `arm64`).
+- **Rank:** they rank **below** every selected environment.
+- **Selecting one explicitly** (for example `MYAPP_ENV=linux`) takes it out of the platform list, so it ranks as a
+  selected environment, as in mise.
+- **Windows:** the OS family is the OS itself, so the list is `windows`, `windows-{arch}`, as in mise.
+- **Not part of the selection:** they don't appear in `{NAME}_ENV` or in the selected list that `Describe()` reports as
+  chosen. `Describe()` lists them separately.
+
+**Order within one directory**, lowest → highest:
+
+1. **shared** files
+2. **env** files, one group per environment: platform envs first, then selected envs in order, so a later env wins
+3. **local** files
+4. **env-local** files, in the same environment order as layer 2
+
+Every local file beats every shared file, whatever its environment. This is mise's `layer_config_filenames` order
+([3.2](config-locations.md#32-filenames-within-one-project-directory)).
+
+**Worked example.** On Linux x64 with `MYAPP_ENV=dev`, the `{name}.*` files in one directory apply in this order:
+
+```text
+myapp.toml                    shared
+myapp.unix.toml               env        unix < linux < linux-x64 (platform)
+myapp.linux.toml              env
+myapp.linux-x64.toml          env
+myapp.dev.toml                env        selected envs rank above platform envs
+myapp.local.toml              local      beats every shared and env file
+myapp.unix.local.toml         env-local
+myapp.linux.local.toml        env-local
+myapp.linux-x64.local.toml    env-local
+myapp.dev.local.toml          env-local  highest
+```
+
+So `myapp.linux.local.toml` beats `myapp.local.toml`, and `myapp.local.toml` beats `myapp.dev.toml`. The other name
+patterns (`.{name}.*`, `{name}/config.*`, `.config/{name}/config.*`, …) slot into the same four layers at their own
+positions.
+
+**Environment names follow mise.** Names are matched literally and are never combined:
+
+- **Any name is allowed,** dots included. The value is only split on commas, and empty entries are dropped.
+- **Literal matching:** a selected name is put into the filename patterns exactly as written. `MYAPP_ENV=dev.linux`
+  selects `myapp.dev.linux.toml` and `myapp.dev.linux.local.toml`.
+- **No combinations:** `myapp.dev.linux.local.toml` does **not** load for `MYAPP_ENV=dev` on Linux, or for
+  `MYAPP_ENV=dev,linux`. To configure `dev` on Linux, use `myapp.dev.toml` and `myapp.linux.toml`. Both load, and `dev`
+  wins where they overlap.
+- **Unmatched files are silently not loaded,** as in mise. There's no warning, because with dotted names allowed, any
+  such file might belong to an environment that simply isn't selected.
+- **Ambiguous filenames are resolved by the selection.** `myapp.dev.local.toml` is the local file of `dev` when `dev` is
+  selected, and the shared file of `dev.local` when `dev.local` is selected. A name such as `local` can make one file
+  match two patterns. For example, `myapp.local.toml` is both the local file and the shared file of env `local`. The
+  file is loaded **once**, at its higher-precedence position, by the same dedup rule as
+  [3.1](config-locations.md#31-tiers).
+- **Names must be safe in a path.** This is the one deviation from mise here, and it is a safety check, not a naming
+  rule (see [Safe environment names](#safe-environment-names)).
+
+### Safe environment names
+
+A selected name is inserted into filename patterns, and a project's bootstrap file can select names. So every name must
+give a **valid filename** and must not **escape the directory** being searched. mise does neither check; it only splits
+the value on commas.
+
+- **Rejected characters:** `/` and `\` (on every OS, so a config repo behaves the same everywhere), NUL and other
+  control characters (`U+0000`–`U+001F`, `U+007F`), and the characters Windows forbids in filenames: `<`, `>`, `:`, `"`,
+  `|`, `?` and `*`.
+- **Valid result:** the filename built from the name must also be valid, for example `myapp.{env}.local.toml` with at
+  most 255 bytes.
+- **Contained path:** after each filename is joined to its directory, the resolved path must stay inside that directory.
+  Go's `filepath.IsLocal` checks this, and the filesystem hook opens files through `os.Root`. A rule that only matched
+  characters can miss cases, so this second check runs as well.
+- **Literal insertion:** names are inserted literally and are never read as glob syntax. `[` and `]` are escaped, as
+  mise does with `glob::Pattern::escape`.
+- **Errors:** an invalid name is an error at start-up from any source (`WithEnvs`, `{NAME}_ENV`, a bootstrap file). The
+  error names the source and the offending character.
+- **Dotted names stay valid,** so mise-style setups such as `MYAPP_ENV=dev.linux` port unchanged.
+- **The app name gets the same check** (`{name}`), when the preset is built, as `env-paths` does for cosmiconfig.
+
 ## Choosing scopes
 
-Scopes are **opt-in**. Each preset declares its default set, and the app replaces that set by listing the scopes it
-wants:
+Each preset declares its default set of scopes. Two modifiers change it, and they can be used in any `Extend`:
+
+- **`WithScopes(...)`** *replaces* the current set with exactly the scopes listed.
+- **`WithoutScopes(...)`** *removes* the listed scopes from the current set.
 
 ```go
 // a system daemon: only /etc/{name} (or %ProgramData%\{name})
 cascadingconfig.MiseSecurePreset.Extend(
 	cascadingconfig.WithScopes(cascadingconfig.ScopeSystem),
 )
+
+// everything MiseSecurePreset has, minus system config
+cascadingconfig.MiseSecurePreset.Extend(
+	cascadingconfig.WithoutScopes(cascadingconfig.ScopeSystem),
+)
 ```
+
+Modifiers apply **in order**, left to right, and across chained `Extend` calls. So
+`P.Extend(WithScopes(A, B, C)).Extend(WithoutScopes(B))` selects `A` and `C`.
 
 | Preset              | Default scopes                     |
 | ------------------- | ---------------------------------- |
@@ -70,11 +170,14 @@ cascadingconfig.MiseSecurePreset.Extend(
 | `MiseSecurePreset`  | `system`, `user`, `project`, `override` |
 | `CosmiconfigPreset` | `user`, `project`                  |
 
-- **Selecting, not reordering.** `WithScopes` chooses which of the preset's scopes are on. Their precedence stays as the
-  preset defines it, whatever order they're listed in. A different order is a preset definition, not a scope choice.
-- **Unknown scopes are an error.** Naming a scope the preset doesn't define fails when the option is applied.
+- **Selecting, not reordering.** Both modifiers choose which of the preset's scopes are on. Their precedence stays as
+  the preset defines it, whatever order they're listed in. A different order is a preset definition, not a scope choice.
+- **Unknown scopes are an error.** Naming a scope the preset doesn't define fails when the option is applied, for either
+  modifier.
+- **Removing an unselected scope is a no-op.** `WithoutScopes` on a scope that is defined but already not selected does
+  nothing, so chained extensions stay safe to compose.
 - **Each scope is independent.** `override` lives in the user dir, but it is enabled only if it is listed. So
-  `WithScopes(ScopeUser, ScopeProject)` turns override files off.
+  `WithScopes(ScopeUser, ScopeProject)` turns override files off, and `WithoutScopes(ScopeUser)` leaves them on.
 - **Fully excluded:** a scope that isn't selected is left out of both the main search and the bootstrap search. If
   `user` isn't selected, its bootstrap files aren't read either.
 - **Explicit config files still load when `project` isn't selected.** Naming a file explicitly is a deliberate choice.
@@ -369,6 +472,7 @@ is **not** the same as `_unset`:
 | `.tool-versions` is not included.                       | It is a mise/asdf-specific format, not a generic config file.            |
 | Every file is trusted by default (D18); approval is the opt-in `RequireTrust` policy (see [Trust store](#trust-store)). | We don't execute config, so approval is opt-in.                         |
 | Platform environments (`unix`, `{os}`, `{os}-{arch}`) are always active below the selected envs, and dotted `conf.d` fragments (`conf.d/*.{env}.toml`) always select an env. There are no `auto_env` / `env_conf_d` settings. | These are mise's planned end-state defaults (2027.6.0 and 2027.8.10). With no existing users, we don't need a date-based switch-over. |
+| Environment names (and the app name) must give a valid filename and can't escape the searched directory (see [Safe environment names](#safe-environment-names)). | mise doesn't check names, so a project's `.miserc.toml` could select `env = ["../../x"]`. Dotted names stay valid, as in mise. |
 | Objects are deep-merged generically (see [Merging](#merging)). | mise's per-section rules depend on its schema.                   |
 | `_unset` removes inherited keys (see [Unsetting keys](#unsetting-keys)). | mise has no way to remove an inherited key.            |
 | The system dir is `%ProgramData%\{name}` on Windows (see [Platform directories](#platform-directories)). | mise uses the literal `/etc/mise` everywhere. |
@@ -572,6 +676,74 @@ cascadingconfig.WithIncludeAllowFor("git",
 - **Redirects:** the `http(s)` resolver checks the allow-list again for each redirect target.
 - **`Describe()`** shows each remote layer's raw reference and its fetched identity.
 
+### Traversal protection
+
+Remote references carry paths and URLs written in config files, so every resolver must stop them from reaching outside
+the repo, artifact or origin they name. Some checks are enforced by the **loader**, around every resolver. The rest are
+per-scheme rules for the **built-in** resolvers.
+
+#### Enforced by the loader, for every resolver
+
+These checks also cover resolvers that apps write themselves:
+
+1. **Before matching:** the reference is normalised and validated **before** it is matched against allow-lists, so a
+   reference can't pass an allow-list in one form and be fetched in another:
+   - **URLs:** parsed, dot segments resolved (RFC 3986 §5.2.4), and the host lowercased and IDNA-normalised, with any
+     trailing dot and default port removed.
+   - **URLs rejected outright:** a URL with userinfo is rejected, because `https://config.acme.internal@evil.example/`
+     would otherwise match a `Prefix` on the internal host. So is a URL with a percent-encoded `.`, `/` or `\` in its
+     path (`%2e`, `%2f`, `%5c`).
+   - **Inner paths** (the `//<path>` of `git::` and `oci::`) are cleaned with `path.Clean` and must then satisfy
+     `fs.ValidPath`, which rules out a leading `/` and `..` segments. They must not contain `\`, NUL or control
+     characters, and the extension must be one with a registered decoder.
+2. **After fetching:** the `Fetched` result is checked. `Format` must match the validated path's extension (or, for
+   `http(s)` URLs with no extension, an allowed `Content-Type`). `Content` must be within the size limit, 1 MiB by
+   default and configurable.
+3. **Relative references inside a remote file** resolve against that file's **remote origin**: the same repo and ref,
+   the same artifact, or the same URL origin. They never resolve against the local filesystem, and they are checked
+   again from step 1. This only matters for presets that allow nesting, because `MisePreset` doesn't.
+4. **Cache paths** are built from a hash of the fetched identity, never from any part of the URL, repo or path. Cache
+   files are written through `os.Root` on the cache dir, by atomic rename.
+
+#### `git`
+
+- **No worktree.** The file is read from the object database (`git cat-file` on `<commit>:<path>`), not from a
+  checked-out tree. There are no files on disk for a symlink to redirect.
+- **Regular files only:** the tree entry's mode must be `100644` or `100755`. A symlink (`120000`) or submodule
+  (`160000`) is rejected, even if it points inside the repo. This is stricter than mise, which canonicalises the path in
+  a checkout and rejects it if it escapes or isn't a regular file (`validate_remote_git_path`).
+- **No option injection:** the ref is resolved to a full commit SHA with `git rev-parse --verify --end-of-options`, and
+  refs starting with `-` are rejected.
+- **Transports:** only `https` and `ssh` are allowed (`GIT_ALLOW_PROTOCOL=https:ssh`). That blocks `ext::`, `fd::`,
+  `file://` and local-path remotes.
+- **No side effects:** fetches are shallow, of that commit only. They use no submodules, no LFS or other filters, and
+  `core.hooksPath` is set to an empty directory.
+
+#### `oci`
+
+- **No extraction to disk.** Layers are read as streams, and the requested file is found among the tar entries.
+- **Entry matching:** each entry name is cleaned and compared to the validated inner path. An entry with an absolute
+  name or a `..` segment fails the whole fetch, even if it isn't the requested file, because it means the artifact is
+  malformed or hostile.
+- **Regular files only:** the matched entry must be a regular file (`TypeReg`). Symlinks, hard links, devices and
+  directories are rejected.
+- **Digests:** every blob's digest is verified as it streams, and the manifest is resolved to a digest before anything
+  is read.
+
+#### `http` / `https`
+
+- **Redirects:** each hop is normalised and matched against the allow-list again (see [Allow-lists](#allow-lists)).
+  There are at most 5 hops, and a redirect from `https` to `http` is rejected.
+- **No local schemes:** `file://` URLs never reach this resolver. They go to the `file` resolver, with its own
+  confinement.
+- **Exact bytes:** the response body is the content, and no decompression beyond `Content-Encoding` is applied. A `.tar`
+  or `.zip` body is not unpacked.
+
+#### Errors
+
+A traversal or validation failure is a **load error**, never a skip. The error names the including file, the reference
+as written and the rule it broke, for example "`..` segment in OCI layer entry".
+
 ### Per-scope policies
 
 All the resolver rules can differ by scope, so each scope can have its own trust level. A **policy** bundles:
@@ -767,17 +939,181 @@ or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
 
 The user dir follows mise on every OS (D4). Only the system dir differs on Windows.
 
+## Value overrides (env vars and flags)
+
+Single config values can be overridden from environment variables or command-line flags. This is a pair of opt-in
+**custom scope kinds**, not a built-in scope. No preset includes them, because how variable names map to keys depends on
+the app's schema.
+
+```go
+cascadingconfig.MisePreset.Extend(
+	cascadingconfig.WithScope("env",
+		cascadingconfig.EnvVars("MYAPP_"), // MYAPP_SERVER__PORT=8080 → server.port = "8080"
+		cascadingconfig.After(cascadingconfig.ScopeOverride),
+	),
+	cascadingconfig.WithScope("flags",
+		cascadingconfig.Values(flagTree), // the app's parsed flags, as a tree
+		cascadingconfig.After("env"),
+	),
+	cascadingconfig.WithScopes(cascadingconfig.ScopeSystem, cascadingconfig.ScopeUser, cascadingconfig.ScopeProject,
+		cascadingconfig.ScopeOverride, "env", "flags"),
+)
+```
+
+**`EnvVars(prefix, opts...)`:**
+
+- **Default mapping:** the prefix is stripped, the name is lowercased, and `__` separates nesting levels. So
+  `MYAPP_SERVER__PORT` gives `server.port`, and `MYAPP_LOG_LEVEL` gives `log_level`.
+- **Why `__`:** a single `_` is too common inside key names to separate levels.
+- **Custom mapping:** `MapEnv(func(name, value string) (Path, any, bool))` replaces the default, for example to parse
+  lists or numbers. Without it, every value is a **string**, and any type conversion happens when the result is decoded.
+- **Discovery bindings are excluded:** variables that are bound to discovery knobs, such as `MYAPP_CONFIG_DIR` or
+  `MYAPP_ENV` (see [Environment variables](#environment-variables)), are never read as values, even though they share
+  the prefix.
+- **Read once per load:** variables are read at load time, and again on each [reload](#hot-reload).
+
+**`Values(tree)`** takes a ready-made tree, typically built from the app's parsed flags. It may also be a function that
+returns a tree, so a reload can re-read it.
+
+**Rules for both kinds:**
+
+- **Placement:** by convention they sit above `override`, with flags above env vars, matching the usual "flag > env >
+  file" order. Placement is up to the app, like any [custom scope](#custom-scopes).
+- **Reserved keys aren't interpreted:** a value that maps to the include key or `_unset` is ignored, with a warning. A
+  value scope can't pull in files or remove keys.
+- **Trust:** `TrustUser`. They have no bootstrap files and no includes, so trust only shows up in `Describe()`.
+- **Provenance:** `Describe()` attributes each value to its source, for example "`server.port` set by
+  `MYAPP_SERVER__PORT`".
+
+## Transform hooks
+
+Apps can rewrite config trees with transform hooks, for example to expand templates such as `{{ config_root }}` or
+`${HOME}`. **No template language is built in.**
+
+```go
+cascadingconfig.WithLayerTransform(func(
+	ctx context.Context, l cascadingconfig.Layer, tree cascadingconfig.Tree,
+) (cascadingconfig.Tree, error) {
+	return expandVars(tree, l.ConfigRoot) // the app's own expansion, e.g. os.Expand
+})
+cascadingconfig.WithResultTransform(func(ctx context.Context, tree cascadingconfig.Tree) (cascadingconfig.Tree, error) {
+	return tree, validate(tree)
+})
+```
+
+- **`WithLayerTransform`:**
+  - **When:** runs on **each layer** after it is decoded and before `_unset` and merging.
+  - **What it gets:** the layer's metadata (path, scope, config root, format, env). That gives it each file's own config
+    root, which a transform after merging couldn't know.
+  - **Coverage:** included layers are transformed too. Bootstrap files are not.
+- **`WithResultTransform`** runs once on the merged result. It is the counterpart of cosmiconfig's `transform` option.
+- **Order:** several transforms run in registration order.
+- **Errors:** an error is a load error. For a layer transform, the error names the file.
+- **Purity:** transforms must be deterministic. They run again on every [reload](#hot-reload), and reload decides
+  whether anything changed by comparing results.
+
+## Hot reload
+
+### Prior art
+
+| Library | What it watches                       | Symlinks (k8s ConfigMap)            | Debounce                  | On parse error                         | Concurrency                     |
+| ------- | ------------------------------------- | ----------------------------------- | ------------------------- | -------------------------------------- | ------------------------------- |
+| Viper   | Parent dir of **one** file            | Re-resolves the target on every event | None                      | Logs; keeps the old config; still calls the callback | Not safe; can `os.Exit` from the library |
+| koanf   | Parent dir of **one** file, per provider | Re-resolves the target on every event | Drops duplicates < 5 ms   | Error passed to the callback; watching stops | Left to the app                 |
+
+**fsnotify** is the de-facto Go watcher. Its main constraints:
+
+- **No recursive watching:** each directory needs its own watch.
+- **No polling backend,** and **no events at all** on NFS, SMB, FUSE, `/proc` or `/sys`.
+- **Atomic saves:** editors save by writing a temporary file and renaming it over the original, which drops a watch on
+  the file itself. So watch the **parent directory** and filter by name.
+- **Chmod noise:** Spotlight, anti-virus and backup tools generate it, so ignore Chmod events.
+- **Limits:** on Linux, inotify watches are capped by `max_user_watches` and `max_user_instances`. On macOS, kqueue
+  needs one file descriptor per watched directory.
+
+Our case is harder than either library's: discovery spans many directories and many candidate files that
+**don't exist yet**. For example, creating `myapp.local.toml` must trigger a reload.
+
+### Design
+
+**API sketch** (the API design will settle the details):
+
+```go
+w, err := loader.Watch(ctx, func(c cascadingconfig.Change) {
+	// c.Old, c.New: immutable snapshots; c.Diff: changed keys with provenance; c.Err: reload failure
+})
+defer w.Close()
+cfg := w.Current() // lock-free read of the latest good snapshot
+```
+
+**Watch set:**
+
+- **Directories, not files.** The loader watches every directory where a candidate file *could* appear: each walk
+  directory, and each pattern's parent within it, such as `.config/{name}/` and `{name}/conf.d/`. It also watches the
+  user and system dirs, the bootstrap locations, and the directories of explicit config files.
+- **Missing directories:** for a directory that doesn't exist yet, the loader watches its nearest existing ancestor
+  within the same walk directory. Once the directory appears, the watch set is re-planned.
+- **Filtering:** an event is relevant only if its name matches a candidate pattern (including `conf.d` globs) or is a
+  directory on the path to one. Chmod events are ignored.
+- **Symlink swaps:** for any event in a directory that holds a symlinked candidate, the symlink is resolved again, and a
+  changed target counts as a change. This covers Kubernetes ConfigMap `..data` swaps, as Viper and koanf do.
+- **Re-planned after every reload,** because a reload can change the ceiling, the selected envs, the formats or the
+  folder fragments.
+
+**Reloading:**
+
+- **Debounced:** events are coalesced on the trailing edge, with a 100 ms quiet period and at most 1 s of delay, so one
+  save means one reload.
+- **Full re-discovery,** not an incremental patch. Bootstrap, discovery, policies (permissions, confinement, trust),
+  transforms and merging all run again. Precedence and dedup depend on the whole set of files, and config is small.
+- **Last good config wins:** if a reload fails (a parse error, a policy violation or a transform error), `Current()`
+  keeps the last good snapshot. The callback gets `Change.Err`, a warning is logged, and the next event retries. A
+  half-written file therefore never replaces good config. The loader never exits the process.
+- **Callbacks only on real change:** the callback runs only when the merged result changes. Touching a file or editing a
+  comment doesn't trigger it.
+- **One at a time:** callbacks are serialised, and events keep coalescing while a callback runs.
+- **Manual reload:** `w.Reload(ctx)` forces one, for example on `SIGHUP`. It also re-reads env vars and `Values`
+  functions, which can't be watched.
+
+**What can't be watched by events:**
+
+| Source                                 | How it refreshes                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Remote includes                        | Pinned references never change. Unpinned ones are re-checked in the background only with `WithRemotePoll(interval)`, using ETags, `git ls-remote` or the OCI manifest digest. Otherwise they refresh on reloads, under the [cache rules](#caching). |
+| NFS, SMB and FUSE mounts; watcher limits reached | Built-in stat polling (mtime, size, inode, then a content hash), every 2 s by default. It's used with `WithPolling(interval)`, and automatically for any directory whose watch fails, with a warning.                                                     |
+| Env vars, `Values`                     | Only on a manual `Reload`.                                                                              |
+| Embedded files, `embed.FS`             | Never; they're static.                                                                                  |
+| Custom `Scope` implementations         | An optional `Watchable` interface; without it, only on a manual `Reload`.                               |
+
+- **Filesystem hook:** watching goes through the [filesystem hook](#filesystem-hook). The OS filesystem uses fsnotify. A
+  test filesystem provides a fake notifier, so reload behaviour can be tested without real files or timers.
+- **Security on reload:** every check runs again. A file that becomes group-writable is ignored on the next reload, with
+  a warning, and a revoked trust approval takes effect there too.
+
 ## Non-goals
 
 - **Writing config files** is out of scope for now. That covers choosing a write target, as mise does for `mise use` or
   `--global`; creating files; and editing them. The loader only reads. mise's write-only settings, such as
   `default_config_filename`, aren't carried over.
+- **Network-level policy (SSRF).** The loader has no built-in rules about which addresses remote includes may reach,
+  such as loopback, link-local or cloud-metadata ranges. Apps that need them have two hooks:
+  - **Allow-list matchers** see the reference as written. A `MatchFunc` can reject hostnames, or IPs written in the URL,
+    such as `http://169.254.169.254/`. Redirect targets are checked again, so a redirect to a written-out IP is caught
+    too. Matchers run before DNS, so they can't see what a hostname resolves to.
+  - **A custom HTTP client:** `HTTPSResolver(WithHTTPClient(c))` builds the `https` resolver on the app's own
+    `*http.Client`. Its dialer (`net.Dialer.Control`) can check each resolved IP at connect time, which also covers DNS
+    rebinding.
+- **Combined-environment files** such as `myapp.dev.linux.toml`, which would load only when every environment they name
+  is active, are not planned. They may be considered later, or never. Adding them would have to be **opt-in**, because
+  today `dev.linux` is an ordinary single environment name, as in mise.
 
 ---
 
 ## Decision log
 
 There are no open questions.
+
+**Decided:**
 
 | # | Question                                      | Decision                                                                                                      |
 | - | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -809,6 +1145,19 @@ There are no open questions.
 | 26 | Bootstrap scope limits                       | Keys that hide or skip files act only in their own scope and less-trusted ones; `env` is the exception. `MiseSecurePreset` project bootstrap files may only set `env` and `formats` (see [Bootstrap file](#bootstrap-file), [Scope trust](#scope-trust)). |
 | 27 | mise migration flags                         | Use mise's end-state behaviour: platform envs and `conf.d` env fragments are always on, and the settings are dropped (see [Deviations from mise](#deviations-from-mise)). |
 | 28 | Trust hook                                   | Folded into per-scope policies as `RequireTrust(store)` (see [Trust store](#trust-store)).                      |
+| 29 | Scope modifiers                              | Both `WithScopes(...)` (replace the set) and `WithoutScopes(...)` (remove from it), applied in order across `Extend` calls (see [Choosing scopes](#choosing-scopes)). |
+| 30 | Environment selection                        | `WithEnvs(...)` > `{NAME}_ENV` > bootstrap `env`. Platform envs rank below selected envs. The order within a directory is shared < env < local < env-local (see [Environments](#environments)). |
+| 31 | Several environments in one filename         | Follow mise: names are matched literally (dots allowed) and never combined, and unmatched files are silently not loaded. Combined-environment files may be considered later, opt-in, or never (see [Environments](#environments), [Non-goals](#non-goals)). |
+| 32 | Safe environment names                       | Names must give a valid filename and can't escape the searched directory. Path separators, control characters and Windows-reserved characters are rejected, joined paths are checked with `filepath.IsLocal` and opened through `os.Root`, and dots stay valid (see [Safe environment names](#safe-environment-names)). |
+| 33 | Traversal in remote resolvers               | The loader normalises and validates every reference before allow-listing, checks every fetched result, resolves relative references against the remote origin, and builds cache paths from hashes. `git` reads blobs without a worktree, `oci` reads tar entries without extracting, and both accept regular files only (see [Traversal protection](#traversal-protection)). |
+| 34 | Requests to internal networks (SSRF)       | No built-in network policy. Allow-list matchers cover hostnames and written-out IPs, and a custom `http.Client` on the `https` resolver covers resolved IPs (see [Non-goals](#non-goals)). |
+| 35 | Value overrides                              | Opt-in custom scope kinds: `EnvVars(prefix)` (`__` for nesting, discovery bindings excluded) and `Values(tree)` for flags. No preset includes them (see [Value overrides](#value-overrides-env-vars-and-flags)). |
+| 36 | Templates                                    | No built-in language. `WithLayerTransform` runs on each layer, with its metadata, before merging; `WithResultTransform` runs on the merged result (see [Transform hooks](#transform-hooks)). |
+| 37 | Hot reload: strategy                         | Watch directories where candidates could appear; debounce, then re-run discovery and merging in full; keep the last good snapshot on failure (see [Hot reload](#hot-reload)). |
+| 38 | Hot reload: remote includes                  | Background polling is opt-in with `WithRemotePoll(interval)`. Otherwise remotes refresh only on reloads, under the cache rules. |
+| 39 | Hot reload: filesystems without events       | Built-in stat polling (2 s default), used with `WithPolling(interval)` and automatically for any directory whose watch fails, with a warning. Network filesystems aren't detected automatically. |
+| 40 | Hot reload: callbacks                        | Only when the merged result changes, or a reload fails. `WithReloadOnAnyEvent()` opts in to every reload. Callbacks are serialised. |
+| 41 | Hot reload: debounce                         | A 100 ms quiet period and at most 1 s of delay, both configurable.                                                  |
 
 ---
 
