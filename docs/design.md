@@ -1411,6 +1411,11 @@ There are no open questions.
 | 78 | Bootstrap key handling                       | Unknown keys warn; keys outside the limits are dropped with a warning; wrong types are an `*OptionError`; no includes or `_unset` (see [Bootstrap file](#bootstrap-file)). |
 | 79 | Include behaviour                            | Top level only, and removed from the result; once per include chain; none from embedded or value sources; trust inherited from the includer (see [Includes](#includes)). |
 | 80 | Platform names                               | `unix` on every `GOOS` except windows, plan9, js and wasip1; `darwin` becomes `macos` and `amd64` becomes `x64`; everything else keeps its Go name (see [Environments](#environments)). |
+| 81 | How decoders report empty files and warnings | `Decode` returns a `Document` with `Tree`, `Empty` and `Warnings` ([api.md](api.md#extension-interfaces)). |
+| 82 | Rules every format shares                    | `DecodeDocument` applies them around any decoder: byte-order mark, UTF-8, `*ParseError` with position, canonical types. A non-canonical type is a decoder bug (500). |
+| 83 | Warnings                                     | A `Warning` type with a `WarningCode` (string), file path, key path and message. The full report format is settled in M5. |
+| 84 | Building errors in other modules             | Each specific error type defines its own fixed `Code()`; the base `Error` has exported fields; `NewError` builds base errors with a code ([api.md](api.md#errors)). |
+| 85 | Path parsing                                 | The empty string is the root; empty segments are errors; segments can be double-quoted as in TOML, and `String()` quotes where needed, so paths round-trip ([api.md](api.md#path)). |
 
 ---
 
