@@ -10,15 +10,15 @@ Notation (`{name}`, `{env}`, `{ext}`, precedence written **lowest → highest**)
 
 ## Overview
 
-- **The default preset is `MisePreset`.** Where the two tools diverge, it follows mise, except for the deliberate
+- **The default preset is `mise.Preset`.** Where the two tools diverge, it follows mise, except for the deliberate
   changes listed in [Deviations from mise](#deviations-from-mise).
-- **We ship three presets.** `MisePreset` and `CosmiconfigPreset` each mirror their tool as closely as Go allows. The
-  main exception is that JS/TS config formats aren't supported. `MiseSecurePreset` is `MisePreset` with hardened
-  settings (see [`MiseSecurePreset`](#misesecurepreset)).
+- **We ship three presets.** `mise.Preset` and `cosmiconfig.Preset` each mirror their tool as closely as Go allows. The
+  main exception is that JS/TS config formats aren't supported. `misehardened.Preset` is `mise.Preset` with hardened
+  settings (see [`misehardened.Preset`](#misehardenedpreset)).
 - **Users can define their own presets.** A preset sets the scopes, the search paths and patterns within each scope, the
   variants, and the precedence. The built-in presets use the same API as user presets, with no special-casing.
-- **Presets can extend other presets.** `MiseSecurePreset` is defined as an extension of `MisePreset`, and user presets
-  can be built the same way.
+- **Presets can extend other presets.** `MiseHardenedLayout` is defined as an extension of `MiseLayout`, and user
+  presets can be built the same way (see [api.md](api.md#layouts-vs-presets)).
 - **Writing config files is out of scope for now** (see
   [Non-goals](#non-goals)).
 
@@ -48,9 +48,9 @@ The two presets, in these terms:
 
 | Preset              | Scopes (lowest → highest)                | Variants          | Resolution                                            |
 | ------------------- | ---------------------------------------- | ----------------- | ----------------------------------------------------- |
-| `MisePreset`        | system, user, project, override          | all four          | merge all                                             |
-| `MiseSecurePreset`  | as `MisePreset`                          | as `MisePreset`   | as `MisePreset`; remote includes disabled             |
-| `CosmiconfigPreset` | user, project (searched project-first)   | `shared` only     | first match; the walk is off unless a stop dir is set |
+| `mise.Preset`        | system, user, project, override          | all four          | merge all                                             |
+| `misehardened.Preset`  | as `mise.Preset`                          | as `mise.Preset`   | as `mise.Preset`; remote includes disabled             |
+| `cosmiconfig.Preset` | user, project (searched project-first)   | `shared` only     | first match; the walk is off unless a stop dir is set |
 
 ## Environments
 
@@ -151,12 +151,12 @@ Each preset declares its default set of scopes. Two modifiers change it, and the
 
 ```go
 // a system daemon: only /etc/{name} (or %ProgramData%\{name})
-cascadingconfig.MiseSecurePreset.Extend(
+misehardened.Preset.Extend(
 	cascadingconfig.WithScopes(cascadingconfig.ScopeSystem),
 )
 
-// everything MiseSecurePreset has, minus system config
-cascadingconfig.MiseSecurePreset.Extend(
+// everything misehardened.Preset has, minus system config
+misehardened.Preset.Extend(
 	cascadingconfig.WithoutScopes(cascadingconfig.ScopeSystem),
 )
 ```
@@ -166,9 +166,9 @@ Modifiers apply **in order**, left to right, and across chained `Extend` calls. 
 
 | Preset              | Default scopes                     |
 | ------------------- | ---------------------------------- |
-| `MisePreset`        | `system`, `user`, `project`, `override` |
-| `MiseSecurePreset`  | `system`, `user`, `project`, `override` |
-| `CosmiconfigPreset` | `user`, `project`                  |
+| `mise.Preset`        | `system`, `user`, `project`, `override` |
+| `misehardened.Preset`  | `system`, `user`, `project`, `override` |
+| `cosmiconfig.Preset` | `user`, `project`                  |
 
 - **Selecting, not reordering.** Both modifiers choose which of the preset's scopes are on. Their precedence stays as
   the preset defines it, whatever order they're listed in. A different order is a preset definition, not a scope choice.
@@ -188,12 +188,12 @@ Modifiers apply **in order**, left to right, and across chained `Extend` calls. 
 - **`Describe()`** lists the selected scopes, and also the preset's scopes that aren't selected, so their absence is
   visible.
 
-**Why `MiseSecurePreset` keeps all four scopes:**
+**Why `misehardened.Preset` keeps all four scopes:**
 
 - **Its protections apply in every scope.** They limit what a file can do and decide whether it is trusted: no remotes,
   permission checks, include confinement. Narrowing the scopes adds little on top.
 - **Which scopes fit depends on the app.** A CLI wants `user` and `project`; a system daemon wants `system` alone.
-- **It stays a drop-in replacement.** Switching from `MisePreset` makes loading stricter without silently ignoring a
+- **It stays a drop-in replacement.** Switching from `mise.Preset` makes loading stricter without silently ignoring a
   user's own config.
 
 ## Custom scopes
@@ -202,7 +202,7 @@ Apps can define new scopes alongside `system`, `user`, `project` and `override`.
 scope carry its own trust level.
 
 ```go
-cascadingconfig.MisePreset.Extend(
+mise.Preset.Extend(
 	// Built-in defaults compiled into the binary, below everything else.
 	cascadingconfig.WithScope("defaults",
 		cascadingconfig.EmbeddedFS(defaultsFS, "{name}.toml"),
@@ -253,7 +253,7 @@ The loader reports every non-fatal problem as a warning through a `*slog.Logger`
 the app can set its own with `WithLogger(l)`. Examples:
 
 - a config file ignored because of its permissions
-  ([`MiseSecurePreset`](#misesecurepreset))
+  ([`misehardened.Preset`](#misehardenedpreset))
 - a stale remote include used because the fetch failed
   ([Caching](#caching))
 - the formats in a same-slot conflict, when the `FormatConflict` policy is `first`
@@ -263,7 +263,7 @@ Each warning is also recorded on the layer it concerns, so `Describe()` and test
 
 ## Directory walk
 
-`MisePreset` walks the `project` scope upwards from the start dir:
+`mise.Preset` walks the `project` scope upwards from the start dir:
 
 - **Start dir inside `~`:** the walk searches `~` itself and then stops. Directories above `~` are never searched.
 - **Start dir outside `~`:** for example `/srv/app`, or a container with no home above the cwd. The walk goes all the
@@ -281,18 +281,18 @@ The `user` scope (`~/.config/{name}`) is a separate scope and is not affected by
 ## Bootstrap file
 
 **Each preset names its own bootstrap files**, including where they are searched and which keys they may set. The
-obvious name in one preset is a config file in another: `.myapprc.json` is a normal config file in `CosmiconfigPreset`.
+obvious name in one preset is a config file in another: `.myapprc.json` is a normal config file in `cosmiconfig.Preset`.
 A user-defined preset can name any bootstrap files, or have none.
 
 | Preset              | Bootstrap files, highest first                                                                                                                                                                 | Allowed keys |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `MisePreset`        | Walk from the start dir, with the same stop rule as above: `.{name}rc.local.{ext}`, `.{name}rc.{ext}`, `.config/{name}rc.{ext}` (not read in `~` or `/`). Then `{user}/{name}rc.local.{ext}` and `{user}/{name}rc.{ext}`. Then `{system}/{name}rc.{ext}`. | `.miserc.toml`'s keys except mise's migration flags (`env`, `ceiling_paths`, `ignored_config_paths`, `override_config_filenames`), plus `formats` |
-| `MiseSecurePreset`  | As `MisePreset`.                                                                                                                                                                              | As `MisePreset`, except that **project**-scope bootstrap files may only set `env` and `formats`. |
-| `CosmiconfigPreset` | The cwd only: the `cosmiconfig` key of `package.json` or `package.yaml`, then of `.config/config.{ext}`.                                                                                       | cosmiconfig's keys (`searchPlaces`, `mergeSearchPlaces`), plus `formats` |
+| `mise.Preset`        | Walk from the start dir, with the same stop rule as above: `.{name}rc.local.{ext}`, `.{name}rc.{ext}`, `.config/{name}rc.{ext}` (not read in `~` or `/`). Then `{user}/{name}rc.local.{ext}` and `{user}/{name}rc.{ext}`. Then `{system}/{name}rc.{ext}`. | `.miserc.toml`'s keys except mise's migration flags (`env`, `ceiling_paths`, `ignored_config_paths`, `override_config_filenames`), plus `formats` |
+| `misehardened.Preset`  | As `mise.Preset`.                                                                                                                                                                              | As `mise.Preset`, except that **project**-scope bootstrap files may only set `env` and `formats`. |
+| `cosmiconfig.Preset` | The cwd only: the `cosmiconfig` key of `package.json` or `package.yaml`, then of `.config/config.{ext}`.                                                                                       | cosmiconfig's keys (`searchPlaces`, `mergeSearchPlaces`), plus `formats` |
 
 - **Override files:** each key set in a higher bootstrap file replaces the same key from lower files. Lists are not
   merged, as in mise.
-- **App config inside the meta file:** in `CosmiconfigPreset`, as in cosmiconfig, the meta file's `{name}` key is also
+- **App config inside the meta file:** in `cosmiconfig.Preset`, as in cosmiconfig, the meta file's `{name}` key is also
   checked as app config (see [2.5](config-locations.md#25-meta-config)).
 - **Formats:** bootstrap files use the format order from the environment variable, the app's setting or the preset,
   never from a bootstrap file (see [File format precedence](#file-format-precedence)).
@@ -311,7 +311,7 @@ make the loader skip `/etc/{name}/config.toml`:
 - **`env` is the exception.** It applies in every scope, as in mise. It doesn't hide files; it chooses among variants
   such as `config.{env}.toml` that each scope's own author wrote.
 
-`MiseSecurePreset` goes further, and project-scope bootstrap files may only set `env` and `formats` (see the table
+`misehardened.Preset` goes further, and project-scope bootstrap files may only set `env` and `formats` (see the table
 above).
 
 ## Merging
@@ -358,7 +358,7 @@ The app can attach a merge strategy to a key path. The rule is used whenever two
 
 - **Set by the app in code**, for example `WithMergeRule("tools.*", Replace)`. Merge rules are part of the app's schema
   contract.
-- **Not set by presets, bootstrap files or env vars.** Presets describe *discovery*, not schema, so `MisePreset` ships
+- **Not set by presets, bootstrap files or env vars.** Presets describe *discovery*, not schema, so `mise.Preset` ships
   with no merge rules. An app that wants mise's section semantics declares them itself.
 - **Used for every merge:** across scopes, variants, same-slot formats and includes. One rule set means one result,
   whichever route a file was found by.
@@ -426,7 +426,7 @@ has `server = { port = 8080, … }` with any lower `server.tls` gone. Other keys
 - **Never in the result:** `_unset` is stripped from the merged config. `Describe()` records each removal ("`proxy`
   unset by `~/work/app/myapp.local.toml`").
 - **Applies everywhere:** across scopes, variants, same-slot formats and includes.
-- **Presets:** it is on in all presets, including `CosmiconfigPreset`, where it applies to `$import` merges. This is a
+- **Presets:** it is on in all presets, including `cosmiconfig.Preset`, where it applies to `$import` merges. This is a
   deviation from cosmiconfig, which would pass `_unset` through as data.
 - **Configuration:** the app can rename the key (`WithUnsetKey("$unset")`) or turn the feature off (`WithoutUnset()`).
   Use either one if the schema already uses `_unset`.
@@ -457,12 +457,13 @@ is **not** the same as `_unset`:
   receives `nil` and decides for itself.
 - **Same-slot formats:** null follows the normal order. If `myapp.yaml` has `port: ~` and `myapp.toml` has `port = 80`,
   TOML is applied last, so the result is `80`. If only the YAML file sets `port`, the result is `null`.
-- **Decoding into structs:** a null leaves a pointer, slice or map field `nil`, and any other field at its zero value.
-  An app that needs to tell "set to null" from "not set" uses pointer fields or reads the merged tree.
+- **Decoding into structs:** a null leaves the field untouched, as koanf does. In a fresh struct that means `nil` or the
+  zero value. In a struct pre-filled with Go defaults, the default stays (see [api.md](api.md#decoding)). An app that
+  needs to tell "set to null" from "not set" uses pointer fields or reads the merged tree.
 
 ## Deviations from mise
 
-`MisePreset` is mise's discovery generalised to any app name, with these deliberate changes:
+`mise.Preset` is mise's discovery generalised to any app name, with these deliberate changes:
 
 | Change                                                  | Why                                                                     |
 | ------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -515,8 +516,8 @@ The **slot** is one pattern in one directory, with everything except `{ext}` fil
 
 | Preset              | Format precedence                         | Why                                                                  |
 | ------------------- | ----------------------------------------- | -------------------------------------------------------------------- |
-| `MisePreset` (default) | `toml`, `yaml`, `yml`, `json`          | TOML wins. mise is TOML-only, so the other formats are additions.    |
-| `CosmiconfigPreset` | *(none)*, `json`, `yaml`, `yml`           | cosmiconfig's own search order. *(none)* is the extensionless `.{name}rc`, parsed as YAML. TOML is not in this preset. The preset uses `FormatConflict: first`, because cosmiconfig stops at the first match. |
+| `mise.Preset` (default) | `toml`, `yaml`, `yml`, `json`          | TOML wins. mise is TOML-only, so the other formats are additions.    |
+| `cosmiconfig.Preset` | *(none)*, `json`, `yaml`, `yml`           | cosmiconfig's own search order. *(none)* is the extensionless `.{name}rc`, parsed as YAML. TOML is not in this preset. The preset uses `FormatConflict: first`, because cosmiconfig stops at the first match. |
 
 - `yaml` and `yml` decode the same way, but they are separate extensions. A slot containing both loads both, and `.yaml`
   is applied after `.yml`.
@@ -577,9 +578,9 @@ preset registers the `file` resolver (see [Local files](#local-files)).
 
 | Preset              | Include key | Remote resolvers registered | Nesting                                   |
 | ------------------- | ----------- | --------------------------- | ----------------------------------------- |
-| `MisePreset`        | `include`   | `http`/`https`, `git`, `oci` | No: an included file can't include (mise) |
-| `MiseSecurePreset`  | `include`   | none, so local files only   | No                                        |
-| `CosmiconfigPreset` | `$import`   | none, so local files only (as cosmiconfig) | Yes, with cycle detection (as cosmiconfig) |
+| `mise.Preset`        | `include`   | `http`/`https`, `git`, `oci` | No: an included file can't include (mise) |
+| `misehardened.Preset`  | `include`   | none, so local files only   | No                                        |
+| `cosmiconfig.Preset` | `$import`   | none, so local files only (as cosmiconfig) | Yes, with cycle detection (as cosmiconfig) |
 
 **Rules for every include:**
 
@@ -601,7 +602,7 @@ resolvers, and every preset registers it.
 - **Allow-lists:** it accepts the same matchers as the remote resolvers. They are matched against the absolute path
   after symlinks are resolved.
 - **`Confine(roots...)`:** the resolved path must lie under one of the roots. A root can be a literal path or a
-  placeholder: `ConfigRoot` (the including file's config root), `UserDir` or `SystemDir`. `MiseSecurePreset` sets
+  placeholder: `ConfigRoot` (the including file's config root), `UserDir` or `SystemDir`. `misehardened.Preset` sets
   `Confine(ConfigRoot, UserDir, SystemDir)`.
 - **Reads** go through the [filesystem hook](#filesystem-hook), so they get its permission policy.
 - **Turning it off:** `WithoutIncludeResolver("file")` turns off local includes, after which any local reference is a
@@ -670,7 +671,7 @@ cascadingconfig.WithIncludeAllowFor("git",
   `IncludeRef`, including the file that asked for it.
 - **Matching:** a reference must match **at least one** entry on each allow-list that applies to it, the global one and
   its scheme's.
-- **No allow-list configured:** every reference is allowed in `MisePreset`, as in mise. `MiseSecurePreset` has no
+- **No allow-list configured:** every reference is allowed in `mise.Preset`, as in mise. `misehardened.Preset` has no
   remotes at all, and requires an allow-list if an app turns them back on.
 - **No match is a load error** naming the including file, never a silent skip.
 - **Redirects:** the `http(s)` resolver checks the allow-list again for each redirect target.
@@ -701,7 +702,7 @@ These checks also cover resolvers that apps write themselves:
    default and configurable.
 3. **Relative references inside a remote file** resolve against that file's **remote origin**: the same repo and ref,
    the same artifact, or the same URL origin. They never resolve against the local filesystem, and they are checked
-   again from step 1. This only matters for presets that allow nesting, because `MisePreset` doesn't.
+   again from step 1. This only matters for presets that allow nesting, because `mise.Preset` doesn't.
 4. **Cache paths** are built from a hash of the fetched identity, never from any part of the URL, repo or path. Cache
    files are written through `os.Root` on the cache dir, by atomic rename.
 
@@ -758,8 +759,8 @@ All the resolver rules can differ by scope, so each scope can have its own trust
   [Filesystem hook](#filesystem-hook))
 
 ```go
-cascadingconfig.MiseSecurePreset.Extend(
-	cascadingconfig.WithIncludeResolver(cascadingconfig.HTTPSResolver()),
+misehardened.Preset.Extend(
+	cascadingconfig.WithIncludeResolver(httpresolver.New()),
 	// Only system config may fetch, and only from the internal config host.
 	cascadingconfig.WithScopePolicy(cascadingconfig.ScopeSystem,
 		cascadingconfig.InheritDefault(),
@@ -784,10 +785,10 @@ cascadingconfig.MiseSecurePreset.Extend(
 - **Within one policy,** allow-lists combine as described in [Allow-lists](#allow-lists): a reference must match the
   global list and its scheme's list.
 - **Registered vs usable:** registering a resolver makes it *available*. Only policies that list it in `AllowResolvers`
-  can *use* it. In `MisePreset`, the default policy allows every registered resolver. In `MiseSecurePreset`, the default
-  policy allows only `file`, so a remote resolver the app registers is usable only in scopes whose policy names it. That
-  policy must also give the resolver an allow-list and must require pinned references.
-- **Which scope judges an include:** the scope of the file that wrote it. Nested includes (`CosmiconfigPreset`) are
+  can *use* it. In `mise.Preset`, the default policy allows every registered resolver. In `misehardened.Preset`, the
+  default policy allows only `file`, so a remote resolver the app registers is usable only in scopes whose policy names
+  it. That policy must also give the resolver an allow-list and must require pinned references.
+- **Which scope judges an include:** the scope of the file that wrote it. Nested includes (`cosmiconfig.Preset`) are
   judged by the scope of the root file, so an include never gains trust by being reached through another file.
 - **Explicit config files** ([Explicit config files](#explicit-config-files)) are judged by the `project` policy.
 - **Only the app sets policies, in code.** Bootstrap files and env vars can't, as with
@@ -799,9 +800,9 @@ cascadingconfig.MiseSecurePreset.Extend(
 
 | Preset              | Default policy (all scopes)                                                         |
 | ------------------- | ----------------------------------------------------------------------------------- |
-| `MisePreset`        | Every registered resolver, everything allowed, no confinement, no permission check.  |
-| `MiseSecurePreset`  | `file` only, `Confine(ConfigRoot, UserDir, SystemDir)`, the Unix permission check.   |
-| `CosmiconfigPreset` | `file` only, no confinement, no permission check.                                   |
+| `mise.Preset`        | Every registered resolver, everything allowed, no confinement, no permission check.  |
+| `misehardened.Preset`  | `file` only, `Confine(ConfigRoot, UserDir, SystemDir)`, the Unix permission check.   |
+| `cosmiconfig.Preset` | `file` only, no confinement, no permission check.                                   |
 
 ### Caching
 
@@ -817,13 +818,21 @@ Remote files are cached by fetched identity under `{user cache dir}/{name}/inclu
 - **Options:** the TTL and the cache dir can be set (`WithIncludeCache(dir, ttl)`), and caching can be turned off.
 - **User cache dir:** `$XDG_CACHE_HOME` on Linux, else Go's `os.UserCacheDir()`.
 
-### `MiseSecurePreset`
+### `misehardened.Preset`
 
 ```go
-var MiseSecurePreset = MisePreset.Extend(
+// core: the layout (no dependencies)
+var MiseHardenedLayout = MiseLayout.Extend(
 	cascadingconfig.WithoutRemoteIncludes(),
+	// … plus the permission, confinement and pinning rules below
 )
+
+// presets module: the layout plus TOML, YAML and fsnotify (no remote resolvers)
+var Preset = cascadingconfig.MiseHardenedLayout.Extend( /* decoders, notifier */ )
 ```
+
+`misehardened.Preset` is `cascadingconfig.MiseHardenedLayout` with TOML, YAML and fsnotify added. The layout itself is
+`MiseLayout` with the changes below.
 
 - **Remotes off:** no remote resolvers are registered. A remote reference is a **load error**, not a silent skip, so a
   config that depends on a remote base fails loudly.
@@ -877,13 +886,13 @@ cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
 - **No store is shipped.** We don't write files (see [Non-goals](#non-goals)), so a persistent store is the app's
   concern. A `TrustPaths(globs...)` store, equivalent to mise's `trusted_config_paths`, is provided because it needs no
   writes.
-- **Defaults:** no preset requires trust. `MisePreset` trusts every file, as D18 decided. `MiseSecurePreset` relies on
-  its other protections, and apps add `RequireTrust` where they want approval.
+- **Defaults:** no preset requires trust. `mise.Preset` trusts every file, as D18 decided. `misehardened.Preset` relies
+  on its other protections, and apps add `RequireTrust` where they want approval.
 
 ## Environment variables
 
-These are `MisePreset`'s bindings. `MiseSecurePreset` uses the same ones. `{NAME}` is the app name in upper case, with
-every character outside `[A-Z0-9]` replaced by `_`.
+These are `mise.Preset`'s bindings. `misehardened.Preset` uses the same ones. `{NAME}` is the app name in upper case,
+with every character outside `[A-Z0-9]` replaced by `_`.
 
 | Variable                          | Sets                                                                 | Value                |
 | --------------------------------- | -------------------------------------------------------------------- | -------------------- |
@@ -917,10 +926,10 @@ cascadingconfig.WithConfigFiles(flagValues...) // usually fed from a --config fl
 
 or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
 
-- **What it replaces (`MisePreset`):** the project scope only. The directory walk is skipped, but the system, user and
+- **What it replaces (`mise.Preset`):** the project scope only. The directory walk is skipped, but the system, user and
   override scopes still apply.
-- **What it replaces (`CosmiconfigPreset`):** everything. This matches cosmiconfig's `load(path)`, which reads only that
-  file.
+- **What it replaces (`cosmiconfig.Preset`):** everything. This matches cosmiconfig's `load(path)`, which reads only
+  that file.
 - **No variants:** the files are loaded as given. `.local` and `.{env}` siblings aren't added.
 - **Order:** with several files, they are applied in the order given, and the later file wins.
 - **Format** comes from each file's extension. An unknown extension is an error.
@@ -946,7 +955,7 @@ Single config values can be overridden from environment variables or command-lin
 the app's schema.
 
 ```go
-cascadingconfig.MisePreset.Extend(
+mise.Preset.Extend(
 	cascadingconfig.WithScope("env",
 		cascadingconfig.EnvVars("MYAPP_"), // MYAPP_SERVER__PORT=8080 → server.port = "8080"
 		cascadingconfig.After(cascadingconfig.ScopeOverride),
@@ -1100,9 +1109,9 @@ cfg := w.Current() // lock-free read of the latest good snapshot
   - **Allow-list matchers** see the reference as written. A `MatchFunc` can reject hostnames, or IPs written in the URL,
     such as `http://169.254.169.254/`. Redirect targets are checked again, so a redirect to a written-out IP is caught
     too. Matchers run before DNS, so they can't see what a hostname resolves to.
-  - **A custom HTTP client:** `HTTPSResolver(WithHTTPClient(c))` builds the `https` resolver on the app's own
-    `*http.Client`. Its dialer (`net.Dialer.Control`) can check each resolved IP at connect time, which also covers DNS
-    rebinding.
+  - **A custom HTTP client:** `httpresolver.New(httpresolver.WithClient(c))` builds the `https` resolver on the app's
+    own `*http.Client`. Its dialer (`net.Dialer.Control`) can check each resolved IP at connect time, which also covers
+    DNS rebinding.
 - **Combined-environment files** such as `myapp.dev.linux.toml`, which would load only when every environment they name
   is active, are not planned. They may be considered later, or never. Adding them would have to be **opt-in**, because
   today `dev.linux` is an ordinary single environment name, as in mise.
@@ -1117,8 +1126,8 @@ There are no open questions.
 
 | # | Question                                      | Decision                                                                                                      |
 | - | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 1 | Presets                                       | Ship `MisePreset`, `MiseSecurePreset` and `CosmiconfigPreset`, and let users define their own, including by extending a preset (see [Decisions](#overview)). |
-| 2 | Default preset                                | `MisePreset`, with the [deviations](#deviations-from-mise) listed above.                                      |
+| 1 | Presets                                       | Ship `mise.Preset`, `misehardened.Preset` and `cosmiconfig.Preset`, and let users define their own, including by extending a preset (see [Decisions](#overview)). |
+| 2 | Default preset                                | `mise.Preset`, with the [deviations](#deviations-from-mise) listed above.                                      |
 | 3 | Same name in several formats                  | Merge them all, with TOML applied last by default (see [File format precedence](#file-format-precedence)).     |
 | 4 | Overriding the format order                   | `{NAME}_CONFIG_FORMATS`, which beats the bootstrap `formats` key, which beats the app's setting, which beats the preset. |
 | 5 | Default walk limit                            | Stop after `~`, or at `/` when outside `~` (see [Directory walk](#directory-walk)).                            |
@@ -1129,20 +1138,20 @@ There are no open questions.
 | 10 | Schema-specific merge behaviour              | Per-key merge rules, set by the app only (see [Per-key merge rules](#per-key-merge-rules)).                   |
 | 11 | Unsetting keys                               | Supported with the reserved `_unset` key (renameable). YAML/JSON `null` is a real value that replaces lower values when merging (see [Unsetting keys](#unsetting-keys), [Null values](#null-values-yaml-and-json)). |
 | 12 | Include key and remote includes              | Each preset names its key. Remotes are fetched through resolver hooks: `http(s)`, `git` and `oci` are built in, with allow-lists of matchers or matcher funcs (see [Includes](#includes)). |
-| 13 | Hardened preset                              | `MiseSecurePreset` extends `MisePreset` and disables remote includes (see [`MiseSecurePreset`](#misesecurepreset)). |
+| 13 | Hardened preset                              | `MiseHardenedLayout` extends `MiseLayout` and disables remote includes; `misehardened.Preset` adds TOML, YAML and fsnotify (see [`misehardened.Preset`](#misehardenedpreset)). |
 | 14 | System dir on Windows                        | `%ProgramData%\{name}` (see [Platform directories](#platform-directories)).                                   |
 | 15 | Env-var list                                 | As listed in [Environment variables](#environment-variables). Every binding is renameable.                      |
 | 16 | Explicit config files                        | `WithConfigFiles` / `{NAME}_CONFIG_FILE` replace the project scope only (see [Explicit config files](#explicit-config-files)). |
 | 17 | Writing config files                         | Out of scope for now (see [Non-goals](#non-goals)).                                                          |
-| 18 | Remotes with no allow-list (`MisePreset`)    | All allowed, as in mise (see [Allow-lists](#allow-lists)).                                                   |
+| 18 | Remotes with no allow-list (`mise.Preset`)    | All allowed, as in mise (see [Allow-lists](#allow-lists)).                                                   |
 | 19 | Remote caching                               | Pinned references are cached forever, unpinned ones get a 1-hour TTL, and a stale copy is used with a warning if a fetch fails (see [Caching](#caching)). |
-| 20 | `MiseSecurePreset` hardening                 | Permission check with a warning, local include confinement, pinned remotes if re-enabled (see [`MiseSecurePreset`](#misesecurepreset)). |
-| 21 | Choosing scopes                              | Opt-in: each preset has a default set, and the app replaces it with `WithScopes(...)`, in code only. `MisePreset` and `MiseSecurePreset` default to all four (see [Choosing scopes](#choosing-scopes)). |
+| 20 | `misehardened.Preset` hardening                 | Permission check with a warning, local include confinement, pinned remotes if re-enabled (see [`misehardened.Preset`](#misehardenedpreset)). |
+| 21 | Choosing scopes                              | Opt-in: each preset has a default set, and the app replaces it with `WithScopes(...)`, in code only. `mise.Preset` and `misehardened.Preset` default to all four (see [Choosing scopes](#choosing-scopes)). |
 | 22 | Warnings                                     | Logged through `*slog.Logger` (default `slog.Default()`) and recorded per layer (see [Warnings and logging](#warnings-and-logging)). |
 | 23 | Local files                                  | A built-in `file` resolver handles local includes, and one shared filesystem hook carries every read and the permission policy (see [Local files](#local-files), [Filesystem hook](#filesystem-hook)). |
 | 24 | Trust per scope                              | All resolver and permission rules can be set per scope. A scope's policy replaces the default as a whole (see [Per-scope policies](#per-scope-policies)). |
 | 25 | Custom scopes                                | Supported, built from the existing kinds or the `Scope` interface, placed with `Before`/`After`, project trust by default (see [Custom scopes](#custom-scopes)). |
-| 26 | Bootstrap scope limits                       | Keys that hide or skip files act only in their own scope and less-trusted ones; `env` is the exception. `MiseSecurePreset` project bootstrap files may only set `env` and `formats` (see [Bootstrap file](#bootstrap-file), [Scope trust](#scope-trust)). |
+| 26 | Bootstrap scope limits                       | Keys that hide or skip files act only in their own scope and less-trusted ones; `env` is the exception. `misehardened.Preset` project bootstrap files may only set `env` and `formats` (see [Bootstrap file](#bootstrap-file), [Scope trust](#scope-trust)). |
 | 27 | mise migration flags                         | Use mise's end-state behaviour: platform envs and `conf.d` env fragments are always on, and the settings are dropped (see [Deviations from mise](#deviations-from-mise)). |
 | 28 | Trust hook                                   | Folded into per-scope policies as `RequireTrust(store)` (see [Trust store](#trust-store)).                      |
 | 29 | Scope modifiers                              | Both `WithScopes(...)` (replace the set) and `WithoutScopes(...)` (remove from it), applied in order across `Extend` calls (see [Choosing scopes](#choosing-scopes)). |

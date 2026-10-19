@@ -455,11 +455,11 @@ cosmiconfig has no equivalent, even though it executes JS config files.
 ## 4. Divergences
 
 These are the places where "mirror both tools" is not possible with a single behaviour. Each one becomes a preset
-option, and each preset follows its own tool. The last column is `MisePreset`, which is also the default. Every entry in
-it is confirmed, and the detail behind each one is in
+option, and each preset follows its own tool. The last column is `mise.Preset`, which is also the default. Every entry
+in it is confirmed, and the detail behind each one is in
 [design.md](design.md).
 
-| #  | Topic                       | cosmiconfig                                              | mise                                                    | `MisePreset` (default)                              |
+| #  | Topic                       | cosmiconfig                                              | mise                                                    | `mise.Preset` (default)                              |
 | -- | --------------------------- | -------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
 | D1 | **Combining files**         | First match wins.                                        | Merge every file.                                       | **Merge** (the package is called *cascading*config). Keep first-match as a `Resolve` policy. |
 | D2 | **Default walk**            | `none` (start dir only).                                 | cwd → `/`.                                              | Walk up to and including `~`, or to `/` when the start dir is outside `~` (see [Directory walk](design.md#directory-walk)). |
@@ -467,7 +467,7 @@ it is confirmed, and the detail behind each one is in
 | D4 | **Global dir location**     | `env-paths`: `~/Library/Preferences/{name}` on macOS, `%APPDATA%\{name}\Config` on Windows. | `$XDG_CONFIG_HOME/{name}` or `~/.config/{name}` everywhere. | XDG everywhere, as mise does. Offer an `env-paths`-compatible resolver. |
 | D5 | **Global dir position**     | After the walk; only reached if nothing nearer matched.  | Below every project file.                               | These are the same rule under each tool's resolve policy: global is the lowest user tier. |
 | D6 | **Global filenames**        | `config`, `config.{ext}`                                 | `config.toml`, `{name}.toml`, `conf.d/…`, `.local`, `{env}` | Layout from mise; extension set from the formats we register. |
-| D7 | **Per-directory names**     | `.{name}rc[.{ext}]`, `.config/{name}rc[.{ext}]`, `{name}.config.{ext}` | `{name}.toml`, `.{name}.toml`, `{name}/config.toml`, `.{name}/config.toml`, `.config/{name}.toml`, `.config/{name}/config.toml`, `conf.d` | mise's layout with any registered extension. rc-style names via `CosmiconfigPreset`. |
+| D7 | **Per-directory names**     | `.{name}rc[.{ext}]`, `.config/{name}rc[.{ext}]`, `{name}.config.{ext}` | `{name}.toml`, `.{name}.toml`, `{name}/config.toml`, `.{name}/config.toml`, `.config/{name}.toml`, `.config/{name}/config.toml`, `conf.d` | mise's layout with any registered extension. rc-style names via `cosmiconfig.Preset`. |
 | D8 | **Formats**                 | JSON, YAML, extensionless YAML, JS/TS                    | TOML, `.tool-versions`                                  | Pluggable decoders keyed by extension. Ship JSON, YAML and TOML. JS/TS are not portable to Go. When one slot matches several formats, all are merged with TOML applied last (it wins) by default; the order can be overridden with `{NAME}_CONFIG_FORMATS` (see [File format precedence](design.md#file-format-precedence)). |
 | D9 | **Manifest property**       | `package.json` / `package.yaml` `{name}` key             | None.                                                   | Supported as an opt-in "embedded" source, for example `package.json#{name}` or `pyproject.toml#tool.{name}`. |
 | D10 | **System tier**            | None.                                                    | `/etc/{name}`                                           | Include it, as mise does. On Windows, `%ProgramData%\{name}` (see [Platform directories](design.md#platform-directories)). |
