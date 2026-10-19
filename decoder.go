@@ -57,6 +57,27 @@ const (
 	// WarnFormatConflict reports a file skipped because a higher-ranked file in the same slot was loaded, under
 	// ConflictFirst.
 	WarnFormatConflict WarningCode = "format-conflict"
+
+	// WarnUnreadable reports a searched file that couldn't be read.
+	WarnUnreadable WarningCode = "unreadable"
+
+	// WarnNotAFile reports a directory, FIFO, device or socket where a config file was expected. It is never opened.
+	WarnNotAFile WarningCode = "not-a-file"
+
+	// WarnBrokenSymlink reports a symlink whose target doesn't exist, or a symlink loop.
+	WarnBrokenSymlink WarningCode = "broken-symlink"
+
+	// WarnReservedKey reports a reserved key, such as the unset key, in a value scope, which can't use it.
+	WarnReservedKey WarningCode = "reserved-key"
+
+	// WarnEnvVarSkipped reports an environment variable EnvVars can't map, such as one with an empty segment.
+	WarnEnvVarSkipped WarningCode = "env-var-skipped"
+
+	// WarnEnvVarClash reports two environment variables that map to clashing keys; the later name wins.
+	WarnEnvVarClash WarningCode = "env-var-clash"
+
+	// WarnNoHome reports that the user directory couldn't be worked out, so scopes that use it were skipped.
+	WarnNoHome WarningCode = "no-home"
 )
 
 // DecodeDocument runs d on data, with the rules every format shares:
