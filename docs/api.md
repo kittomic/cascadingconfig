@@ -71,7 +71,7 @@ So **layouts live in the core, and ready-to-use presets live in a separate modul
 | Import path (module root in **bold**)                          | Package        | Contents                                                                                         | Third-party dependencies                         |
 | -------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
 | **`github.com/kittomic/cascadingconfig`**                      | `cascadingconfig` | `New`, `Load[T]`, `Watch[T]`, `Result`, `Report`, errors, options, merging, decoding, layouts, the `file` resolver, the filesystem hook, stat polling and the reload logic | `go-viper/mapstructure/v2`                     |
-| `…/cascadingconfig/format/json`                                 | `json`         | JSON decoder, registered by every layout                                                        | none (standard library)                          |
+| `…/cascadingconfig/format/json`                                 | `json`         | JSON decoder. Its parser, in `internal/json`, is also what every layout registers (DL-95)        | none (standard library)                          |
 | `…/cascadingconfig/httpresolver`                                | `httpresolver` | `http`/`https` include resolver                                                                  | none (standard library)                          |
 | `…/cascadingconfig/gitresolver`                                 | `gitresolver`  | `git` include resolver, run through the `git` program                                            | none (needs `git` installed at run time)         |
 | **`…/cascadingconfig/format/toml`**                             | `toml`         | TOML decoder                                                                                     | `pelletier/go-toml/v2`                           |
@@ -200,12 +200,20 @@ preset" and lists the empty layout settings, so what the loader was configured t
 ### `Preset` and `Extend`
 
 ```go
-type Preset struct { /* name, and an ordered list of options */ }
+type Preset struct { /* name, base, and an ordered list of options */ }
 
+func NewPreset(name string, opts ...Option) Preset
 func (p Preset) Extend(opts ...Option) Preset
+func (p Preset) ExtendAs(name string, opts ...Option) Preset
 func (p Preset) Name() string
 ```
 
+- **Creating and naming** (DL-97):
+  - **`NewPreset(name, opts...)`** creates a preset from nothing.
+  - **`Extend`** keeps the receiver's name.
+  - **`ExtendAs(name, opts...)`** creates a named extension and records the receiver as its base. That's how
+    `MiseHardenedLayout` extends `MiseLayout`, and `misehardened.Preset` extends `MiseHardenedLayout`.
+  - **A zero `Preset{}`** has no name and no options, so `NewWithPreset(n, Preset{})` is the same as `New(n)`.
 - **A preset is a name plus an ordered list of options.** Nothing is applied until `New`, which runs the preset's
   options, then the extensions, then `New`'s own `opts`, in that order, onto a fresh configuration.
 - **That makes "applied in order" literally true.** `WithScopes(A, B, C)` followed by `WithoutScopes(B)` selects `A` and
@@ -233,6 +241,10 @@ func (p Preset) Name() string
   - **`Without…` removes** (`WithoutScopes`, `WithoutIncludeResolver`, `WithoutEnvBinding`, `WithoutUnset`).
   - **`Require…` turns on a check** (`RequireConfig`).
 - **Grouping:** `Options(opts...)` bundles several options into one, so an app can share a group.
+- **Errors** (DL-104): each problem is an `*OptionError` whose `Op` is the option's name, for example
+  `cascadingconfig: WithFormats: unknown format "xml"`. Every problem from one `New` is returned, joined.
+- **Empty entries are dropped** in `WithEnvs` and `WithConfigFiles`, as in `{NAME}_ENV`. So `WithConfigFiles("")`, from
+  an empty flag, means *not set* (DL-99).
 - **Programmatic values only.** Options set the app's values. Env vars and bootstrap files override them where design.md
   says so, for example [format precedence](design.md#file-format-precedence). Options never read the environment
   themselves.
@@ -258,8 +270,9 @@ Options that only make sense in one place get their own type, so the compiler re
 
 ### Layout options
 
-The built-in layouts are built from these options, so a user's layout can do everything they do. **Proposed shapes;**
-the exact signatures are settled at M3's test review.
+The built-in layouts are built from these options, so a user's layout can do everything they do. **Proposed shapes.**
+Each one's exact signature is settled at the test review of the milestone that implements it, which also adds it to the
+layouts (DL-94).
 
 | Area           | Options                                                                                                   |
 | -------------- | --------------------------------------------------------------------------------------------------------- |
@@ -270,7 +283,68 @@ the exact signatures are settled at M3's test review.
 | Limits         | `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
 | Directories    | `WithUserDir(resolver)` and `WithSystemDir(resolver)`, with resolvers `XDGDirs` (the mise presets) and `EnvPathsDirs` (the cosmiconfig preset) |
 | Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
-| Env bindings   | Binding keys are constants, such as `BindConfigDir`, `BindEnv` and `BindConfigFormats`, so `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` is checked by the compiler. A custom scope can declare its own binding. |
+| Env bindings   | **Settled** (DL-98): `type Binding string`, with constants such as `BindConfigDir` (`"CONFIG_DIR"`), `BindEnv` and `BindConfigFormats`. `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` declares or renames a binding; an empty name means the default `{NAME}_<suffix>`. A custom scope can declare its own binding. |
+
+### Settled signatures
+
+These are the options whose behaviour exists so far, with their signatures settled (DL-94). The rest of the catalogue
+follows in later milestones.
+
+```go
+func Options(opts ...Option) Option
+
+// Scopes (DL-100)
+func WithScopes(names ...ScopeName) Option
+func WithoutScopes(names ...ScopeName) Option
+func WithScope(name ScopeName, kind ScopeKind, opts ...ScopeOption) Option
+func Before(scope ScopeName) ScopeOption
+func After(scope ScopeName) ScopeOption
+func Trust(level TrustLevel) ScopeOption
+func Values(tree Tree) ScopeKind // DL-103
+
+// Formats (DL-101)
+func WithDecoder(d Decoder) Option
+func WithFormats(formats ...string) Option
+func WithFormatConflict(policy FormatConflict) Option
+
+// Merging (DL-102)
+func WithMergeRule[P PathSpec](path P, strategy MergeStrategy) Option
+func WithMergeFunc[P PathSpec](path P, f MergeFunc) Option
+func WithArrayMerge(strategy MergeStrategy) Option // Replace, Append or Prepend
+func WithUnsetKey(key string) Option
+func WithoutUnset() Option
+
+// Environments and files
+func WithEnvs(names ...string) Option
+func WithConfigFiles(paths ...string) Option
+
+// Env bindings (DL-98)
+type Binding string
+
+const (
+	BindConfigFile              Binding = "CONFIG_FILE"
+	BindConfigDir               Binding = "CONFIG_DIR"
+	BindGlobalConfigFile        Binding = "GLOBAL_CONFIG_FILE"
+	BindSystemConfigDir         Binding = "SYSTEM_CONFIG_DIR"
+	BindSystemConfigFile        Binding = "SYSTEM_CONFIG_FILE"
+	BindEnv                     Binding = "ENV"
+	BindCeilingPaths            Binding = "CEILING_PATHS"
+	BindIgnoredConfigPaths      Binding = "IGNORED_CONFIG_PATHS"
+	BindOverrideConfigFilenames Binding = "OVERRIDE_CONFIG_FILENAMES"
+	BindConfigFormats           Binding = "CONFIG_FORMATS"
+)
+
+func WithEnvBinding(b Binding, name string) Option
+func WithoutEnvBinding(b Binding) Option
+```
+
+- **Sealed kinds.** `Option`, `ScopeKind`, `ScopeOption`, `PolicyOption`, `Matcher` and `WatchOption` are interfaces
+  with unexported methods. The last three exist as types now, so the compiler already rejects them in the wrong place,
+  and get their options in later milestones.
+- **The rules for each group** are in design.md: [Choosing scopes](design.md#choosing-scopes),
+  [Custom scopes](design.md#custom-scopes), [File format precedence](design.md#file-format-precedence),
+  [Per-key merge rules](design.md#per-key-merge-rules), [Environment variables](design.md#environment-variables) and
+  [Value overrides](design.md#value-overrides-env-vars-and-flags).
 
 ### Option catalogue
 

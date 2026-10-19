@@ -146,7 +146,9 @@ the value on commas.
 - **Errors:** an invalid name is an `*OptionError` from any source. From `WithEnvs` it fails at `New`; from `{NAME}_ENV`
   or a bootstrap file it fails at `Load`, when those are read. The error names the source and the offending character.
 - **Dotted names stay valid,** so mise-style setups such as `MYAPP_ENV=dev.linux` port unchanged.
-- **The app name gets the same check** (`{name}`), when the preset is built, as `env-paths` does for cosmiconfig.
+- **The app name gets the same check** (`{name}`), when the preset is built, as `env-paths` does for cosmiconfig. It
+  must also not be empty, `.` or `..`, and is at most 255 bytes (DL-99). `WithEnvs` names are checked at `New` in the
+  same way; the contained-path check on each built filename runs when the filenames are built.
 
 ## Choosing scopes
 
@@ -179,7 +181,7 @@ Modifiers apply **in order**, left to right, and across chained `Extend` calls. 
 - **Selecting, not reordering.** Both modifiers choose which of the preset's scopes are on. Their precedence stays as
   the preset defines it, whatever order they're listed in. A different order is a preset definition, not a scope choice.
 - **Unknown scopes are an error.** Naming a scope the preset doesn't define fails when the option is applied, for either
-  modifier.
+  modifier. So does listing a scope twice in `WithScopes` (DL-100).
 - **Removing an unselected scope is a no-op.** `WithoutScopes` on a scope that is defined but already not selected does
   nothing, so chained extensions stay safe to compose.
 - **Each scope is independent.** `override` lives in the user dir, but it is enabled only if it is listed. So
@@ -233,10 +235,16 @@ mise.Preset.Extend(
   implement `IncludeResolver`.
 - **Defaults:** `WithDefaults(v)` is a ready-made defaults scope, built from a Go value and placed below every other
   scope ([api.md](api.md#defaults)).
-- **Placement:** set with `Before(scope)` or `After(scope)`. Precedence follows the preset's order with the custom
-  scopes slotted in.
+- **Placement** (DL-100): set with `Before(scope)` or `After(scope)`. Precedence follows the preset's order with the
+  custom scopes slotted in.
+  - **The anchor must already be defined** when the option runs, because options apply in order.
+  - **Insertion:** `After(x)` inserts the scope directly above `x`, and `Before(x)` directly below it. So a scope placed
+    `After(x)` later sits between `x` and any scope placed there earlier.
+  - **Neither:** the scope goes above every scope defined so far.
+  - **Both** is an `*OptionError`.
 - **Names** must be unique. A clash with any scope, built-in or custom, is an error.
-- **Selection:** a custom scope is used only if `WithScopes(...)` lists it, as with the built-in scopes.
+- **Selection:** a custom scope is used only if `WithScopes(...)` lists it, as with the built-in scopes. Defining a
+  scope doesn't select it.
 - **Env-var bindings:** none are created automatically. An app adds them explicitly, for example
   `WithEnvBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
 - **Trust:** each scope kind has a default trust level, and `Trust(...)` overrides it. File-based kinds default to
@@ -632,6 +640,11 @@ defaults.
 - **Empty list:** `formats = []` is an error, because it would disable every format.
 - **Same rules as the variable:** values are validated just like the environment variable (see below). Listed formats
   are the only ones enabled, and an unknown format is an error.
+- **The app's option** (DL-101): `WithFormats` takes the variable's syntax too: an extension stands for its format, and
+  leading dots and surrounding spaces are allowed. A format listed twice is an `*OptionError`, and every listed format
+  needs a registered decoder, checked at `New` after every option has run, so their order doesn't matter.
+- **Decoders:** `WithDecoder` for a format that already has one replaces it, so an app can swap a layout's decoder. Two
+  formats claiming the same extension are an `*OptionError`.
 - **Locking the order:** an app author who wants to fix the order can turn off both overrides, with
   `WithoutEnvBinding("CONFIG_FORMATS")` and `WithoutBootstrapKey("formats")`.
 
@@ -1116,9 +1129,19 @@ with every character outside `[A-Z0-9]` replaced by `_`.
   [explicit config files](#explicit-config-files): a missing file is a `*NotFoundError` (404), and no `.local` or
   `.{env}` variants are added.
 - **`XDG_CONFIG_HOME`** is read as the base of the default user dir. It isn't a binding of ours.
-- **Renaming:** any binding can be renamed. For example, `WithEnvBinding("ENV", "MYAPP_CONFIG_ENV")` avoids a clash with
-  an app that already uses `MYAPP_ENV` for something else.
-- **Turning off:** any binding can be turned off, for example `WithoutEnvBinding("ENV")`.
+- **Keys** (DL-98) are of type `Binding`, a string type whose constants hold the suffix: `BindEnv` is `"ENV"` and
+  `BindConfigFormats` is `"CONFIG_FORMATS"`. Untyped constants convert, so `WithoutEnvBinding("ENV")` also compiles, and
+  a custom scope's key is any other suffix, such as `"MOUNTED_DIR"`.
+- **Declaring and renaming:** a layout declares the bindings it supports. `WithEnvBinding(key, name)` declares a binding
+  or renames it, and an empty name means the default `{NAME}_<suffix>`. For example,
+  `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` avoids a clash with an app that already uses `MYAPP_ENV` for something
+  else.
+- **Turning off:** any binding can be turned off, for example `WithoutEnvBinding(BindEnv)`. Turning off a built-in
+  binding that isn't declared does nothing; an unknown key is an `*OptionError`, which catches typos.
+- **Checks:** a variable name must match `[A-Za-z_][A-Za-z0-9_]*`, and two bindings can't share one variable. Either
+  mistake is an `*OptionError`.
+- **`CosmiconfigLayout`** declares only `{NAME}_CONFIG_FILE` and `{NAME}_CONFIG_FORMATS`, because cosmiconfig itself has
+  no env vars.
 - **`Describe()`** lists each binding, its variable name, and whether it is set.
 
 ## Explicit config files
@@ -1137,6 +1160,7 @@ or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
   that file.
 - **No variants:** the files are loaded as given. `.local` and `.{env}` siblings aren't added.
 - **Order:** with several files, they are applied in the order given, and the later file wins.
+- **Empty entries are dropped,** so `WithConfigFiles("")`, from an empty flag, means *not set* (DL-99).
 - **Format** comes from each file's extension. Explicit files accept **any registered decoder**, whatever the format
   order, which only affects searching. So `--config x.toml` loads even if `{NAME}_CONFIG_FORMATS` leaves TOML out. A
   format with no registered decoder is an `*UnsupportedFormatError` (415). Nothing has to be registered just in case.
@@ -1202,6 +1226,10 @@ mise.Preset.Extend(
 
 **`Values(tree)`** takes a ready-made tree, typically built from the app's parsed flags. It may also be a function that
 returns a tree, so a reload can re-read it.
+
+- **Copied when called** (DL-103), so changing the tree afterwards has no effect.
+- **Canonical values only:** a value outside the [canonical types](api.md#tree-and-values), such as an `int` from flag
+  parsing, is an `*OptionError` at `New` naming the key.
 
 **Rules for both kinds:**
 
@@ -1447,6 +1475,17 @@ There are no open questions.
 | 91 | Shape of `Origin`                            | `Layer`, `Kind`, `Elements` and `History`, with kinds including `OriginMerged` and `OriginUnset`; history restarts when an enclosing table is replaced ([api.md](api.md#result-report-and-origin)). |
 | 92 | `_unset` edge cases                          | Malformed values and `_unset` inside arrays are `*ParseError`s; a table holding only `_unset` doesn't set its key; a no-op unset leaves no trace (see [Unsetting keys](#unsetting-keys)). |
 | 93 | Several files in one slot                    | `FormatConflict` constants `ConflictMerge`, `ConflictFirst`, `ConflictFail` (not `ConflictError`, which is the error type's name); `ConflictFail` fires on a second file, even of the same format; `*ConflictError` lists the files; skipped files warn with `WarnFormatConflict`. |
+| 94 | What M3 covers                               | The option machinery, plus only the options whose behaviour can work now. Each later milestone settles its own option signatures at its test review and adds them to the layouts. Until M4a the layouts have no scopes. |
+| 95 | JSON in the core layouts                     | The JSON parser moves to `internal/json`, which doesn't import the core. The layouts wrap it in a private decoder, and `format/json` wraps the same parser, so its API and behaviour are unchanged. |
+| 96 | Testing options                              | In-package tests read the loader's private config where nothing public shows an effect yet; errors and layouts are tested from outside; misplaced option kinds are checked by building programs under `testdata/compile`. |
+| 97 | Creating and naming presets                  | `NewPreset(name, opts...)`; `Extend` keeps the name; `ExtendAs(name, opts...)` names an extension and records its base; a zero `Preset` is no preset ([api.md](api.md#preset-and-extend)). |
+| 98 | Binding keys                                 | `type Binding string` holding the suffix; `WithEnvBinding(key, name)` declares or renames, with an empty name meaning the default; unknown keys, bad names and shared variables are errors; `CosmiconfigLayout` declares `CONFIG_FILE` and `CONFIG_FORMATS` (see [Environment variables](#environment-variables)). |
+| 99 | Checking names                               | The app name: not empty, `.` or `..`, at most 255 bytes, none of the rejected characters. `WithEnvs` names get the same check at `New`. Empty entries are dropped in `WithEnvs` and `WithConfigFiles`. |
+| 100 | Placing custom scopes                       | Anchors must already be defined; `After(x)` and `Before(x)` insert next to `x`; neither means above every scope so far; both, a clash or a duplicate in `WithScopes` is an error (see [Custom scopes](#custom-scopes)). |
+| 101 | Formats and decoders as options             | `WithFormats` takes the env var's syntax; duplicates and formats with no decoder are errors, checked after every option; `WithDecoder` replaces a format's decoder; an extension claimed twice is an error. |
+| 102 | Merge options                               | Generic `WithMergeRule` and `WithMergeFunc`; bad paths, nil functions and ambiguous rules are errors; `WithArrayMerge` takes `Replace`, `Append` or `Prepend`; `WithUnsetKey("")` is an error, and it shares one setting with `WithoutUnset`. |
+| 103 | The `Values` kind                           | Copied when called; non-canonical values are an `*OptionError` naming the key; trust `TrustUser`. `ValuesFunc` and the other kinds come in M4a. |
+| 104 | Option errors                               | Each problem is an `*OptionError` whose `Op` is the option's name; all problems from one `New` are joined. |
 
 ---
 

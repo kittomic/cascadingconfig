@@ -58,7 +58,7 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M0  | Repository and tooling            | all (skeletons)                          | —          |
 | M1  | Foundations                       | core, `format/json`                      | M0         |
 | M2  | Merge engine                      | core                                     | M1         |
-| M3  | Options, presets and `New`        | core                                     | M1         |
+| M3  | Options, presets and `New`        | core, `format/json`                      | M1         |
 | M4  | Discovery                         | core                                     | M2, M3     |
 | M5  | Decoding, results and reports     | core, `internal/compat` (test-only)      | M4         |
 | M6  | Format modules                    | `format/toml`, `format/yaml`             | M1         |
@@ -189,25 +189,40 @@ unexported entry point, and check the results only through `Result.Tree` and `Or
 
 ## M3: Options, presets and `New`
 
-**Scope:** § [Building a loader](api.md#building-a-loader): sealed options, the option kinds, `Preset`, `Extend`, `New`,
-`NewWithPreset`, validation and env-var binding names.
+**Scope** (DL-94): § [Building a loader](api.md#building-a-loader): sealed options and the option kinds, `Preset`
+(`NewPreset`, `Extend`, `ExtendAs`), `New`, `NewWithPreset` and validation. Only the options whose behaviour can work
+now are included ([Settled signatures](api.md#settled-signatures)):
+
+- **Scopes:** selection, and custom scopes with the `Values` kind.
+- **Formats and decoders,** and the merge options, which feed M2's engine.
+- **`WithEnvs`, `WithConfigFiles`** and env-var bindings.
+- **The three layouts,** with the parts these options cover: JSON through `internal/json` (DL-95), the format order, the
+  conflict policy, the array default and the bindings. They get their scopes in M4a.
+
+Each later milestone settles its own options at its test review and adds them to the layouts.
 
 **Acceptance tests:**
 
 - **Applied in order:** `WithScopes` then `WithoutScopes` (DL-29). `Extend` never changes its receiver.
-  `NewWithPreset(n, p, a)` behaves exactly like `NewWithPreset(n, p.Extend(a))`.
-- **Validation:** every problem is reported at once, as `*OptionError`s:
-  - unknown scopes
-  - an unsafe app name
-  - invalid formats
-  - the three combinations a [bare loader](api.md#a-loader-without-a-preset) rejects
-- **Env-var bindings:** `{NAME}` is derived as documented (`my-app` → `MY_APP_…`), and bindings can be renamed and
-  turned off (DL-15, § [Environment variables](design.md#environment-variables)).
-- **Compile-time checks:** misplaced option kinds don't compile, for example a `WatchOption` passed to `New`.
-- **Empty calls:** `WithEnvs()` and `WithConfigFiles()` with no arguments leave the env vars in charge; empty
-  `WithScopes()` and `WithFormats()` are `*OptionError`s (DL-73).
-- **Layout options:** `MiseLayout`, `MiseHardenedLayout` and `CosmiconfigLayout` are built only from public options
-  (DL-71). This milestone settles their exact signatures.
+  `NewWithPreset(n, p, a)` behaves exactly like `NewWithPreset(n, p.Extend(a))`. `ExtendAs` names an extension and
+  records its base (DL-97).
+- **Validation:** every problem is reported at once, as `*OptionError`s whose `Op` names the option (DL-104):
+  - unknown scopes, duplicates in `WithScopes`, name clashes and bad placement (DL-100)
+  - an unsafe app name, and unsafe `WithEnvs` names (DL-99)
+  - invalid formats, duplicates, formats with no decoder, and an extension claimed twice (DL-101)
+  - invalid merge options and ambiguous rules (DL-102)
+  - non-canonical `Values` trees (DL-103)
+  - a loader with no scopes, the first [bare-loader](api.md#a-loader-without-a-preset) check. The other two arrive with
+    M4a and M7.
+- **Custom scopes:** placement with `Before` and `After`, the default trust of `Values`, and `Trust` overriding it.
+- **Env-var bindings** (DL-15, DL-98): `{NAME}` is derived as documented (`my-app` → `MY_APP_…`); bindings can be
+  renamed and turned off; unknown keys, bad variable names and shared variables are errors; each layout declares its
+  documented set.
+- **Compile-time checks** (DL-96): misplaced option kinds don't compile, for example a `WatchOption` passed to `New`.
+- **Empty calls:** `WithEnvs()` and `WithConfigFiles()` with no arguments, or only empty strings, leave the env vars in
+  charge; empty `WithScopes()` and `WithFormats()` are `*OptionError`s (DL-73).
+- **Layouts:** built only from exported identifiers, checked by parsing their source (DL-71); each one's formats,
+  conflict policy, array default and bindings; `MiseHardenedLayout` extends `MiseLayout`.
 
 ## M4: Discovery
 
@@ -226,6 +241,9 @@ The largest milestone, done in three parts.
 - **The directory walk** and ceilings (DL-5).
 - **Dedup** after resolving symlinks.
 - **Explicit config files** (DL-16).
+- **Options** (DL-94): this milestone settles the scope kinds, patterns, directories and walk options, and adds
+  `MiseLayout`'s scopes. A file-reading scope with no registered decoder becomes an `*OptionError`, the bare-loader
+  check moved from M3.
 
 **Acceptance tests:**
 
@@ -256,6 +274,8 @@ The largest milestone, done in three parts.
 - **Format precedence:** env var > bootstrap file > option > preset (DL-4).
 - **Bootstrap search,** allowed keys and scope limits (DL-7, DL-26).
 - **Scope trust levels.**
+- **Options** (DL-94): this milestone settles `WithBootstrap` and `WithoutBootstrapKey`, and adds the layouts' bootstrap
+  files.
 
 **Acceptance tests:**
 
@@ -282,6 +302,8 @@ The largest milestone, done in three parts.
   ([Deviations from cosmiconfig](design.md#deviations-from-cosmiconfig)).
 - **Extensionless `.{name}rc`** through `WithExtensionlessFormat`.
 - **The global dir** through an `env-paths`-compatible resolver.
+- **Options** (DL-94): this milestone settles `WithResolution`, the search-strategy options and
+  `WithExtensionlessFormat`, and adds `CosmiconfigLayout`'s scopes.
 
 **Acceptance tests:**
 
@@ -372,6 +394,9 @@ first release is decided at the start of this milestone.
 - **Trust:** `RequireTrust` and `TrustPaths` (DL-28).
 - **The permission policy** (DL-20).
 - **Layer and result transforms** (DL-36).
+- **Options** (DL-94): this milestone settles the include, policy, matcher and transform options, and adds the layouts'
+  include keys and `MiseHardenedLayout`'s policies. An include key with no `file` resolver becomes an `*OptionError`,
+  the bare-loader check moved from M3.
 
 **Acceptance tests:**
 
@@ -397,6 +422,8 @@ first release is decided at the start of this milestone.
 - **The `ociresolver` module.**
 - **Caching** (DL-19).
 - **Traversal protection** (DL-33).
+- **Options** (DL-94): this milestone settles the resolver and cache options, and adds `WithoutRemoteIncludes` to
+  `MiseHardenedLayout`.
 
 **Acceptance tests,** all attack tests first:
 
@@ -446,6 +473,7 @@ first release is decided at the start of this milestone.
 - **Callbacks:** only on changes, and one at a time.
 - **Stat polling,** and opt-in remote polling.
 - **The `watch/fsnotify` module.**
+- **Options** (DL-94): this milestone settles `WithNotifier` and the watch options.
 
 **Acceptance tests,** with `cctest.Notifier` and `cctest.Clock`, so no real timers:
 
