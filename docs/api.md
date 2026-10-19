@@ -508,9 +508,10 @@ const (
 	CodeLoopDetected         Code = 508
 )
 
-// Error is the base type that every specific error embeds. Its fields are exported, so other modules (resolvers,
-// decoders) can build cascadingconfig errors themselves.
-type Error struct {
+// BaseError is the base type that every specific error embeds. Its fields are exported, so other modules (resolvers,
+// decoders) can build cascadingconfig errors themselves. It isn't called Error: a struct can't have a field and a method
+// with the same name, so an embedded field named Error would hide the Error() method.
+type BaseError struct {
 	Op    string // "load", "decode", "include", "reload", …
 	Path  string // the file or reference involved, if any
 	Scope string // the scope involved, if any
@@ -520,16 +521,16 @@ type Error struct {
 
 // NewError builds a base error for situations with no specific type, such as cancellation (CodeCanceled) or a failed
 // app callback (CodeInternal).
-func NewError(code Code, op, path string, err error) *Error
+func NewError(code Code, op, path string, err error) *BaseError
 
-func (e *Error) Code() Code    // the code given to NewError
-func (e *Error) Unwrap() error // e.Err
+func (e *BaseError) Code() Code    // the code given to NewError
+func (e *BaseError) Unwrap() error // e.Err
 // Error returns "cascadingconfig: <op> <path>: <cause>", or "cascadingconfig: <op>: <cause>" without a path.
-func (e *Error) Error() string
+func (e *BaseError) Error() string
 
-// Specific errors embed Error (by value) and define their own Code, so each type's code is fixed.
+// Specific errors embed BaseError (by value) and define their own Code, so each type's code is fixed.
 type ParseError struct {
-	Error
+	BaseError
 	Format       string
 	Line, Column int // 1-based; 0 when the decoder doesn't know
 }
@@ -542,7 +543,7 @@ var ErrParse = errors.New("cascadingconfig: parse error")
 
 // Built from another module, for example:
 err := &cascadingconfig.FetchError{
-	Error:   cascadingconfig.Error{Op: "fetch", Path: ref, Err: cause},
+	BaseError: cascadingconfig.BaseError{Op: "fetch", Path: ref, Err: cause},
 	Timeout: true, // Code() is then CodeGatewayTimeout; otherwise CodeBadGateway
 }
 
@@ -577,10 +578,10 @@ func Errors(err error) []error
 **Other errors:**
 
 - **Cancellation:** a load stopped by its context returns an error for which `errors.Is(err, context.Canceled)` or
-  `errors.Is(err, context.DeadlineExceeded)` holds. It's a base `*Error`, with code 499 for a cancellation, following
+  `errors.Is(err, context.DeadlineExceeded)` holds. It's a `*BaseError`, with code 499 for a cancellation, following
   nginx's "client closed request", and 504 for a deadline.
 - **Errors from app callbacks** (trust stores, `ValuesFunc`, `MapEnv`, custom `Scope`s, matchers, merge-rule `Func`s)
-  are wrapped in a base `*Error`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error.
+  are wrapped in a `*BaseError`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error.
   Transform errors keep their own type, `*TransformError`.
 
 **A failed load still returns a result.** `loader.Load` returns a non-nil `*Result` alongside the error. Its report
@@ -811,7 +812,7 @@ type Document struct {
 // DecodeDocument runs a decoder with the rules every format shares: it strips a leading UTF-8 byte-order mark, rejects
 // input that isn't UTF-8, turns any decoder error into a *ParseError (with the position, if the error has one), and
 // checks that only canonical value types came out. A decoder that produces a non-canonical type is a bug in that
-// decoder, reported as a base *Error with CodeInternal. The loader decodes every file through it, and decoder modules
+// decoder, reported as a *BaseError with CodeInternal. The loader decodes every file through it, and decoder modules
 // test against it.
 func DecodeDocument(d Decoder, path string, data []byte) (Document, error)
 

@@ -1414,7 +1414,7 @@ There are no open questions.
 | 81 | How decoders report empty files and warnings | `Decode` returns a `Document` with `Tree`, `Empty` and `Warnings` ([api.md](api.md#extension-interfaces)). |
 | 82 | Rules every format shares                    | `DecodeDocument` applies them around any decoder: byte-order mark, UTF-8, `*ParseError` with position, canonical types. A non-canonical type is a decoder bug (500). |
 | 83 | Warnings                                     | A `Warning` type with a `WarningCode` (string), file path, key path and message. The full report format is settled in M5. |
-| 84 | Building errors in other modules             | Each specific error type defines its own fixed `Code()`; the base `Error` has exported fields; `NewError` builds base errors with a code ([api.md](api.md#errors)). |
+| 84 | Building errors in other modules             | Each specific error type defines its own fixed `Code()`; the base `BaseError` has exported fields (it can't be named `Error`, because a field and a method can't share a name); `NewError` builds base errors with a code ([api.md](api.md#errors)). |
 | 85 | Path parsing                                 | The empty string is the root; empty segments are errors; segments can be double-quoted as in TOML, and `String()` quotes where needed, so paths round-trip ([api.md](api.md#path)). |
 
 ---

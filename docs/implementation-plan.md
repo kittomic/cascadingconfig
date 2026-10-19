@@ -120,8 +120,8 @@ Not test-first: this is tooling.
 
 - **`Tree`** and the canonical value types (§ [Core types](api.md#tree-and-values)).
 - **`Path`, `PathSpec` and `ParsePath`.**
-- **The error model:** `Code`, `Coder`, the base `Error`, every error type with its sentinel, `CodeOf` and `Errors` (§
-  [Errors](api.md#errors)).
+- **The error model:** `Code`, `Coder`, the base `BaseError`, every error type with its sentinel, `CodeOf` and `Errors`
+  (§ [Errors](api.md#errors)).
 - **The `Decoder` and `PositionError` interfaces,** `Document`, `DecodeDocument`, `Warning`, and the JSON decoder in
   `format/json`.
 
