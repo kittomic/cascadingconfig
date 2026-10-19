@@ -1,8 +1,8 @@
 # Project layout
 
 This document lays out the repository, its Go modules and the tooling around them. It also measures how many
-dependencies each setup pulls in. It puts into practice the [package layout](api.md#package-layout) proposed in api.md:
-a third-party dependency gets its own module, and an optional standard-library-only piece gets its own package.
+dependencies each setup pulls in. It puts into practice the [package layout](api.md#package-layout) decided in api.md: a
+third-party dependency gets its own module, and an optional standard-library-only piece gets its own package.
 
 **Status: decided.**
 
@@ -11,10 +11,11 @@ a third-party dependency gets its own module, and an optional standard-library-o
 ```text
 cascadingconfig/                    module github.com/kittomic/cascadingconfig (core)
 ├── go.mod                          one requirement: github.com/go-viper/mapstructure/v2
-├── go.work                         every module below, for local development
-├── cascadingconfig.go …            package cascadingconfig: New, Load[T], Watch[T], Result, Report,
+├── go.work                         every module below, released or not, for local development
+├── cascadingconfig.go …            package cascadingconfig: New, NewWithPreset, Load[T], Watch[T], Result, Report,
 │                                   errors, options, layouts, merging, decoding, file resolver,
 │                                   filesystem hook, stat polling, reload logic
+├── cctest/                         package cctest (core module): in-memory FS, fake notifier, fake clock, golden helpers
 ├── format/
 │   ├── json/                       package json (core module): JSON decoder, encoding/json
 │   ├── toml/
@@ -30,11 +31,18 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
 │       └── go.mod                  module …/watch/fsnotify: requires github.com/fsnotify/fsnotify
 ├── presets/
 │   ├── go.mod                      module …/presets: requires all of the above
-│   ├── mise/                       package mise:        mise.Preset
-│   ├── misehardened/                 package misehardened:  misehardened.Preset
-│   └── cosmiconfig/                package cosmiconfig: cosmiconfig.Preset
+│   ├── mise/                       package mise:         mise.Preset
+│   ├── misehardened/               package misehardened: misehardened.Preset
+│   └── cosmiconfig/                package cosmiconfig:  cosmiconfig.Preset
 ├── internal/                       core-only helpers (tree, merge, path safety, …)
+│   └── compat/
+│       └── go.mod                  module …/internal/compat (test-only, never released): koanf parity tests
+├── examples/
+│   └── go.mod                      module …/examples (never released)
+├── scripts/                        each-module.sh, check-go-versions.sh, check-gowork-off.sh, check-deps.sh
 ├── docs/
+├── LICENSE                         Apache-2.0; every module directory above also has its own copy
+├── README.md, SECURITY.md
 ├── .config/, .golangci.yml, lefthook.yml
 └── .gitignore
 ```
@@ -63,8 +71,8 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
   `presets` last.
 - **`go.work` is committed,** so working in the repo builds every module against its local siblings. It has no effect on
   consumers.
-- **Release check:** CI also builds and tests each module with `GOWORK=off`. That catches a module that silently depends
-  on unreleased core changes.
+- **Release check:** each module is also built and tested with `GOWORK=off`, from lefthook's pre-push for now and from
+  CI later. That catches a module that silently depends on unreleased core changes.
 
 ## Tooling changes
 
@@ -90,8 +98,10 @@ done
 In workspace mode, `go test ./...` from the root may already match packages in every workspace module. That should be
 verified when the modules are created, but the loop is used regardless, so that every tool behaves the same way.
 
-CI runs the same loops, plus the `GOWORK=off` release check. It runs them on two Go versions: the minimum from the `go`
-directive (Go 1.26) and the latest, so that the stated minimum is actually tested.
+CI is deferred ([implementation-plan.md](implementation-plan.md#decisions)). Until it exists, lefthook runs every check,
+including the `GOWORK=off` release check, as scripts in `scripts/` that CI will later reuse. The tests run on two Go
+versions: the minimum from the `go` directive (Go 1.26, through `mise exec go@1.26 --`) and the latest, so that the
+stated minimum is actually tested.
 
 ## Dependency analysis
 
@@ -150,6 +160,6 @@ stub blank-imports its real library. A small consumer app was then created for e
 | # | Question                    | Decision                                                                                                   |
 | - | --------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | 1 | The `go` directive          | `go 1.26.0` in every module and in `go.work`: the oldest supported Go release, and the minimum consumers need. `filepath.IsLocal` (Go 1.20) and `os.Root` (Go 1.24) are both older. The dev toolchain stays at the latest Go, through mise. |
-| 2 | Committing `go.work`        | Committed, with the `GOWORK=off` CI release check.                                                        |
+| 2 | Committing `go.work`        | Committed, with the `GOWORK=off` release check (lefthook now, CI later).                                                        |
 | 3 | JSON in every layout        | Yes. `format/json` uses only `encoding/json`, so every core layout registers it.                           |
 | 4 | One `presets` module        | One module for now. It may be reconsidered later, for example if SBOM noise from `go list -m all` becomes a problem. |

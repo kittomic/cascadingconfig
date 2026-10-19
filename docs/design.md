@@ -44,13 +44,13 @@ independent of scopes:
 | `local`     | `{name}.local.toml`       |
 | `env-local` | `{name}.{env}.local.toml` |
 
-The two presets, in these terms:
+The three presets, in these terms:
 
 | Preset              | Scopes (lowest → highest)                | Variants          | Resolution                                            |
 | ------------------- | ---------------------------------------- | ----------------- | ----------------------------------------------------- |
 | `mise.Preset`        | system, user, project, override          | all four          | merge all                                             |
 | `misehardened.Preset`  | as `mise.Preset`                          | as `mise.Preset`   | as `mise.Preset`; remote includes disabled             |
-| `cosmiconfig.Preset` | user, project (searched project-first)   | `shared` only     | first match; the walk is off unless a stop dir is set |
+| `cosmiconfig.Preset` | project (the start dir only), plus user with the `Global` search strategy | `shared` only | first match; the walk is set by the [search strategy](#search-strategies) (default: none) |
 
 ## Environments
 
@@ -65,8 +65,15 @@ Environments select the `env` and `env-local` [variants](#scope-terminology): fi
 
 **Platform environments** are always active (see [Deviations from mise](#deviations-from-mise)):
 
-- **Names:** `unix` (not on Windows), then `{os}` (`linux`, `macos`, `windows`), then `{os}-{arch}` (such as `linux-x64`
-  or `macos-arm64`; `x86_64` becomes `x64` and `aarch64` becomes `arm64`).
+- **Names:** `unix` (where it applies), then `{os}`, then `{os}-{arch}`, such as `linux-x64` or `macos-arm64`. The names
+  come from Go's `GOOS` and `GOARCH`:
+
+  | Name part | Rule                                                                                                |
+  | --------- | --------------------------------------------------------------------------------------------------- |
+  | `unix`    | Active on every `GOOS` except `windows`, `plan9`, `js` and `wasip1`. So FreeBSD, Android and iOS count as `unix`. |
+  | `{os}`    | `darwin` becomes `macos`, as mise names it. Every other `GOOS` keeps its Go name: `linux`, `windows`, `freebsd`, `android`, … |
+  | `{arch}`  | `amd64` becomes `x64`, as mise names it. Every other `GOARCH` keeps its Go name: `arm64`, `386`, `riscv64`, `ppc64le`, … |
+
 - **Rank:** they rank **below** every selected environment.
 - **Selecting one explicitly** (for example `MYAPP_ENV=linux`) takes it out of the platform list, so it ranks as a
   selected environment, as in mise.
@@ -114,10 +121,9 @@ positions.
 - **Unmatched files are silently not loaded,** as in mise. There's no warning, because with dotted names allowed, any
   such file might belong to an environment that simply isn't selected.
 - **Ambiguous filenames are resolved by the selection.** `myapp.dev.local.toml` is the local file of `dev` when `dev` is
-  selected, and the shared file of `dev.local` when `dev.local` is selected. A name such as `local` can make one file
-  match two patterns. For example, `myapp.local.toml` is both the local file and the shared file of env `local`. The
-  file is loaded **once**, at its higher-precedence position, by the same dedup rule as
-  [3.1](config-locations.md#31-tiers).
+  selected, and the env file of `dev.local` when `dev.local` is selected. A name such as `local` can make one file match
+  two patterns. For example, `myapp.local.toml` is both the local file and the env file of env `local`. The file is
+  loaded **once**, at its higher-precedence position, by the same dedup rule as [3.1](config-locations.md#31-tiers).
 - **Names must be safe in a path.** This is the one deviation from mise here, and it is a safety check, not a naming
   rule (see [Safe environment names](#safe-environment-names)).
 
@@ -137,8 +143,8 @@ the value on commas.
   characters can miss cases, so this second check runs as well.
 - **Literal insertion:** names are inserted literally and are never read as glob syntax. `[` and `]` are escaped, as
   mise does with `glob::Pattern::escape`.
-- **Errors:** an invalid name is an error at start-up from any source (`WithEnvs`, `{NAME}_ENV`, a bootstrap file). The
-  error names the source and the offending character.
+- **Errors:** an invalid name is an `*OptionError` from any source. From `WithEnvs` it fails at `New`; from `{NAME}_ENV`
+  or a bootstrap file it fails at `Load`, when those are read. The error names the source and the offending character.
 - **Dotted names stay valid,** so mise-style setups such as `MYAPP_ENV=dev.linux` port unchanged.
 - **The app name gets the same check** (`{name}`), when the preset is built, as `env-paths` does for cosmiconfig.
 
@@ -168,7 +174,7 @@ Modifiers apply **in order**, left to right, and across chained `Extend` calls. 
 | ------------------- | ---------------------------------- |
 | `mise.Preset`        | `system`, `user`, `project`, `override` |
 | `misehardened.Preset`  | `system`, `user`, `project`, `override` |
-| `cosmiconfig.Preset` | `user`, `project`                  |
+| `cosmiconfig.Preset` | `project`, plus `user` with `WithSearchStrategy(Global)`, as in cosmiconfig |
 
 - **Selecting, not reordering.** Both modifiers choose which of the preset's scopes are on. Their precedence stays as
   the preset defines it, whatever order they're listed in. A different order is a preset definition, not a scope choice.
@@ -222,16 +228,19 @@ mise.Preset.Extend(
 ```
 
 - **Kinds:** a custom scope is built from one of the existing kinds: `FixedDir`, `Walk` (with a stop marker, such as a
-  workspace root), `ExplicitFile`, `Embedded` (a key inside a manifest), or `EmbeddedFS` / any `fs.FS`. Fully custom
-  discovery implements the `Scope` interface, just as resolvers implement `IncludeResolver`.
+  workspace root), `ExplicitFile`, `Embedded` (a key inside a manifest file, such as `package.json#{name}`; no preset
+  uses it), or `EmbeddedFS` / any `fs.FS`. Fully custom discovery implements the `Scope` interface, just as resolvers
+  implement `IncludeResolver`.
+- **Defaults:** `WithDefaults(v)` is a ready-made defaults scope, built from a Go value and placed below every other
+  scope ([api.md](api.md#defaults)).
 - **Placement:** set with `Before(scope)` or `After(scope)`. Precedence follows the preset's order with the custom
   scopes slotted in.
 - **Names** must be unique. A clash with any scope, built-in or custom, is an error.
 - **Selection:** a custom scope is used only if `WithScopes(...)` lists it, as with the built-in scopes.
 - **Env-var bindings:** none are created automatically. An app adds them explicitly, for example
   `WithEnvBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
-- **Trust:** a custom scope declares its trust level with `Trust(...)`. Without it, it gets project trust, the lowest
-  level (see [Scope trust](#scope-trust)).
+- **Trust:** each scope kind has a default trust level, and `Trust(...)` overrides it. File-based kinds default to
+  project trust, the lowest level. `EnvVars` and `Values` default to user trust (see [Scope trust](#scope-trust)).
 
 ## Scope trust
 
@@ -246,6 +255,15 @@ mise.Preset.Extend(
 
 Trust is used by the bootstrap scope limits ([Bootstrap file](#bootstrap-file)) and by `Describe()`. Per-scope policies
 are set by scope, not by trust level.
+
+**A file reached by two routes** is loaded once. When the current directory is under `~`, the user config
+`~/.config/{name}/config.toml` is also a project file of `~`:
+
+- **Precedence** comes from the higher-precedence route, the project position, as mise does
+  ([3.1](config-locations.md#31-tiers)).
+- **Trust, policy and `Layer.Scope`** come from the **more trusted** route, the user scope. Otherwise the user's own
+  global config would be treated as a project file, needing project approval and limited by project bootstrap rules.
+- **`Describe()`** records both routes.
 
 ## Warnings and logging
 
@@ -274,7 +292,7 @@ Each warning is also recorded on the layer it concerns, so `Describe()` and test
 
 mise already uses this rule for its `.miserc.toml` walk ([3.7](config-locations.md#37-bootstrap-file-miserctoml)). Using
 it for the main search is a deliberate deviation, because real mise walks the main search to `/`. The option
-`WalkStop(Root)` restores mise's exact behaviour.
+`WithWalkStop(Root)` restores mise's exact behaviour.
 
 The `user` scope (`~/.config/{name}`) is a separate scope and is not affected by the walk limit.
 
@@ -288,14 +306,22 @@ A user-defined preset can name any bootstrap files, or have none.
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | `mise.Preset`        | Walk from the start dir, with the same stop rule as above: `.{name}rc.local.{ext}`, `.{name}rc.{ext}`, `.config/{name}rc.{ext}` (not read in `~` or `/`). Then `{user}/{name}rc.local.{ext}` and `{user}/{name}rc.{ext}`. Then `{system}/{name}rc.{ext}`. | `.miserc.toml`'s keys except mise's migration flags (`env`, `ceiling_paths`, `ignored_config_paths`, `override_config_filenames`), plus `formats` |
 | `misehardened.Preset`  | As `mise.Preset`.                                                                                                                                                                              | As `mise.Preset`, except that **project**-scope bootstrap files may only set `env` and `formats`. |
-| `cosmiconfig.Preset` | The cwd only: the `cosmiconfig` key of `package.json` or `package.yaml`, then of `.config/config.{ext}`.                                                                                       | cosmiconfig's keys (`searchPlaces`, `mergeSearchPlaces`), plus `formats` |
+| `cosmiconfig.Preset` | The cwd only: the `cosmiconfig` key of `.config/config.{ext}`. cosmiconfig also reads `package.json` and `package.yaml`; we don't (see [Deviations from cosmiconfig](#deviations-from-cosmiconfig)). | cosmiconfig's keys (`searchPlaces`, `mergeSearchPlaces`), plus `formats` |
 
 - **Override files:** each key set in a higher bootstrap file replaces the same key from lower files. Lists are not
   merged, as in mise.
+- **Relative paths** in a bootstrap file (`ceiling_paths`, `ignored_config_paths`) are resolved against that file's
+  directory, as mise does, and a leading `~` is expanded.
 - **App config inside the meta file:** in `cosmiconfig.Preset`, as in cosmiconfig, the meta file's `{name}` key is also
   checked as app config (see [2.5](config-locations.md#25-meta-config)).
 - **Formats:** bootstrap files use the format order from the environment variable, the app's setting or the preset,
   never from a bootstrap file (see [File format precedence](#file-format-precedence)).
+- **Unknown keys** are a warning, so a newer bootstrap file doesn't break an older app.
+- **Keys outside the limits** (the scope limits below, or `misehardened.Preset`'s project limits) are dropped, with a
+  warning naming the file and the key.
+- **Wrong types**, such as `env = "dev"` instead of a list, are an `*OptionError` at `Load`.
+- **No includes and no `_unset`.** Bootstrap files are read before the main search, so they stay simple. Either key is
+  an unknown key, with a warning.
 
 **Scope limits.** A bootstrap file belongs to the scope it was found in. Any key that can **hide or skip** files only
 takes effect in that scope and in less-trusted scopes (see [Scope trust](#scope-trust)). Those keys are
@@ -318,7 +344,9 @@ above).
 
 - **Rule:** objects deep-merge. Any other value, **including arrays**, is replaced by the higher layer.
 - **Applies everywhere:** the same rule is used across scopes, variants, same-slot formats and includes.
-- **Opt-in alternative:** array concatenation, as in cosmiconfig's `$import`, is an opt-in merge strategy.
+- **Changing the array default:** `WithArrayMerge(Append)` makes arrays concatenate wherever no per-key rule applies.
+  `WithArrayMerge(Replace)` is the default. `cosmiconfig.Preset` sets `Append`, because cosmiconfig concatenates arrays
+  in `$import` merges (`mergeImportArrays: true`), and those are the only merges it does.
 - **mise's section rules:** some mise sections replace a whole entry rather than deep-merging it. For example, a
   `[tools]` entry replaces the parent's entry including its options. Rules like this depend on the app's schema, so they
   are expressed with [per-key merge rules](#per-key-merge-rules), not in the default rule.
@@ -359,7 +387,9 @@ The app can attach a merge strategy to a key path. The rule is used whenever two
 - **Set by the app in code**, for example `WithMergeRule("tools.*", Replace)`. Merge rules are part of the app's schema
   contract.
 - **Not set by presets, bootstrap files or env vars.** Presets describe *discovery*, not schema, so `mise.Preset` ships
-  with no merge rules. An app that wants mise's section semantics declares them itself.
+  with no merge rules. An app that wants mise's section semantics declares them itself. The one preset setting in this
+  area is `cosmiconfig.Preset`'s array default (`WithArrayMerge(Append)`), which is a default strategy, not a per-key
+  rule.
 - **Used for every merge:** across scopes, variants, same-slot formats and includes. One rule set means one result,
   whichever route a file was found by.
 
@@ -482,6 +512,32 @@ is **not** the same as `_unset`:
 | `{NAME}_CONFIG_FILE` names explicit project files (see [Explicit config files](#explicit-config-files)). | In mise, `MISE_CONFIG_FILE` is a legacy alias for the global config file. |
 | Legacy aliases (`MISE_CONFIG_FILE`, `MISE_SYSTEM_DIR`) and write-only settings (`MISE_DEFAULT_CONFIG_FILENAME`) aren't carried over. | They are mise history, or about writing, which is a [non-goal](#non-goals). |
 
+## Deviations from cosmiconfig
+
+`cosmiconfig.Preset` mirrors cosmiconfig's load paths, not its Node.js integration. The aim is a quasi-standard set of
+load paths, so concepts specific to Node.js are left out. Users can add them back if they want them.
+
+| Change                                                                 | Why                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| No JS or TS config files (`.{name}rc.js`, `{name}.config.ts`, …).       | They need a JavaScript runtime. `{name}.config.*` drops out entirely, because cosmiconfig only lists it with JS/TS extensions. |
+| No `package.json` or `package.yaml`: no `{name}` property lookup (`packageProp`), and no `cosmiconfig` key in them for the meta config. | Node.js manifests. Users can add a manifest source with the `Embedded` scope kind, for example `package.json#{name}`. |
+| The `Project` search strategy has no default root marker.              | cosmiconfig stops at the first directory containing `package.json`/`package.yaml`. Here the app names its own marker with `WithRootMarker`, for example `.git` or `go.mod`. |
+| `_unset` removes inherited keys ([Unsetting keys](#unsetting-keys)).    | cosmiconfig would pass `_unset` through as data.                                     |
+
+### Search strategies
+
+These options mirror cosmiconfig's `searchStrategy` and `stopDir`:
+
+| Strategy                           | Directories searched                                                                                  | Scopes            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------- |
+| `WithSearchStrategy(None)` (default) | The start dir only.                                                                                 | `project`         |
+| `WithSearchStrategy(Project)`      | The start dir, then each parent, up to and **including** the first directory containing a root marker set with `WithRootMarker(names...)`, or up to `/`. | `project` |
+| `WithSearchStrategy(Global)`       | The start dir, then each parent, up to and **including** the stop dir (`WithStopDir(dir)`, default `~`), or up to `/` if the stop dir isn't an ancestor. Then the user dir. | `project`, `user` |
+
+- **Invalid combinations are `*OptionError`s,** as in cosmiconfig: `WithStopDir` with a strategy other than `Global`,
+  and `Project` with no root marker.
+- **`WithRootMarker` is generic.** Any walk can use it, in any preset, for example to stop at a repository root.
+
 ## File format precedence
 
 A preset's patterns use `{ext}` for the file extension, so one pattern can match several files in one directory:
@@ -517,12 +573,17 @@ The **slot** is one pattern in one directory, with everything except `{ext}` fil
 
 | Preset              | Format precedence                         | Why                                                                  |
 | ------------------- | ----------------------------------------- | -------------------------------------------------------------------- |
-| `mise.Preset` (default) | `toml`, `yaml`, `yml`, `json`          | TOML wins. mise is TOML-only, so the other formats are additions.    |
-| `cosmiconfig.Preset` | *(none)*, `json`, `yaml`, `yml`           | cosmiconfig's own search order. *(none)* is the extensionless `.{name}rc`, parsed as YAML. TOML is not in this preset. The preset uses `FormatConflict: first`, because cosmiconfig stops at the first match. |
+| `mise.Preset` (default) | `toml`, `yaml`, `json`                  | TOML wins. mise is TOML-only, so the other formats are additions.    |
+| `cosmiconfig.Preset` | *(none)*, `json`, `yaml`                  | cosmiconfig's own search order. *(none)* is the extensionless `.{name}rc`, decoded as set by `WithExtensionlessFormat`: YAML if a YAML decoder is registered, otherwise JSON. TOML is not in this preset. The preset uses `FormatConflict: first`, because cosmiconfig stops at the first match. |
 
-- `yaml` and `yml` decode the same way, but they are separate extensions. A slot containing both loads both, and `.yaml`
-  is applied after `.yml`.
-- A format can only appear in the list if a decoder is registered for it.
+- **The order lists formats, not extensions.** One format can have several extensions: YAML is both `.yaml` and `.yml`.
+- **Within a format, extensions have a fixed rank.** For YAML, `.yaml` ranks above `.yml`, because `yaml` sorts first
+  alphabetically. A slot containing both loads both under the default `merge` policy, with `.yaml` applied last so it
+  wins where they overlap. Under `first`, only `.yaml` loads.
+- **Extensionless files** (cosmiconfig's `.{name}rc`) are decoded by the format that `WithExtensionlessFormat(format)`
+  names. With no such setting, extensionless candidates aren't searched.
+- An order set by the app, an env var or a bootstrap file may only name formats with a registered decoder. A layout's
+  *default* order may name others, which are simply not searched ([api.md](api.md#layouts-vs-presets)).
 - Extensions with no decoder never match, so `.js` and `.ts` are simply never found.
 
 **Overriding the order.** The format precedence is part of the loader's initial configuration. It can be set in four
@@ -533,7 +594,7 @@ places. Highest precedence first:
 | 1 | Environment variable                     | `MYAPP_CONFIG_FORMATS=yaml,toml` |
 | 2 | Bootstrap file (see [D14](config-locations.md#4-divergences)) | `formats = ["yaml", "toml"]` |
 | 3 | The app's programmatic option            | `WithFormats("toml", "json")` |
-| 4 | Preset default                           | `toml, yaml, yml, json`      |
+| 4 | Preset default                           | `toml, yaml, json`           |
 
 This mirrors mise. There, `MISE_ENV` beats `env = [...]` in `.miserc.toml`, and `.miserc.toml` beats mise's built-in
 defaults.
@@ -547,7 +608,7 @@ defaults.
   others. Lists aren't merged, just as mise's `env` key replaces the inherited list.
 - **Empty list:** `formats = []` is an error, because it would disable every format.
 - **Same rules as the variable:** values are validated just like the environment variable (see below). Listed formats
-  are the only ones enabled, and an unknown extension is an error.
+  are the only ones enabled, and an unknown format is an error.
 - **Locking the order:** an app author who wants to fix the order can turn off both overrides, with
   `WithoutEnvBinding("CONFIG_FORMATS")` and `WithoutBootstrapKey("formats")`.
 
@@ -559,17 +620,49 @@ defaults.
 
 - **Name:** `{NAME}` is the app name in upper case, with any character outside `[A-Z0-9]` replaced by `_`. For example,
   `my-app` gives `MY_APP_CONFIG_FORMATS`.
-- **Value:** a comma-separated list of extensions, highest precedence first. Leading dots and surrounding spaces are
-  allowed: `.yaml, toml`.
+- **Value:** a comma-separated list of formats, highest precedence first: `toml`, `yaml`, `json`, or any other
+  registered format. An extension is accepted as an alias for its format, so `yml` means `yaml`. Leading dots and
+  surrounding spaces are allowed: `.yaml, toml`.
 - **Formats not in the list are disabled.** `MYAPP_CONFIG_FORMATS=toml` means only TOML files are found. This matches
   `MISE_OVERRIDE_CONFIG_FILENAMES`, which also *replaces* its list rather than adding to it.
 - **An empty value counts as unset**, as in mise.
-- **Errors:** an unknown extension, or one with no registered decoder, is an error at loader start-up, not a silent
-  skip.
+- **Errors:** an unknown format, or one with no registered decoder, is an `*OptionError` at `Load`, when the env var is
+  read, not a silent skip.
 - **Opting out:** the app author can turn the binding off (`WithoutEnvBinding("CONFIG_FORMATS")`), as with every other
   env binding (see D17).
-- **Effect on the bootstrap file:** this is the only override that also changes how the bootstrap files themselves are
-  found.
+- **Effect on the bootstrap file:** this is the only source outside the app's code that also changes how the bootstrap
+  files themselves are found. The app's own option affects it too.
+
+## Format dialects
+
+What each built-in decoder accepts, and the rules every decoder follows. These were checked against the pinned libraries
+(go-toml v2.4.3, goccy/go-yaml v1.19.2, `encoding/json`).
+
+| Rule                  | JSON                                              | TOML                                     | YAML                                      |
+| --------------------- | ------------------------------------------------- | ---------------------------------------- | ----------------------------------------- |
+| Dialect               | Strict RFC 8259: no comments, no trailing commas, as cosmiconfig's `JSON.parse` | Whatever the pinned go-toml accepts. v2.4.3 already accepts TOML 1.1 syntax (multi-line inline tables, times without seconds, `\e`). | YAML 1.2 core schema: `yes`, `no`, `on`, `off` and `y` stay **strings**. |
+| Duplicate keys        | The **last** one wins, as in `JSON.parse` and `encoding/json`, and a **warning** is logged | `*ParseError`, as the TOML spec requires | `*ParseError`, as the YAML spec requires   |
+| Non-string map keys   | n/a                                               | n/a                                      | Turned into strings (`1:` becomes `"1"`), as goccy does |
+| Several documents     | n/a                                               | n/a                                      | `*ParseError`. goccy would silently keep only the first. |
+| Aliases               | n/a                                               | n/a                                      | Allowed, with a cap on expansion, so a hostile file can't expand without bound |
+| Unknown tags          | n/a                                               | n/a                                      | `*ParseError`                             |
+
+**Rules for every format:**
+
+- **Encoding:** input must be UTF-8. A leading UTF-8 byte-order mark is stripped first. Without that, JSON and TOML
+  reject the file, and YAML **silently** makes the mark part of the first key (`a` becomes `"\ufeffa"`). Other
+  encodings, such as UTF-16, are a `*ParseError`.
+- **The top level must be a map** (a table or object). A top-level array or scalar is a `*ParseError`, because only maps
+  can be merged.
+- **Empty files:** a file is *empty* if it holds only whitespace or comments, or decodes to null (YAML `~`, JSON
+  `null`). An empty file contributes nothing and is reported with status `Empty`. In a first-match layout, it's skipped
+  and the search continues, as in cosmiconfig. `{}` is **not** empty: it's an explicit empty config, and in a
+  first-match layout it stops the search.
+- **Integers** are `int64` only when the literal has no fraction or exponent and fits in range. JSON `1.0` and `1e3` are
+  floats. An integer outside the `int64` range is a `*ParseError`.
+- **Dates and times are strings** in the tree, in RFC 3339 form. That includes TOML's offset and local date-times (a
+  TOML `1979-05-27 07:32:00Z` becomes `"1979-05-27T07:32:00Z"`). The choice of type is deferred to decoding, so a
+  `string` field gets the text and a `time.Time` field gets a parsed time ([api.md](api.md#decoding)).
 
 ## Includes
 
@@ -585,11 +678,23 @@ preset registers the `file` resolver (see [Local files](#local-files)).
 
 **Rules for every include:**
 
+- **Placement:** the include key only works at the **top level** of a file, as in mise and cosmiconfig. It's removed
+  from the result, as `_unset` is. Elsewhere in a file, the key is ordinary data.
 - **Value:** a string or a list of references.
 - **Rank:** an included file ranks directly below the file that includes it, and a later entry beats an earlier one.
   This is mise's rule, and it is also how cosmiconfig's `$import` resolves (own keys > last import > first import).
 - **Local paths** are relative to the including file. Absolute paths are allowed.
+- **Formats:** an included file loads with any registered decoder, whatever the format order. A format with no
+  registered decoder is an `*UnsupportedFormatError` (415).
 - **Merge behaviour:** `_unset`, `null` and per-key merge rules all work as in any other layer.
+- **Each file loads once per include chain.** A file included twice along one chain, as in a diamond, loads at its first
+  rank. The same file can still appear at another rank through a different chain, or be found directly as well; each
+  appearance is recorded in `Describe()`.
+- **No includes from embedded sources.** `Embedded` and `EmbeddedFS` sources, and `Values`/`EnvVars`, can't use the
+  include key, because there's no file location to resolve a relative reference against. The key is ordinary data there.
+- **Trust:** an included file inherits its includer's trust decision, as in mise
+  ([3.9](config-locations.md#39-includes)). It's still judged by its includer's scope policy
+  ([Per-scope policies](#per-scope-policies)).
 - **Errors:** a reference that can't be loaded is a load error naming the including file. Includes are never silently
   skipped, because silently dropping config is worse than failing.
 
@@ -613,13 +718,21 @@ resolvers, and every preset registers it.
 
 | Scheme          | Form                                   | Example                                                               |
 | --------------- | -------------------------------------- | --------------------------------------------------------------------- |
-| `http`, `https` | A URL                                  | `https://config.example.com/myapp/base.toml`                          |
+| `http`, `https` | A URL, optionally with `#sha256=<hex>`  | `https://config.example.com/myapp/base.toml#sha256=9f86d0…`           |
 | `git`           | `git::<repo-url>//<path>?ref=<ref>`    | `git::https://github.com/acme/config.git//myapp/base.toml?ref=v1.4.0` |
 | `oci`           | `oci::<image-ref>[//<path>]`            | `oci::ghcr.io/acme/myapp-config:1.4.0`                                |
 
 - **Format:** the file format comes from the path's extension. For `http(s)` with no extension, it comes from
   `Content-Type`.
 - **`oci` path:** it defaults to `{name}.toml` at the artifact root.
+
+**Pinned references** name content that can't change. A policy with `RequirePinned()` accepts only these:
+
+| Scheme          | Pinned when                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------- |
+| `git`           | `ref=` is a **full** commit id: 40 hex characters (SHA-1) or 64 (SHA-256). An abbreviated id isn't a pin. |
+| `oci`           | The image reference has a digest: `@sha256:<64 hex>`.                                                    |
+| `http`, `https` | The URL has an integrity fragment, `#sha256=<64 hex>`. The downloaded bytes are hashed and must match, or the fetch is a `*PolicyError`. The fragment is never sent to the server. |
 
 ### Resolver hooks
 
@@ -672,6 +785,21 @@ cascadingconfig.WithDefaultPolicy(
 
 - **Matchers:** `Prefix`, `Glob` and `Regexp` match the normalised reference string. `MatchFunc` gets the whole
   `IncludeRef`, including the file that asked for it.
+  - **`Glob`:** `*` matches within one `/`-separated segment, and `**` matches across segments. So
+    `git::https://github.com/acme/*` matches `…/acme/config.git` but not `…/acme/team/config.git`, and
+    `git::https://github.com/acme/**` matches both. `?` matches one character, and there are no other metacharacters.
+  - **`Regexp`** is anchored at both ends: it must match the **whole** normalised string.
+  - **`Prefix`** is a plain string prefix.
+
+**The normalised reference string** that matchers see:
+
+| Scheme          | Form                                                    | Example                                                                 |
+| --------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `http`, `https` | `scheme://host[:port]/path`. The host is lowercased, the default port and dot segments are removed, and the integrity fragment is dropped. | `https://config.acme.internal/myapp/base.toml` |
+| `git`           | `git::<repo-url>//<path>?ref=<ref>`, with the repo URL normalised like an http URL and the inner path cleaned. | `git::https://github.com/acme/config.git//myapp/base.toml?ref=v1.4.0` |
+| `oci`           | `oci::<registry>/<repository>[:<tag>][@<digest>]//<path>`. The registry is lowercased, and the inner path is always present (`{name}.toml` by default). | `oci::ghcr.io/acme/myapp-config:1.4.0//myapp.toml` |
+| `file`          | The absolute path, after resolving symlinks.            | `/etc/acme/base.toml`                                                   |
+
 - **Matching:** a reference must match **at least one** entry on each allow-list that applies to it, the global one and
   its scheme's.
 - **No allow-list configured:** every reference is allowed in `mise.Preset`, as in mise. `misehardened.Preset` has no
@@ -722,10 +850,27 @@ These checks also cover resolvers that apps write themselves:
   `file://` and local-path remotes.
 - **No side effects:** fetches are shallow, of that commit only. They use no submodules, no LFS or other filters, and
   `core.hooksPath` is set to an empty directory.
+- **Isolated config:** git runs with `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL` pointing at an empty file, so the
+  user's and the system's git config never apply. Otherwise a `url.<base>.insteadOf` rule could rewrite a URL *after*
+  the allow-list check, and `includeIf` or credential helpers would run. Credential helpers are opt-in, with
+  `gitresolver.WithCredentialHelper(...)`.
+- **Version:** git 2.24 or newer is required, for `--end-of-options`. An older git is a `*FetchError` that says so.
+- **Fetching by commit:** some servers refuse to fetch an arbitrary commit id. Then the resolver fetches the ref
+  instead, and checks the commit is reachable from it.
+- **Protocols:** `gitresolver.WithProtocols(...)` changes the allowed transports. The default is `https` and `ssh`.
+  Tests use it to allow `file` for repositories in temporary directories.
 
 #### `oci`
 
-- **No extraction to disk.** Layers are read as streams, and the requested file is found among the tar entries.
+- **Two artifact forms.** An artifact pushed with `oras push` stores each file as its own blob, named by the
+  `org.opencontainers.image.title` annotation. An image-style artifact stores files in tar layers. Both are supported:
+  the requested path is matched against the title annotations, and against the entries of tar layers.
+- **No extraction to disk.** Layers are read as streams, and the requested file is found among them.
+- **Duplicates:** if the same path appears in several layers, the **last** layer wins, as in an image.
+- **Decompression is capped** at the include size limit, so a small compressed layer can't expand without bound.
+- **Options:** `ociresolver.WithCredentials(...)` supplies registry credentials. By default none are sent, and
+  `~/.docker/config.json` isn't read. `ociresolver.WithPlainHTTP(hosts...)` allows plain-HTTP registries, for tests and
+  local registries only.
 - **Entry matching:** each entry name is cleaned and compared to the validated inner path. An entry with an absolute
   name or a `..` segment fails the whole fetch, even if it isn't the requested file, because it means the artifact is
   malformed or hostile.
@@ -769,6 +914,7 @@ misehardened.Preset.Extend(
 		cascadingconfig.InheritDefault(),
 		cascadingconfig.AllowResolvers("file", "https"),
 		cascadingconfig.AllowFor("https", cascadingconfig.Prefix("https://config.acme.internal/")),
+		cascadingconfig.RequirePinned(), // required in misehardened: refs need #sha256=…
 	),
 	// Project config may only include files inside its own project.
 	cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
@@ -809,16 +955,25 @@ misehardened.Preset.Extend(
 
 ### Caching
 
-Remote files are cached by fetched identity under `{user cache dir}/{name}/includes`:
+Remote files are cached under `{user cache dir}/{name}/includes`:
 
-| Reference                                   | Cache behaviour                              |
-| ------------------------------------------- | -------------------------------------------- |
-| Pinned (git commit SHA, OCI digest)         | Cached forever; never fetched again.          |
-| Unpinned (branch, tag, plain URL)           | Fetched again once the TTL (default 1 hour) has passed. |
+| Reference                                                  | Cache behaviour                                         |
+| ---------------------------------------------------------- | ------------------------------------------------------- |
+| [Pinned](#remote-references) (full git commit id, OCI digest, https integrity fragment) | Cached forever; never fetched again. |
+| Unpinned (branch, tag, plain URL)                          | Fetched again once the TTL (default 1 hour) has passed. |
 
+**How entries are found:**
+
+- **Content** is stored under its fetched identity: the commit id for git, the blob digest for OCI, and the SHA-256 of
+  the bytes for http(s).
+- **An index** maps each reference to its identity. It's keyed by the SHA-256 of the normalised reference string, so no
+  part of a URL or path ever becomes part of a file name. That's what lets a fetch that fails fall back to a stale copy,
+  and lets the TTL be checked before fetching.
+- **Rechecked on use:** cached content goes through every policy check again on each load: allow-lists, pinning, the
+  size limit and the trust store.
 - **Fetch failures:** if a fetch fails and a cached copy exists, it is used and a warning is logged. With no cached
   copy, the load fails.
-- **Options:** the TTL and the cache dir can be set (`WithIncludeCache(dir, ttl)`), and caching can be turned off.
+- **Options:** `WithIncludeCache(dir, ttl)` sets the cache dir and TTL, and `WithoutIncludeCache()` turns caching off.
 - **User cache dir:** `$XDG_CACHE_HOME` on Linux, else Go's `os.UserCacheDir()`.
 
 ### `misehardened.Preset`
@@ -840,8 +995,9 @@ var Preset = cascadingconfig.MiseHardenedLayout.Extend( /* decoders, notifier */
 - **Remotes off:** no remote resolvers are registered. A remote reference is a **load error**, not a silent skip, so a
   config that depends on a remote base fails loudly.
 - **Turning remotes back on:** an app can register a resolver again, but only per scope, through a policy that names it,
-  gives it an allow-list, and requires pinned references: a git commit SHA or an OCI digest, as in mise's paranoid mode.
-  Unpinned references are a load error (see [Per-scope policies](#per-scope-policies)).
+  gives it an allow-list, and requires [pinned references](#remote-references): a full git commit id, an OCI digest, or
+  an https integrity fragment, as in mise's paranoid mode. Unpinned references are a load error (see
+  [Per-scope policies](#per-scope-policies)).
 - **File permissions (Unix):** the [filesystem hook](#filesystem-hook) ignores config files and directories, with a
   warning, if they're writable by group or other, or owned by someone other than the current user or root. This is like
   SSH's `StrictModes`. The warning names the file and the reason, for example "`/srv/app/myapp.toml` ignored: writable
@@ -858,9 +1014,22 @@ the OS filesystem. An app or a test can supply its own with `WithFileSystem(fsys
 
 - **`fs.FS` compatibility:** an adapter mounts any `fs.FS` (such as `fstest.MapFS` or `embed.FS`) at a virtual root, so
   a test can run the whole search against an in-memory tree.
-- **Symlinks:** the hook resolves them for dedup ([3.1](config-locations.md#31-tiers)) and for `Confine`.
+- **Symlinks are followed.** A candidate that's a symlink is resolved, and the target is opened from its own directory,
+  as a new root. A dotfiles setup such as `~/.config/{name} -> ~/dotfiles/{name}` therefore works, even though `os.Root`
+  refuses links that escape it. Dedup ([3.1](config-locations.md#31-tiers)) and `Confine` apply to the **target**.
+- **Regular files only.** A FIFO, device, socket or directory where a config file is expected is skipped with a warning.
+  Opening a FIFO would block forever, so a cloned repo could otherwise hang the loader.
+- **Size limit:** a local file larger than the limit is a `*TooLargeError` (413). The default is 10 MiB, and
+  `WithMaxFileSize(n)` changes it. Remote includes have their own limit ([Traversal protection](#traversal-protection)).
+- **Name matching is case-sensitive,** and done against the directory listing rather than by opening each candidate
+  path. On case-insensitive filesystems (macOS, Windows), `MyApp.TOML` therefore doesn't match `myapp.toml`, the same as
+  in `cctest.FS` and on Linux.
+- **Duplicates are detected by file identity** (`os.SameFile`, or the filesystem's equivalent), not by path string, so
+  hard links and differently spelled paths count as one file.
 - **Permission policy:** `FilePermissions(policy)` is a function that gets the path, its `fs.FileInfo` (including the
-  owner, where the OS reports one) and the scope. It returns *allow*, *ignore with a warning* or *error*. It runs for
+  owner, where the OS reports one) and the scope. For a symlink, it checks the **target and its containing directory**.
+  The owner is read through an `Owner() (uid int, ok bool)` method on the file info, so `cctest.FS` can fake it and
+  platforms without owners report `ok == false`. It returns *allow*, *ignore with a warning* or *error*. It runs for
   **every** file, whether the search found it or it was included. It can be set per scope (see
   [Per-scope policies](#per-scope-policies)). For example, an app can require `system` files to be owned by root and
   `project` files to be owned by the user.
@@ -888,7 +1057,10 @@ cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
   user; asking for approval and recording it is the app's job, through its store.
 - **No store is shipped.** We don't write files (see [Non-goals](#non-goals)), so a persistent store is the app's
   concern. A `TrustPaths(globs...)` store, equivalent to mise's `trusted_config_paths`, is provided because it needs no
-  writes.
+  writes. Its globs follow the same rules as the [`Glob` matcher](#allow-lists), applied to absolute paths after
+  resolving symlinks.
+- **The digest** is the lowercase hex SHA-256 of the file's raw bytes, before decoding or any byte-order-mark stripping.
+  So an app can compute it with `sha256sum` and pre-populate its store.
 - **Defaults:** no preset requires trust. `mise.Preset` trusts every file, as D18 decided. `misehardened.Preset` relies
   on its other protections, and apps add `RequireTrust` where they want approval.
 
@@ -913,6 +1085,13 @@ with every character outside `[A-Z0-9]` replaced by `_`.
 - **List separators:** a "path list" uses the OS separator (`:`, or `;` on Windows). A "comma list" uses `,`, with
   surrounding spaces trimmed.
 - **Empty values** count as unset.
+- **Relative paths** are resolved against the current directory, and a leading `~` is expanded.
+- **Ignored paths** match a file, or every file below a directory, after resolving symlinks. They aren't globs.
+- **Override filenames** are full names, and may use `{ext}`. For example, `custom.{ext}` matches `custom.toml` and
+  `custom.yaml`.
+- **Single-file variables** (`{NAME}_GLOBAL_CONFIG_FILE`, `{NAME}_SYSTEM_CONFIG_FILE`) behave like
+  [explicit config files](#explicit-config-files): a missing file is a `*NotFoundError` (404), and no `.local` or
+  `.{env}` variants are added.
 - **`XDG_CONFIG_HOME`** is read as the base of the default user dir. It isn't a binding of ours.
 - **Renaming:** any binding can be renamed. For example, `WithEnvBinding("ENV", "MYAPP_CONFIG_ENV")` avoids a clash with
   an app that already uses `MYAPP_ENV` for something else.
@@ -935,12 +1114,15 @@ or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
   that file.
 - **No variants:** the files are loaded as given. `.local` and `.{env}` siblings aren't added.
 - **Order:** with several files, they are applied in the order given, and the later file wins.
-- **Format** comes from each file's extension. An unknown extension is an error.
+- **Format** comes from each file's extension. Explicit files accept **any registered decoder**, whatever the format
+  order, which only affects searching. So `--config x.toml` loads even if `{NAME}_CONFIG_FORMATS` leaves TOML out. A
+  format with no registered decoder is an `*UnsupportedFormatError` (415). Nothing has to be registered just in case.
 - **Missing files:** a file that doesn't exist is an error, as with cosmiconfig's `load(path)`.
 - **Includes** in the explicit files work as usual.
 - **Precedence of the setting:** `WithConfigFiles` beats `{NAME}_CONFIG_FILE`, because the option normally carries a
   command-line flag, which should beat the environment.
-- **Bootstrap files** are still searched from the start dir.
+- **Bootstrap files** are still searched as usual: from the start dir in the mise presets, and in the current directory
+  only in `cosmiconfig.Preset`, as cosmiconfig's meta config is.
 
 ## Platform directories
 
@@ -949,7 +1131,17 @@ or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
 | `system` | `/etc/{name}`                                     | `%ProgramData%\{name}`, falling back to `C:\ProgramData\{name}` if the variable is unset |
 | `user`   | `$XDG_CONFIG_HOME/{name}`, else `~/.config/{name}` | the same: `%XDG_CONFIG_HOME%\{name}`, else `%USERPROFILE%\.config\{name}` |
 
-The user dir follows mise on every OS (D4). Only the system dir differs on Windows.
+The user dir follows mise on every OS (D4) in `mise.Preset` and `misehardened.Preset`. Only the system dir differs on
+Windows.
+
+`cosmiconfig.Preset` uses cosmiconfig's `env-paths` locations for its user dir instead
+([2.3](config-locations.md#23-global-config-directory)), with cosmiconfig's global filenames (`config`, `config.{ext}`):
+
+| OS      | `cosmiconfig.Preset` user dir                      |
+| ------- | -------------------------------------------------- |
+| Linux   | `$XDG_CONFIG_HOME/{name}`, else `~/.config/{name}` |
+| macOS   | `~/Library/Preferences/{name}`                     |
+| Windows | `%APPDATA%\{name}\Config`                          |
 
 ## Value overrides (env vars and flags)
 
@@ -982,7 +1174,8 @@ mise.Preset.Extend(
 - **Discovery bindings are excluded:** variables that are bound to discovery knobs, such as `MYAPP_CONFIG_DIR` or
   `MYAPP_ENV` (see [Environment variables](#environment-variables)), are never read as values, even though they share
   the prefix.
-- **Read once per load:** variables are read at load time, and again on each [reload](#hot-reload).
+- **Read on every load:** variables are read each time a load or [reload](#hot-reload) runs. A change to them doesn't
+  *trigger* a reload, because env vars can't be watched; only a manual `Reload` picks one up straight away.
 
 **`Values(tree)`** takes a ready-made tree, typically built from the app's parsed flags. It may also be a function that
 returns a tree, so a reload can re-read it.
@@ -993,7 +1186,8 @@ returns a tree, so a reload can re-read it.
   file" order. Placement is up to the app, like any [custom scope](#custom-scopes).
 - **Reserved keys aren't interpreted:** a value that maps to the include key or `_unset` is ignored, with a warning. A
   value scope can't pull in files or remove keys.
-- **Trust:** `TrustUser`. They have no bootstrap files and no includes, so trust only shows up in `Describe()`.
+- **Trust:** both kinds default to `TrustUser`, so no `Trust(...)` is needed. They have no bootstrap files and no
+  includes, so trust only shows up in `Describe()`.
 - **Provenance:** `Describe()` attributes each value to its source, for example "`server.port` set by
   `MYAPP_SERVER__PORT`".
 
@@ -1048,12 +1242,12 @@ Our case is harder than either library's: discovery spans many directories and m
 
 ### Design
 
-**API sketch** (the API design will settle the details):
+**API** (decided in [api.md](api.md#load-and-watch)):
 
 ```go
-w, err := loader.Watch(ctx, func(c cascadingconfig.Change) {
-	// c.Old, c.New: immutable snapshots; c.Diff: changed keys with provenance; c.Err: reload failure
-})
+w, err := cascadingconfig.Watch[Config](ctx, loader, func(c cascadingconfig.Change[Config]) {
+	// c.Old, c.New: decoded snapshots; c.Diff: changed keys with provenance; c.Err: reload failure
+}, cascadingconfig.WithDebounce(100*time.Millisecond, time.Second))
 defer w.Close()
 cfg := w.Current() // lock-free read of the latest good snapshot
 ```
@@ -1076,6 +1270,8 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 
 - **Debounced:** events are coalesced on the trailing edge, with a 100 ms quiet period and at most 1 s of delay, so one
   save means one reload.
+- **A reload works exactly like an initial load:** it decodes into a fresh value, never the previous snapshot, with
+  defaults applied the same way ([api.md](api.md#defaults)).
 - **Full re-discovery,** not an incremental patch. Bootstrap, discovery, policies (permissions, confinement, trust),
   transforms and merging all run again. Precedence and dedup depend on the whole set of files, and config is small.
 - **Last good config wins:** if a reload fails (a parse error, a policy violation or a transform error), `Current()`
@@ -1093,12 +1289,13 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Remote includes                        | Pinned references never change. Unpinned ones are re-checked in the background only with `WithRemotePoll(interval)`, using ETags, `git ls-remote` or the OCI manifest digest. Otherwise they refresh on reloads, under the [cache rules](#caching). |
 | NFS, SMB and FUSE mounts; watcher limits reached | Built-in stat polling (mtime, size, inode, then a content hash), every 2 s by default. It's used with `WithPolling(interval)`, and automatically for any directory whose watch fails, with a warning.                                                     |
-| Env vars, `Values`                     | Only on a manual `Reload`.                                                                              |
+| Env vars, `Values`                     | Re-read on every reload, but changes to them never trigger one. Use a manual `Reload`.                  |
 | Embedded files, `embed.FS`             | Never; they're static.                                                                                  |
 | Custom `Scope` implementations         | An optional `Watchable` interface; without it, only on a manual `Reload`.                               |
 
-- **Filesystem hook:** watching goes through the [filesystem hook](#filesystem-hook). The OS filesystem uses fsnotify. A
-  test filesystem provides a fake notifier, so reload behaviour can be tested without real files or timers.
+- **Event sources:** the core has no fsnotify dependency. Without a notifier, watching polls. The `watch/fsnotify`
+  module supplies file events through `WithNotifier`, which the ready-to-use presets register. Tests use
+  `cctest.Notifier` and `cctest.Clock`, so reload behaviour can be tested without real files or timers.
 - **Security on reload:** every check runs again. A file that becomes group-writable is ignored on the next reload, with
   a warning, and a revoked trust approval takes effect there too.
 
@@ -1115,6 +1312,8 @@ cfg := w.Current() // lock-free read of the latest good snapshot
   - **A custom HTTP client:** `httpresolver.New(httpresolver.WithClient(c))` builds the `https` resolver on the app's
     own `*http.Client`. Its dialer (`net.Dialer.Control`) can check each resolved IP at connect time, which also covers
     DNS rebinding.
+- **JSONC** (JSON with comments and trailing commas) is out of scope for now. It's listed in
+  [future-ideas.md](future-ideas.md).
 - **Combined-environment files** such as `myapp.dev.linux.toml`, which would load only when every environment they name
   is active, are not planned. They may be considered later, or never. Adding them would have to be **opt-in**, because
   today `dev.linux` is an ordinary single environment name, as in mise.
@@ -1144,7 +1343,7 @@ There are no open questions.
 | 13 | Hardened preset                              | `MiseHardenedLayout` extends `MiseLayout` and disables remote includes; `misehardened.Preset` adds TOML, YAML and fsnotify (see [`misehardened.Preset`](#misehardenedpreset)). |
 | 14 | System dir on Windows                        | `%ProgramData%\{name}` (see [Platform directories](#platform-directories)).                                   |
 | 15 | Env-var list                                 | As listed in [Environment variables](#environment-variables). Every binding is renameable.                      |
-| 16 | Explicit config files                        | `WithConfigFiles` / `{NAME}_CONFIG_FILE` replace the project scope only (see [Explicit config files](#explicit-config-files)). |
+| 16 | Explicit config files                        | `WithConfigFiles` / `{NAME}_CONFIG_FILE` replace the project scope only in the mise presets, and everything in `cosmiconfig.Preset` (see [Explicit config files](#explicit-config-files)). |
 | 17 | Writing config files                         | Out of scope for now (see [Non-goals](#non-goals)).                                                          |
 | 18 | Remotes with no allow-list (`mise.Preset`)    | All allowed, as in mise (see [Allow-lists](#allow-lists)).                                                   |
 | 19 | Remote caching                               | Pinned references are cached forever, unpinned ones get a 1-hour TTL, and a stale copy is used with a warning if a fetch fails (see [Caching](#caching)). |
@@ -1170,6 +1369,45 @@ There are no open questions.
 | 39 | Hot reload: filesystems without events       | Built-in stat polling (2 s default), used with `WithPolling(interval)` and automatically for any directory whose watch fails, with a warning. Network filesystems aren't detected automatically. |
 | 40 | Hot reload: callbacks                        | Only when the merged result changes, or a reload fails. `WithReloadOnAnyEvent()` opts in to every reload. Callbacks are serialised. |
 | 41 | Hot reload: debounce                         | A 100 ms quiet period and at most 1 s of delay, both configurable.                                                  |
+| 42 | `cosmiconfig.Preset` default scopes          | The start dir only, as cosmiconfig's default `none` strategy. The `user` scope and the walk come with `WithSearchStrategy(Global)` (see [Search strategies](#search-strategies)). |
+| 43 | Array default                                | `WithArrayMerge(Replace)` by default; `cosmiconfig.Preset` sets `Append`, matching `mergeImportArrays` (see [Merging](#merging)). |
+| 44 | Node.js-specific sources                     | Not supported: no `package.json`/`package.yaml`, no `packageProp`, no default `package.json` root marker. Users can add them with `Embedded` and `WithRootMarker` (see [Deviations from cosmiconfig](#deviations-from-cosmiconfig)). |
+| 45 | `cosmiconfig.Preset` user dir                | cosmiconfig's `env-paths` locations (see [Platform directories](#platform-directories)).                      |
+| 46 | Extensionless files                          | Decoded by the format `WithExtensionlessFormat` names. `cosmiconfig.Preset` uses YAML if registered, otherwise JSON. |
+| 47 | YAML extensions                              | `.yaml` and `.yml` are both YAML. The format order lists formats. Within YAML, `.yaml` ranks above `.yml` (see [File format precedence](#file-format-precedence)). |
+| 48 | Dates and times                              | Strings in the tree, in RFC 3339 form, for every format. A decode hook parses them into `time.Time` fields. This differs from koanf with TOML, which hands `time.Time` through (see [Format dialects](#format-dialects)). |
+| 49 | Integers                                     | `int64` only for literals with no fraction or exponent that fit; out of range is a `*ParseError`.             |
+| 50 | YAML dialect                                 | YAML 1.2 core schema. Keys become strings. Several documents, and unknown tags, are `*ParseError`s. Alias expansion is capped. |
+| 51 | Duplicate keys                               | Each format's own semantics: JSON keeps the last and logs a warning; TOML and YAML raise a `*ParseError`.       |
+| 52 | Dialects and encoding                        | Strict JSON (JSONC is a [future idea](future-ideas.md)); TOML as the pinned go-toml accepts; UTF-8 only, with a leading byte-order mark stripped. |
+| 53 | Empty files and the top level                | Empty means whitespace or comments only, or a null document; `{}` is not empty. The top level must be a map.   |
+| 54 | Requiring config                             | `RequireConfig(level, scopes...)`, combinable. The default level counts any source; flags narrow it to files and non-empty layers, globally or per scope ([api.md](api.md#requiring-config)). |
+| 55 | Pinned references                            | A full git commit id, an OCI digest, or an https `#sha256=` integrity fragment that's verified after download (see [Remote references](#remote-references)). |
+| 56 | Matchers                                     | `Glob`: `*` within a segment, `**` across. `Regexp` is fully anchored. The normalised reference string is documented per scheme (see [Allow-lists](#allow-lists)). |
+| 57 | Trust-store details                          | `TrustPaths` uses the `Glob` rules on resolved absolute paths. The digest is the hex SHA-256 of the raw bytes (see [Trust store](#trust-store)). |
+| 58 | Cache lookup                                 | An index keyed by the SHA-256 of the normalised reference. http identity is the content's SHA-256. `WithoutIncludeCache()` turns caching off. Cached content is rechecked (see [Caching](#caching)). |
+| 59 | Isolating git                                | No system or global git config; credential helpers opt-in; git 2.24 or newer; fetching the ref when fetching by commit is refused; `WithProtocols` for tests. |
+| 60 | OCI artifact forms                           | Per-file (`oras push`) and tar layers; the last layer wins; decompression is capped; credentials and plain HTTP are opt-in options. |
+| 61 | A file reached by two routes                 | Precedence from the higher route; trust, policy and scope from the more trusted route; both recorded (see [Scope trust](#scope-trust)). |
+| 62 | Symlinks                                     | Followed. The target is opened from its own directory, and dedup and `Confine` apply to the target (see [Filesystem hook](#filesystem-hook)). |
+| 63 | Special files                                | Only regular files are read; others are skipped with a warning.                                              |
+| 64 | Local file size                              | A `*TooLargeError` above 10 MiB by default; `WithMaxFileSize` changes it.                                     |
+| 65 | Permission check targets                     | The symlink target and its containing directory. The owner comes from an `Owner()` method on the file info.  |
+| 66 | Name matching and dedup                      | Case-sensitive, against the directory listing; duplicates by file identity.                                  |
+| 67 | Formats for explicit files and includes      | Any registered decoder, whatever the format order. An unregistered format is a `*UnsupportedFormatError`.    |
+| 68 | Relative paths                               | Env vars: against the current directory. Bootstrap files: against the file's directory. `~` expanded in both. |
+| 69 | Ignored paths, override names, single-file vars | Ignored paths match a file or a directory prefix after symlinks; override names may use `{ext}`; single-file vars behave like explicit files. |
+| 70 | Faking the host in tests                     | An internal host (env, home, cwd, GOOS, GOARCH, UID), replaceable only through `cctest.Host` ([api.md](api.md#test-helpers)). |
+| 71 | Layout options                               | Every built-in layout setting has a public option ([api.md](api.md#layout-options)); exact signatures at M3's review. |
+| 72 | Defaults                                     | Every reload works like an initial load: each decodes into a fresh value. Defaults are a scope below all others, built from a Go value with `WithDefaults(v)`; config can clear them, and `OriginOf` traces them. No `SetDefaults()` method ([api.md](api.md#defaults)). |
+| 73 | Empty `With…s` calls                         | `WithEnvs()` and `WithConfigFiles()` with no arguments mean "not set"; empty `WithScopes()` and `WithFormats()` are errors. |
+| 74 | Option naming exceptions                     | `WithProbes`, `WithFlatPaths` and `WithUnknownKeys` are single settings despite the *s*.                     |
+| 75 | Error types for the remaining cases          | Cancellation keeps `errors.Is` working (codes 499 and 504); `*IOError` (500); `*UnsupportedSchemeError` (501); a forbidden scheme is a `*PolicyError`; malformed reserved keys are a `*ParseError`; callback errors are wrapped. A failed `Load` still returns a `*Result` with its report ([api.md](api.md#errors)). |
+| 76 | Concurrency and ownership                    | Callbacks must be safe for concurrent use; callers and callbacks get their own copies of trees; transforms run only on layers that merge ([api.md](api.md#concurrency-and-ownership)). |
+| 77 | Watch lifecycle                              | `ctx` bounds the watcher; `Close` is idempotent and safe from the handler; `Reload` returns an error; a change is a value difference; handler panics are recovered ([api.md](api.md#load-and-watch)). |
+| 78 | Bootstrap key handling                       | Unknown keys warn; keys outside the limits are dropped with a warning; wrong types are an `*OptionError`; no includes or `_unset` (see [Bootstrap file](#bootstrap-file)). |
+| 79 | Include behaviour                            | Top level only, and removed from the result; once per include chain; none from embedded or value sources; trust inherited from the includer (see [Includes](#includes)). |
+| 80 | Platform names                               | `unix` on every `GOOS` except windows, plan9, js and wasip1; `darwin` becomes `macos` and `amd64` becomes `x64`; everything else keeps its Go name (see [Environments](#environments)). |
 
 ---
 
@@ -1185,7 +1423,9 @@ type. It is not an API yet.
   - an *explicit file* (`load(path)`, `WithConfigFiles`, `{NAME}_CONFIG_FILE`), replacing a scope's search
   - an *embedded* file (a key path inside a manifest)
 
-  Users can add, remove, reorder and rename scopes. The four built-in names are conventions, not a closed set.
+  Users can add custom scopes (placed with `Before`/`After`) and select scopes with `WithScopes`/`WithoutScopes`.
+  Reordering or renaming the built-in scopes means defining a new preset. The four built-in names are conventions, not a
+  closed set.
 - **Patterns** are path templates with `{name}`, `{env}` and `{ext}`, single-segment globs (expanded alphabetically) and
   folder fragments. Each pattern carries its *layer*: shared, env, local or env-local.
 - **Variants** are an ordered env list, from a resolver chain (flag → env var → bootstrap file), plus an optional

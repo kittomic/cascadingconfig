@@ -98,14 +98,14 @@ loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset)
 ```
 
 ```go
-// Minimal: mise's layout, TOML only, no remotes, no fsnotify.
+// Minimal: mise's layout, TOML only. Core layouts register no remotes and no fsnotify.
 // Module graph: cascadingconfig, mapstructure, cascadingconfig/format/toml, go-toml.
 import (
 	"github.com/kittomic/cascadingconfig"
 	"github.com/kittomic/cascadingconfig/format/toml"
 )
 
-loader, err := cascadingconfig.NewWithPreset("myapp", cascadingconfig.MiseHardenedLayout.Extend(
+loader, err := cascadingconfig.NewWithPreset("myapp", cascadingconfig.MiseLayout.Extend(
 	cascadingconfig.WithDecoder(toml.Decoder()),
 ))
 ```
@@ -224,6 +224,11 @@ func (p Preset) Name() string
   - **`With…` for a single setting** (`WithLogger`, `WithTag`): the last one wins.
   - **`With…` for a list entry** (`WithDecoder`, `WithMergeRule`, `WithLayerTransform`): it is added.
   - **`With…s` replaces a whole set** (`WithScopes`, `WithFormats`, `WithEnvs`, `WithConfigFiles`).
+    - **Called with no arguments,** `WithEnvs()` and `WithConfigFiles()` mean *not set*, so an app can always pass its
+      flag values, and an empty flag leaves `{NAME}_ENV` and `{NAME}_CONFIG_FILE` in charge. `WithScopes()` and
+      `WithFormats()` with no arguments are `*OptionError`s, because an empty set can only be a mistake.
+    - **Exceptions:** `WithProbes`, `WithFlatPaths` and `WithUnknownKeys` end in *s* but set a single setting. They
+      follow the single-setting rule.
   - **`Without…` removes** (`WithoutScopes`, `WithoutIncludeResolver`, `WithoutEnvBinding`, `WithoutUnset`).
   - **`Require…` turns on a check** (`RequireConfig`).
 - **Grouping:** `Options(opts...)` bundles several options into one, so an app can share a group.
@@ -250,16 +255,32 @@ Options that only make sense in one place get their own type, so the compiler re
 - **One policy option set for both levels.** `WithDefaultPolicy(policyOpts...)` and
   `WithScopePolicy(scope, policyOpts...)` take exactly the same options.
 
+### Layout options
+
+The built-in layouts are built from these options, so a user's layout can do everything they do. **Proposed shapes;**
+the exact signatures are settled at M3's test review.
+
+| Area           | Options                                                                                                   |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| Resolution     | `WithResolution(MergeAll \| FirstMatch)`                                                                  |
+| Patterns       | `Pattern(template, variant, root)` inside a scope kind. `template` uses `{name}`, `{env}` and `{ext}`; `variant` is `VariantShared`, `VariantEnv`, `VariantLocal` or `VariantEnvLocal`; `root` says how the config root is derived (the scope dir, or the file's own dir). |
+| Includes       | `WithIncludeKey(key, nesting)`, where `nesting` allows or forbids includes in included files              |
+| Bootstrap      | `WithBootstrap(scopes, patterns, allowedKeys, limits)`: where bootstrap files are searched, their names, which keys they may set, and the per-scope key limits |
+| Limits         | `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
+| Directories    | `WithUserDir(resolver)` and `WithSystemDir(resolver)`, with resolvers `XDGDirs` (the mise presets) and `EnvPathsDirs` (the cosmiconfig preset) |
+| Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
+| Env bindings   | Binding keys are constants, such as `BindConfigDir`, `BindEnv` and `BindConfigFormats`, so `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` is checked by the compiler. A custom scope can declare its own binding. |
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Scopes        | `WithScopes`, `WithoutScopes`, `WithScope`, `WithStartDir` (default: the current directory at each `Load`), `WithWalkStop`, `WithCeilingPaths`, `WithIgnoredPaths` |
+| Scopes        | `WithScopes`, `WithoutScopes`, `WithScope`, `WithDefaults`, `WithStartDir` (default: the current directory at each `Load`), `WithWalkStop`, `WithCeilingPaths`, `WithIgnoredPaths`, `WithSearchStrategy`, `WithStopDir`, `WithRootMarker` |
 | Environments  | `WithEnvs`                                                                                                                  |
-| Formats       | `WithDecoder`, `WithFormats`, `WithFormatConflict`                                                                          |
-| Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`                                                                         |
-| Merging       | `WithMergeRule`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`                                |
-| Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |
+| Formats       | `WithDecoder`, `WithFormats`, `WithFormatConflict`, `WithExtensionlessFormat`                                              |
+| Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
+| Merging       | `WithMergeRule`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
+| Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |
 | Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`, `WithoutBootstrapKey`                                                                |
 | Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
 | Behaviour     | `RequireConfig`, `WithLogger`, `WithProbes`                                                                                 |
@@ -330,7 +351,8 @@ func main() {
 | --------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Decoder library | `github.com/go-viper/mapstructure/v2` (v2.4.0)                               | The same library.                                    |
 | Struct tag      | `koanf`; `UnmarshalConf.Tag` overrides it                                    | `koanf` by default; `WithTag("config")` overrides it. |
-| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order. koanf's hooks are unexported, so we reimplement them with the same behaviour. |
+| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order, plus a fourth: RFC 3339 strings into `time.Time`. koanf's hooks are unexported, so we reimplement them with the same behaviour. |
+| Dates           | go-toml hands TOML date-times through as `time.Time`                          | **Different:** every date-time is an RFC 3339 string in the tree ([design.md](design.md#format-dialects)). The fourth hook parses it into a `time.Time` field, and a `string` field gets the text. Through `KoanfProvider`, koanf's own decoding sees strings, so it needs a string-to-time hook of its own. |
 | Weak typing     | `WeaklyTypedInput: true`                                                     | The same, so env-var strings such as `"8080"` decode into `int`. |
 | Custom decoder  | `UnmarshalConf.DecoderConfig` replaces the defaults                          | `WithDecoderConfig(*mapstructure.DecoderConfig)`, with the same semantics. We set `Result`, and `TagName` falls back to `koanf` if empty. |
 | Flat paths      | `UnmarshalConf.FlatPaths`                                                    | `WithFlatPaths()`.                                   |
@@ -369,7 +391,7 @@ discovery and merging, and keep its koanf decoding code.
 | To know…                              | Use                                                                                                  |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | null, unset or never set              | The tree: a key present with a nil value is null, and an absent key is unset or never set. `OriginOf` shows kind `Null`, or an unset step in its history. |
-| That config cleared a default         | Ship the default in a **defaults scope** (`EmbeddedFS`, [design.md](design.md#custom-scopes)), not as a pre-filled struct value. A higher `null` or `_unset` then removes it from the tree, and a pointer field reads `nil`. |
+| That config cleared a default         | Supply defaults with [`WithDefaults`](#defaults), not as a pre-filled struct value. A higher `null` or `_unset` then removes them from the tree, and a pointer field reads `nil`. |
 | That `null` cleared a Go-side default | `WithDecoderConfig` with `ZeroFields: true`. Null then sets the field to its zero value. `_unset` still keeps the default, because the key is absent. `ZeroFields` also empties map fields before decoding into them, so pre-filled map entries are replaced, not merged. |
 
 There is **no three-state field type** (such as a `Nullable[T]`). The tree and `OriginOf` already tell null, unset and
@@ -393,9 +415,63 @@ type Change[T any] struct {
 ```
 
 - **A decode failure during a reload is a failed reload.** The last good config is kept, and the handler gets `Err`.
+- **Every reload works exactly like an initial load.** Each load and reload decodes into a **fresh** value, never into
+  the previous snapshot. Otherwise a key deleted from a file would keep its old value, because mapstructure leaves
+  fields it doesn't visit untouched. Defaults are applied the same way on every load and reload.
+
+### Defaults
+
+**Status: decided** (DL-72).
+
+Defaults are a **scope**: the lowest layer of every load. `WithDefaults` builds that scope from a Go value:
+
+```go
+cascadingconfig.WithDefaults(Config{
+	Port: 8080,
+	Log:  LogConfig{Level: "info"},
+})
+```
+
+- **Converted once, at `New`.** The value is turned into a tree using the same struct tags as decoding (`koanf` by
+  default). Only non-zero fields are included, because a fresh `T` already holds zeros. Values are converted to the
+  [canonical forms](#tree-and-values): for example, a `time.Duration` becomes `"5s"`, a `time.Time` becomes its RFC 3339
+  text, and a type that implements `encoding.TextMarshaler` becomes its text.
+- **Below every other scope.** It's part of every load and reload, so `Load[T]`, `Watch[T]`, `res.Decode` and
+  `KoanfProvider` all see the same defaults.
+- **Config can clear a default** with `null` or `_unset`, like any other layer.
+- **Traceable:** `Describe()` lists the defaults scope, and `OriginOf` reports "set by defaults".
+- **Trust:** `TrustSystem`, because the values come from the app's own code. They aren't a file, so
+  `RequireConfig(RequireFile)` doesn't count them.
+- **Pre-filling still works** with `res.Decode(&cfg)`, for apps that prefer it. It isn't available to `Load[T]` or
+  `Watch[T]`, which always decode into a fresh value, so `WithDefaults` is the documented route.
+- **One mechanism.** There's no `SetDefaults()` method or `Defaulter` interface.
 - **`w.Current()`** returns the latest good snapshot, lock-free. `w.Reload(ctx)` forces a reload, and `w.Close()` stops
   watching.
 - **Untyped watching:** `loader.Watch(ctx, func(cascadingconfig.Change[cascadingconfig.Tree]))`.
+
+**Lifecycle:**
+
+- **`ctx` bounds the watcher.** Cancelling it stops watching, as `Close` does.
+- **`Close`** is idempotent. It waits for a running handler to return, and it's safe to call from inside the handler,
+  where it returns without waiting.
+- **`Reload(ctx)`** returns an `error`. It calls the handler only if the reload changed something or failed.
+- **What counts as a change:** a difference in the merged values. `time.Time` values are compared as instants (`Equal`),
+  and NaN equals NaN. A value that moves to another file with the same value isn't a change, unless
+  `WithReloadOnAnyEvent` is set.
+- **Panics:** a handler that panics is recovered. The panic is logged as an error, and watching continues.
+- **One at a time:** handler calls never overlap.
+
+## Concurrency and ownership
+
+**Status: decided.**
+
+- **The loader is safe for concurrent use.** Several goroutines can call `Load` at once, alongside a watcher.
+- **App callbacks must be too.** Transforms, matchers, merge-rule `Func`s, `ValuesFunc`, `MapEnv`, permission policies,
+  trust stores, and custom scopes, decoders and resolvers can all be called from several goroutines at once.
+- **Callers own what they get.** Every callback receives its own deep copy of any tree, so it can modify it freely.
+  `Result.Tree()` also returns a copy, so changing it can't affect the report, a watch snapshot or another caller.
+- **Transforms run only on layers that will merge.** Layers that are ignored, untrusted, empty, or not chosen by a
+  first-match search are never transformed.
 
 ## Errors
 
@@ -448,9 +524,9 @@ func CodeOf(err error) Code
 | Type                      | Code | Sentinel               | When                                                                        |
 | ------------------------- | ---- | ---------------------- | --------------------------------------------------------------------------- |
 | `*OptionError`            | 400  | `ErrInvalidOption`     | Invalid loader configuration: unknown scope, invalid environment name, bad `formats` list, ambiguous merge rules. Returned by `New`, or at load time for values from env vars or bootstrap files. |
-| `*ParseError`             | 400  | `ErrParse`             | A file isn't valid TOML, YAML or JSON.                                      |
+| `*ParseError`             | 400  | `ErrParse`             | A file isn't valid TOML, YAML or JSON, breaks a [dialect rule](design.md#format-dialects), or has a malformed reserved key (`_unset = 5`, `include = 3`). |
 | `*ReferenceError`         | 400  | `ErrInvalidReference`  | An include reference fails validation, including [traversal](design.md#traversal-protection). |
-| `*PolicyError`            | 403  | `ErrPolicy`            | Blocked by policy: allow-list, trust store, permission policy in error mode, confinement, unpinned remote. |
+| `*PolicyError`            | 403  | `ErrPolicy`            | Blocked by policy: allow-list, a scheme the policy doesn't allow, trust store, permission policy in error mode, confinement, unpinned remote. |
 | `*NotFoundError`          | 404  | `ErrNotFound`          | An explicit config file or an include target doesn't exist.                 |
 | `*ConflictError`          | 409  | `ErrConflict`          | Several formats in one slot with `FormatConflict: error`.                   |
 | `*TooLargeError`          | 413  | `ErrTooLarge`          | A remote include is over the size limit.                                    |
@@ -460,6 +536,22 @@ func CodeOf(err error) Code
 | `*TransformError`         | 422  | `ErrTransform`         | A transform hook returned an error.                                         |
 | `*FetchError`             | 502 / 504 | `ErrFetch`        | A remote include couldn't be fetched (504 for a timeout).                   |
 | `*CycleError`             | 508  | `ErrIncludeCycle`      | An include cycle (`cosmiconfig.Preset`, which allows nesting).               |
+| `*IOError`                | 500  | `ErrIO`                | Reading a file failed for a reason other than "not found", such as permission denied, or a directory where a file was expected. |
+| `*UnsupportedSchemeError` | 501  | `ErrUnsupportedScheme` | An include uses a scheme with no registered resolver.                       |
+
+**Other errors:**
+
+- **Cancellation:** a load stopped by its context returns an error for which `errors.Is(err, context.Canceled)` or
+  `errors.Is(err, context.DeadlineExceeded)` holds. It's a base `*Error`, with code 499 for a cancellation, following
+  nginx's "client closed request", and 504 for a deadline.
+- **Errors from app callbacks** (trust stores, `ValuesFunc`, `MapEnv`, custom `Scope`s, matchers, merge-rule `Func`s)
+  are wrapped in a base `*Error`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error.
+  Transform errors keep their own type, `*TransformError`.
+
+**A failed load still returns a result.** `loader.Load` returns a non-nil `*Result` alongside the error. Its report
+shows what was found, what loaded and what broke, which is what a diagnostic command needs. Its `Tree()` is `nil`, so
+half-merged config can't be used by mistake. `Load[T]` returns the zero `T` and the error; use `loader.Load` when the
+report is needed.
 
 **Several errors in one load:**
 
@@ -467,10 +559,52 @@ func CodeOf(err error) Code
 - **Inspecting them:** `errors.Is` and `errors.As` already search joined errors. `CodeOf` returns the first code it
   finds, and `cascadingconfig.Errors(err)` returns the individual errors.
 
-**No config found is not an error.** A load that finds no files gives an empty result, as cosmiconfig and mise do.
-`RequireConfig()` turns it into a `*NotFoundError` (404).
+**No config found is not an error.** A load that finds nothing gives an empty result, as cosmiconfig and mise do.
+[`RequireConfig`](#requiring-config) turns it into a `*NotFoundError` (404).
 
 Warnings are not errors. They go to the logger and the report.
+
+## Requiring config
+
+**Status: decided.**
+
+By default, a load that finds nothing isn't an error. `RequireConfig` makes it one, at a level the app chooses:
+
+```go
+type Require uint
+
+// RequireAny counts any loaded layer, of any kind. It's the most forgiving level.
+const RequireAny Require = 0
+
+// Flags that narrow what counts. Combine them with |.
+const (
+	RequireFile     Require = 1 << iota // only layers read from files: discovery, explicit files and includes
+	RequireNonEmpty                     // empty layers don't count
+)
+
+func RequireConfig(level Require, scopes ...ScopeName) Option
+```
+
+- **The default level is forgiving.** `RequireConfig(RequireAny)` is satisfied by anything that loaded: a config file,
+  an empty file, flags, env-var overrides, or a built-in defaults scope.
+- **Flags narrow it:**
+  - **`RequireFile`:** only real files count. Flags (`Values`), env-var overrides (`EnvVars`), compiled-in defaults
+    (`Embedded`, `EmbeddedFS`) and `WithDefaults` don't.
+  - **`RequireNonEmpty`:** files that are [empty](design.md#format-dialects) don't count.
+  - `RequireFile | RequireNonEmpty` means "at least one real, non-empty config file".
+- **Global or per scope.** With no scopes, the requirement is global: one qualifying layer anywhere is enough. With
+  scopes, **each** listed scope must have a qualifying layer. For example, `RequireConfig(RequireFile, ScopeSystem)`
+  means "a system config file must exist".
+- **Several requirements combine.** Each `RequireConfig` option adds a requirement, and all of them must hold:
+
+```go
+cascadingconfig.RequireConfig(cascadingconfig.RequireAny),                                  // something, anywhere
+cascadingconfig.RequireConfig(cascadingconfig.RequireFile|cascadingconfig.RequireNonEmpty,  // and a real system file
+	cascadingconfig.ScopeSystem),
+```
+
+- **Errors:** each unmet requirement is a `*NotFoundError` (404) that names the requirement. Several are joined, like
+  other load errors. An unknown scope is an `*OptionError` at `New`.
 
 ## Describe
 
@@ -508,13 +642,12 @@ type Tree = map[string]any
 | ---------------- | -------------------------- | --------------------------------------------------------------------------------------- |
 | null             | `nil`                      | YAML and JSON only.                                                                     |
 | boolean          | `bool`                     |                                                                                         |
-| integer          | `int64`                    | JSON integers too. The JSON decoder uses `UseNumber` and converts whole numbers.         |
+| integer          | `int64`                    | Only literals with no fraction or exponent that fit. JSON `1.0` is a float. Out of range is a `*ParseError`. |
 | float            | `float64`                  |                                                                                         |
 | string           | `string`                   |                                                                                         |
-| date-time with offset | `time.Time`           | TOML offset date-times, YAML timestamps.                                                |
-| local date or time | `string`                 | TOML local dates and times, in their RFC 3339 text form, so nothing is lost. Decode hooks parse them. |
+| date or time     | `string`                   | Every format, in RFC 3339 form, including TOML offset and local date-times ([design.md](design.md#format-dialects)). |
 | array            | `[]any`                    |                                                                                         |
-| table / map      | `map[string]any`           | Keys must be strings. A YAML map with non-string keys is a `*ParseError`.                |
+| table / map      | `map[string]any`           | Keys are strings. YAML non-string keys are turned into strings. The top level must be a map. |
 
 ### `Path`
 
@@ -621,7 +754,7 @@ implements it.
 // Decoder parses one format. Implemented by format/json, format/toml, format/yaml.
 type Decoder interface {
 	Format() string        // "toml"
-	Extensions() []string  // "toml"
+	Extensions() []string  // "toml"; for YAML "yaml", "yml": listed in rank order, highest first
 	MediaTypes() []string  // "application/toml", for http(s) includes without an extension
 	Decode(data []byte) (Tree, error) // canonical values only
 }
@@ -644,6 +777,12 @@ type IncludeResolver interface {
 type FileSystem interface {
 	OpenRoot(dir string) (Root, error)              // os.Root-style, confined to dir
 	EvalSymlinks(path string) (string, error)
+	SameFile(a, b fs.FileInfo) bool                 // file identity, for dedup
+}
+
+// OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners.
+type OwnerInfo interface {
+	Owner() (uid int, ok bool)
 }
 
 type Root interface {
@@ -700,3 +839,23 @@ type Source struct {
 | 3 | Paths                        | One generic `PathSpec` parameter. `DecodeAt` and `OriginOf` are therefore package functions taking the `*Result`. |
 | 4 | Values in reports            | Never. Reports, origins and diff text carry paths, keys and metadata only.                                 |
 | 5 | Extension interfaces         | As sketched. Before 1.0 they evolve only by adding optional interfaces, as `Watchable` and `PositionError` do. |
+
+## Test helpers
+
+**Status: decided** ([implementation-plan.md](implementation-plan.md#decisions)).
+
+The core module includes a public `cctest` package, so that the other modules' tests, and app authors' own tests, can
+exercise the loader without real files or timers:
+
+- **`cctest.FS`:** an in-memory filesystem implementing the [`FileSystem`](#extension-interfaces) interface, with
+  symlinks, permissions and owners.
+- **`cctest.Notifier`:** a fake `Notifier` whose events the test triggers.
+- **`cctest.Clock`:** a fake clock for debounce, TTLs and polling. The loader's clock is internal, and `cctest` is the
+  only way to replace it, so the public API has no `WithClock` option.
+- **`cctest.Host`:** a fake host: env vars, home dir, current dir, `GOOS`, `GOARCH` and the current user's UID. The
+  loader reads all of these through an internal host interface, never from the process directly, and `cctest` is the
+  only way to replace it. So tests can run in parallel, and Windows and platform-environment behaviour can be tested on
+  any machine.
+- **How fakes reach a loader:** options are sealed, so `cctest` returns ready-made core `Option`s through an internal
+  hook, for example `cctest.WithHost(cctest.Host{GOOS: "windows", Env: map[string]string{…}})`.
+- **Golden-file helpers** for reports and discovery orders.

@@ -395,7 +395,7 @@ variables by itself.
   contain dots; active files are selected by exact glob patterns" (`conf_d_file_environment` in `src/config/mod.rs`).
 - **Matched literally, never combined:** `mise.dev.linux.local.toml` loads only when an environment named exactly
   `dev.linux` is selected. Neither `-E dev` on Linux nor `-E dev,linux` loads it.
-- **Some filenames are ambiguous:** `mise.dev.local.toml` is the local file of `dev`, or the shared file of `dev.local`.
+- **Some filenames are ambiguous:** `mise.dev.local.toml` is the local file of `dev`, or the env file of `dev.local`.
   Whichever name is selected decides.
 - **No warning for unmatched files:** a file that no selected environment matches is silently not loaded. The only
   related warnings belong to the switch-over periods (dotted `conf.d` names, and platform files before `auto_env` is on
@@ -469,7 +469,7 @@ in it is confirmed, and the detail behind each one is in
 | D6 | **Global filenames**        | `config`, `config.{ext}`                                 | `config.toml`, `{name}.toml`, `conf.d/…`, `.local`, `{env}` | Layout from mise; extension set from the formats we register. |
 | D7 | **Per-directory names**     | `.{name}rc[.{ext}]`, `.config/{name}rc[.{ext}]`, `{name}.config.{ext}` | `{name}.toml`, `.{name}.toml`, `{name}/config.toml`, `.{name}/config.toml`, `.config/{name}.toml`, `.config/{name}/config.toml`, `conf.d` | mise's layout with any registered extension. rc-style names via `cosmiconfig.Preset`. |
 | D8 | **Formats**                 | JSON, YAML, extensionless YAML, JS/TS                    | TOML, `.tool-versions`                                  | Pluggable decoders keyed by extension. Ship JSON, YAML and TOML. JS/TS are not portable to Go. When one slot matches several formats, all are merged with TOML applied last (it wins) by default; the order can be overridden with `{NAME}_CONFIG_FORMATS` (see [File format precedence](design.md#file-format-precedence)). |
-| D9 | **Manifest property**       | `package.json` / `package.yaml` `{name}` key             | None.                                                   | Supported as an opt-in "embedded" source, for example `package.json#{name}` or `pyproject.toml#tool.{name}`. |
+| D9 | **Manifest property**       | `package.json` / `package.yaml` `{name}` key             | None.                                                   | Not in any preset, because it is Node.js-specific. Users can add a manifest source with the `Embedded` scope kind, for example `package.json#{name}` or `pyproject.toml#tool.{name}`. |
 | D10 | **System tier**            | None.                                                    | `/etc/{name}`                                           | Include it, as mise does. On Windows, `%ProgramData%\{name}` (see [Platform directories](design.md#platform-directories)). |
 | D11 | **Override tier**          | None.                                                    | `config.override.toml`                                  | Include it, as mise does.                           |
 | D12 | **Local / env variants**   | None.                                                    | `.local`, `.{env}`, `.{env}.local`                      | Include them, as mise does. The env selector is configurable. |
