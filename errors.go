@@ -1,6 +1,10 @@
 package cascadingconfig
 
-import "errors"
+import (
+	"errors"
+	"strconv"
+	"strings"
+)
 
 // Code classifies an error. Codes follow HTTP status codes where that makes sense.
 type Code int
@@ -45,8 +49,7 @@ type BaseError struct {
 // NewError builds a base error for situations with no specific type, such as cancellation (CodeCanceled) or a failed
 // app callback (CodeInternal).
 func NewError(code Code, op, path string, err error) *BaseError {
-	_, _, _, _ = code, op, path, err
-	return &BaseError{}
+	return &BaseError{Op: op, Path: path, Err: err, code: code}
 }
 
 // Code returns the code given to NewError.
@@ -56,27 +59,57 @@ func (e *BaseError) Code() Code {
 
 // Unwrap returns the underlying cause.
 func (e *BaseError) Unwrap() error {
-	_ = e
-	return nil
+	return e.Err
 }
 
 // Error returns "cascadingconfig: <op> <path>: <cause>", or "cascadingconfig: <op>: <cause>" without a path.
 func (e *BaseError) Error() string {
-	_ = e
-	return ""
+	return e.format(e.Path)
+}
+
+// format builds the message with location in place of the path, so specific types can add a position.
+func (e *BaseError) format(location string) string {
+	var b strings.Builder
+	b.WriteString("cascadingconfig:")
+	if e.Op != "" {
+		b.WriteString(" ")
+		b.WriteString(e.Op)
+	}
+	if location != "" {
+		b.WriteString(" ")
+		b.WriteString(location)
+	}
+	if e.Err != nil {
+		b.WriteString(": ")
+		b.WriteString(e.Err.Error())
+	}
+	return b.String()
 }
 
 // CodeOf returns the code of the first cascadingconfig error in err's chain, or 0.
 func CodeOf(err error) Code {
-	_ = err
+	var c Coder
+	if errors.As(err, &c) {
+		return c.Code()
+	}
 	return 0
 }
 
 // Errors splits err into its individual errors. Any error with an Unwrap() []error method, such as one from
 // errors.Join, is split, recursively. A single error is returned on its own, and nil gives nil.
 func Errors(err error) []error {
-	_ = err
-	return nil
+	if err == nil {
+		return nil
+	}
+	multi, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return []error{err}
+	}
+	var out []error
+	for _, e := range multi.Unwrap() {
+		out = append(out, Errors(e)...)
+	}
+	return out
 }
 
 // OptionError reports invalid loader configuration, such as an unknown scope, an invalid environment name, a bad
@@ -88,14 +121,12 @@ type OptionError struct {
 
 // Code returns CodeBadRequest.
 func (e *OptionError) Code() Code {
-	_ = e
-	return 0
+	return CodeBadRequest
 }
 
 // Is reports whether target is ErrInvalidOption.
 func (e *OptionError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrInvalidOption
 }
 
 // ErrInvalidOption is the sentinel for *OptionError.
@@ -112,14 +143,12 @@ type ParseError struct {
 
 // Code returns CodeBadRequest.
 func (e *ParseError) Code() Code {
-	_ = e
-	return 0
+	return CodeBadRequest
 }
 
 // Is reports whether target is ErrParse.
 func (e *ParseError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrParse
 }
 
 // ErrParse is the sentinel for *ParseError.
@@ -128,8 +157,14 @@ var ErrParse = errors.New("cascadingconfig: parse error")
 // Error returns "cascadingconfig: <op> <path>:<line>:<col>: <cause>" when the position is known, and the BaseError form
 // otherwise.
 func (e *ParseError) Error() string {
-	_ = e
-	return ""
+	if e.Line <= 0 {
+		return e.BaseError.Error()
+	}
+	location := e.Path + ":" + strconv.Itoa(e.Line)
+	if e.Column > 0 {
+		location += ":" + strconv.Itoa(e.Column)
+	}
+	return e.format(location)
 }
 
 // ReferenceError reports an include reference that fails validation, including traversal attempts.
@@ -139,14 +174,12 @@ type ReferenceError struct {
 
 // Code returns CodeBadRequest.
 func (e *ReferenceError) Code() Code {
-	_ = e
-	return 0
+	return CodeBadRequest
 }
 
 // Is reports whether target is ErrInvalidReference.
 func (e *ReferenceError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrInvalidReference
 }
 
 // ErrInvalidReference is the sentinel for *ReferenceError.
@@ -160,14 +193,12 @@ type PolicyError struct {
 
 // Code returns CodeForbidden.
 func (e *PolicyError) Code() Code {
-	_ = e
-	return 0
+	return CodeForbidden
 }
 
 // Is reports whether target is ErrPolicy.
 func (e *PolicyError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrPolicy
 }
 
 // ErrPolicy is the sentinel for *PolicyError.
@@ -180,14 +211,12 @@ type NotFoundError struct {
 
 // Code returns CodeNotFound.
 func (e *NotFoundError) Code() Code {
-	_ = e
-	return 0
+	return CodeNotFound
 }
 
 // Is reports whether target is ErrNotFound.
 func (e *NotFoundError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrNotFound
 }
 
 // ErrNotFound is the sentinel for *NotFoundError.
@@ -200,14 +229,12 @@ type ConflictError struct {
 
 // Code returns CodeConflict.
 func (e *ConflictError) Code() Code {
-	_ = e
-	return 0
+	return CodeConflict
 }
 
 // Is reports whether target is ErrConflict.
 func (e *ConflictError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrConflict
 }
 
 // ErrConflict is the sentinel for *ConflictError.
@@ -220,14 +247,12 @@ type TooLargeError struct {
 
 // Code returns CodeTooLarge.
 func (e *TooLargeError) Code() Code {
-	_ = e
-	return 0
+	return CodeTooLarge
 }
 
 // Is reports whether target is ErrTooLarge.
 func (e *TooLargeError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrTooLarge
 }
 
 // ErrTooLarge is the sentinel for *TooLargeError.
@@ -240,14 +265,12 @@ type UnsupportedFormatError struct {
 
 // Code returns CodeUnsupportedMediaType.
 func (e *UnsupportedFormatError) Code() Code {
-	_ = e
-	return 0
+	return CodeUnsupportedMediaType
 }
 
 // Is reports whether target is ErrUnsupportedFormat.
 func (e *UnsupportedFormatError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrUnsupportedFormat
 }
 
 // ErrUnsupportedFormat is the sentinel for *UnsupportedFormatError.
@@ -261,14 +284,12 @@ type DecodeError struct {
 
 // Code returns CodeUnprocessable.
 func (e *DecodeError) Code() Code {
-	_ = e
-	return 0
+	return CodeUnprocessable
 }
 
 // Is reports whether target is ErrDecode.
 func (e *DecodeError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrDecode
 }
 
 // ErrDecode is the sentinel for *DecodeError.
@@ -281,14 +302,12 @@ type MergeError struct {
 
 // Code returns CodeUnprocessable.
 func (e *MergeError) Code() Code {
-	_ = e
-	return 0
+	return CodeUnprocessable
 }
 
 // Is reports whether target is ErrMerge.
 func (e *MergeError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrMerge
 }
 
 // ErrMerge is the sentinel for *MergeError.
@@ -301,14 +320,12 @@ type TransformError struct {
 
 // Code returns CodeUnprocessable.
 func (e *TransformError) Code() Code {
-	_ = e
-	return 0
+	return CodeUnprocessable
 }
 
 // Is reports whether target is ErrTransform.
 func (e *TransformError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrTransform
 }
 
 // ErrTransform is the sentinel for *TransformError.
@@ -322,14 +339,12 @@ type IOError struct {
 
 // Code returns CodeInternal.
 func (e *IOError) Code() Code {
-	_ = e
-	return 0
+	return CodeInternal
 }
 
 // Is reports whether target is ErrIO.
 func (e *IOError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrIO
 }
 
 // ErrIO is the sentinel for *IOError.
@@ -342,14 +357,12 @@ type UnsupportedSchemeError struct {
 
 // Code returns CodeNotImplemented.
 func (e *UnsupportedSchemeError) Code() Code {
-	_ = e
-	return 0
+	return CodeNotImplemented
 }
 
 // Is reports whether target is ErrUnsupportedScheme.
 func (e *UnsupportedSchemeError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrUnsupportedScheme
 }
 
 // ErrUnsupportedScheme is the sentinel for *UnsupportedSchemeError.
@@ -365,14 +378,15 @@ type FetchError struct {
 
 // Code returns CodeBadGateway, or CodeGatewayTimeout when Timeout is set.
 func (e *FetchError) Code() Code {
-	_ = e
-	return 0
+	if e.Timeout {
+		return CodeGatewayTimeout
+	}
+	return CodeBadGateway
 }
 
 // Is reports whether target is ErrFetch.
 func (e *FetchError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrFetch
 }
 
 // ErrFetch is the sentinel for *FetchError.
@@ -385,14 +399,12 @@ type CycleError struct {
 
 // Code returns CodeLoopDetected.
 func (e *CycleError) Code() Code {
-	_ = e
-	return 0
+	return CodeLoopDetected
 }
 
 // Is reports whether target is ErrIncludeCycle.
 func (e *CycleError) Is(target error) bool {
-	_, _ = e, target
-	return false
+	return target == ErrIncludeCycle
 }
 
 // ErrIncludeCycle is the sentinel for *CycleError.

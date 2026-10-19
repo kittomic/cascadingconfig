@@ -1,5 +1,12 @@
 package cascadingconfig
 
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"unicode/utf8"
+)
+
 // Decoder parses one format. It is implemented by format/json, format/toml and format/yaml, and by any format an app
 // adds.
 //
@@ -58,6 +65,111 @@ const (
 //
 // path is the file's path, used in errors and warnings.
 func DecodeDocument(d Decoder, path string, data []byte) (Document, error) {
-	_, _, _ = d, path, data
-	return Document{}, errNotImplemented
+	data = bytes.TrimPrefix(data, byteOrderMark)
+	if offset := invalidUTF8Offset(data); offset >= 0 {
+		line, column := position(data, offset)
+		return Document{}, &ParseError{
+			BaseError: BaseError{Op: "decode", Path: path, Err: errors.New("the input isn't valid UTF-8")},
+			Format:    d.Format(),
+			Line:      line,
+			Column:    column,
+		}
+	}
+
+	doc, err := d.Decode(data)
+	if err != nil {
+		return Document{}, parseError(d, path, err)
+	}
+
+	if doc.Empty {
+		doc.Tree = nil
+	} else {
+		if doc.Tree == nil {
+			return Document{}, NewError(CodeInternal, "decode", path,
+				fmt.Errorf("the %s decoder returned no tree for a non-empty document", d.Format()))
+		}
+		if err := checkCanonical(doc.Tree, nil); err != nil {
+			return Document{}, NewError(CodeInternal, "decode", path,
+				fmt.Errorf("the %s decoder produced %w", d.Format(), err))
+		}
+	}
+
+	if len(doc.Warnings) > 0 {
+		warnings := make([]Warning, len(doc.Warnings))
+		copy(warnings, doc.Warnings)
+		for i := range warnings {
+			if warnings[i].Path == "" {
+				warnings[i].Path = path
+			}
+		}
+		doc.Warnings = warnings
+	}
+	return doc, nil
+}
+
+var byteOrderMark = []byte{0xEF, 0xBB, 0xBF}
+
+// parseError turns a decoder's error into a *ParseError, keeping a *ParseError the decoder built itself.
+func parseError(d Decoder, path string, err error) *ParseError {
+	var pe *ParseError
+	if errors.As(err, &pe) {
+		if pe.Path == "" {
+			pe.Path = path
+		}
+		if pe.Format == "" {
+			pe.Format = d.Format()
+		}
+		return pe
+	}
+	pe = &ParseError{BaseError: BaseError{Op: "decode", Path: path, Err: err}, Format: d.Format()}
+	var pos PositionError
+	if errors.As(err, &pos) {
+		pe.Line, pe.Column = pos.Position()
+	}
+	return pe
+}
+
+// invalidUTF8Offset returns the byte offset of the first invalid UTF-8 sequence in data, or -1.
+func invalidUTF8Offset(data []byte) int {
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
+		if r == utf8.RuneError && size <= 1 {
+			return i
+		}
+		i += size
+	}
+	return -1
+}
+
+// position returns the 1-based line and column of a byte offset in data. Columns count bytes.
+func position(data []byte, offset int) (line, column int) {
+	offset = min(max(offset, 0), len(data))
+	before := data[:offset]
+	line = bytes.Count(before, []byte{'\n'}) + 1
+	column = offset - (bytes.LastIndexByte(before, '\n') + 1) + 1
+	return line, column
+}
+
+// checkCanonical reports the first value in v that isn't one of the canonical types documented on Tree.
+func checkCanonical(v any, at Path) error {
+	switch v := v.(type) {
+	case nil, bool, int64, float64, string:
+		return nil
+	case []any:
+		for _, e := range v {
+			if err := checkCanonical(e, at); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]any:
+		for k, e := range v {
+			if err := checkCanonical(e, append(at[:len(at):len(at)], k)); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("a non-canonical value of type %T at %q", v, at.String())
+	}
 }
