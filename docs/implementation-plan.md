@@ -149,18 +149,23 @@ Not test-first: this is tooling.
 
 ## M2: Merge engine
 
-**Scope:** merging trees layer by layer, with provenance. No discovery yet: tests pass layers in directly.
+**Scope:** merging trees layer by layer, with provenance. No discovery yet: tests pass layers in directly, through one
+unexported entry point, and check the results only through `Result.Tree` and `OriginOf` (DL-86). This brings forward
+`Result` (`Tree` only), `Origin`, `OriginOf`, `MergeStrategy`, `MergeFunc`, `FormatConflict`, and the parts of `Layer`,
+`ScopeName`, `Variant` and `TrustLevel` that merging needs. The options that set merging up arrive in M3.
 
 **Acceptance tests:**
 
 - **Deep merge:** objects merge, arrays and scalars are replaced (DL-8, § [Merging](design.md#merging)).
 - **Per-key rules** (DL-10, § [Per-key merge rules](design.md#per-key-merge-rules)):
-  - every strategy
+  - every strategy, and `MergeFunc` (DL-87)
   - wildcard matching
-  - the most specific rule wins
-  - ambiguous rules are an error when registered
-  - `Replace` and `Func` cover their subtree
-  - type mismatches name both files
+  - the most specific rule wins, and the same path again replaces a rule (DL-88)
+  - ambiguous rules and a root rule are errors when registered
+  - `Replace` and functions cover their subtree
+  - type mismatches name the key and both files, and every mismatch is reported (DL-90)
+  - without a rule, merging never fails
+  - a function's error is a `*MergeError`, and a non-canonical result a 500 (DL-89)
 - **`_unset`** (DL-11, § [Unsetting keys](design.md#unsetting-keys)):
   - both path forms, and nested placement
   - removal happens before the layer's own values merge
@@ -168,14 +173,19 @@ Not test-first: this is tooling.
   - a missing key is a no-op
   - the key is stripped from the result
   - it can be renamed or turned off
+  - malformed values and `_unset` inside arrays are `*ParseError`s, and a table holding only `_unset` doesn't set its
+    key (DL-92)
 - **Null** (§ [Null values](design.md#null-values-yaml-and-json)):
   - replaces any type
   - is replaced by any value
   - is never a type mismatch
   - stays in the result
-- **Same-slot formats** (DL-3, § [File format precedence](design.md#file-format-precedence)): reverse-precedence merge
-  order, and the `merge`, `first` and `error` policies.
-- **Provenance:** `Origin` kinds and history for set, appended, null and unset values.
+- **Same-slot formats** (DL-3, DL-93, § [File format precedence](design.md#file-format-precedence)): reverse-precedence
+  merge order, extension rank within a format, and the `ConflictMerge`, `ConflictFirst` and `ConflictFail` policies,
+  with their warnings and errors.
+- **Provenance** (DL-91): `Origin` kinds, elements and history for set, merged, appended, prepended, function, null and
+  unset values, and history restarting below a replaced table.
+- **Ownership:** `Result.Tree()` returns a copy (§ [Concurrency and ownership](api.md#concurrency-and-ownership)).
 
 ## M3: Options, presets and `New`
 

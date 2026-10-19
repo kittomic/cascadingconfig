@@ -34,7 +34,8 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
 │   ├── mise/                       package mise:         mise.Preset
 │   ├── misehardened/               package misehardened: misehardened.Preset
 │   └── cosmiconfig/                package cosmiconfig:  cosmiconfig.Preset
-├── internal/                       core-only helpers (tree, merge, path safety, …)
+├── internal/                       core-only helpers (tree copying, path safety, …); the merge engine is in the root
+│                                   package, because it uses the public types (DL-86)
 │   └── compat/
 │       └── go.mod                  module …/internal/compat (test-only, never released): koanf parity tests
 ├── examples/

@@ -363,7 +363,10 @@ The app can attach a merge strategy to a key path. The rule is used whenever two
 | `Replace`   | `higher`, whole, with nothing below it inherited. This is the default for every other value. |
 | `Append`    | `lower` + `higher`, for arrays only.                                           |
 | `Prepend`   | `higher` + `lower`, for arrays only.                                           |
-| `Func`      | A custom `func(path Path, lower, higher any) (any, error)`.                    |
+
+The four strategies are constants of type `MergeStrategy`, set with `WithMergeRule(path, strategy)`. A custom merge is a
+`MergeFunc`, `func(path Path, lower, higher any) (any, error)`, with its own option, `WithMergeFunc(path, f)`, so the
+strategies can stay constants (DL-87).
 
 **Paths:**
 
@@ -372,15 +375,25 @@ The app can attach a merge strategy to a key path. The rule is used whenever two
 - **Keys containing dots:** use the list form, for example `Path("plugins", "foo.bar")`.
 - **Matching** is case-sensitive, because TOML, YAML and JSON keys all are.
 
-**Matching rules:**
+**Matching rules** (DL-88):
 
-- **Most specific rule wins.** An exact path beats a path with wildcards, fewer wildcards beat more, and a longer path
-  beats a shorter one.
-- **Ambiguous rules are an error.** If two rules are still tied, the error is reported when the rule is registered, not
-  while loading.
-- **`Replace` and `Func` cover the whole subtree.** Rules on paths below the matched one are not consulted.
-- **Type mismatches:** a rule that meets the wrong type, such as `Append` on a non-array, is a load error. The error
-  names both layers' files. Null is never a mismatch (see [Null values](#null-values-yaml-and-json)).
+- **Most specific rule wins.** At a given key, an exact path beats a path with wildcards, and fewer wildcards beat more.
+  Every rule that matches a key has the key's length, because `*` matches exactly one segment. A shorter rule only
+  reaches deeper keys by covering its subtree (below).
+- **Ambiguous rules are an error.** Two rules are ambiguous when they have the same length and the same number of
+  wildcards, and some key matches both, such as `a.*` and `*.b`, which both match `a.b`. This is an `*OptionError` when
+  the rules are set, not while loading.
+- **The same path again replaces the earlier rule,** so an app can override a rule that came in a shared option group.
+  `"tools.*"` and `Path{"tools", "*"}` are the same path.
+- **No rule on the root.** A rule on the empty path is an `*OptionError`.
+- **`Replace` and functions cover the whole subtree.** Rules on paths below the matched one are not consulted.
+- **Type mismatches:** a `DeepMerge` rule needs two tables, and `Append` and `Prepend` need two arrays. A rule that
+  meets other types is a `*MergeError`, which names the key and both layers' files (DL-90). The merge carries on, and
+  every mismatch is reported, joined. Null is never a mismatch (see [Null values](#null-values-yaml-and-json)).
+- **Without a rule, merging never fails.** A value of another type simply replaces the lower one.
+- **Functions** get copies of both values. An error a function returns is a `*MergeError` that wraps it: rejecting a
+  combination of values is a problem with the config. A returned value outside the
+  [canonical types](api.md#tree-and-values) is a bug in the app, reported as a `*BaseError` with `CodeInternal` (DL-89).
 
 **Where rules come from:**
 
@@ -394,8 +407,9 @@ The app can attach a merge strategy to a key path. The rule is used whenever two
   whichever route a file was found by.
 
 **Provenance:** each merged value records the layer it came from. For `Append` and `Prepend`, each element records its
-own layer. For `Func`, the value is attributed to both layers. This is what lets `Describe()` answer "where did this
-value come from?".
+own layer. For a function, the result is attributed to the higher layer, with the lower layer in its history. A table
+that several layers contributed to is `Merged` (see [`Origin`](api.md#result-report-and-origin)). This is what lets
+`Describe()` answer "where did this value come from?".
 
 #### Example: mise's section semantics as rules
 
@@ -432,6 +446,10 @@ The default name is `_unset` so that TOML, our first-ranked format, can write it
 - **Value:** a list of paths, relative to the table that contains `_unset`. An entry is either a dot-separated string
   (`"server.tls"`) or a list of segments for keys that contain dots (`["plugins", "foo.bar"]`).
 - **No wildcards:** to clear a whole table, unset the table itself.
+- **Malformed values** are a `*ParseError` naming the file: a value that isn't a list, an entry that isn't a string or a
+  list of strings, or an empty path (DL-92).
+- **Not inside arrays:** `_unset` in a table inside an array is a `*ParseError`. Arrays are never merged, so it could
+  never remove anything.
 - **Placement:** `_unset` may appear in any table, not only at the top level. `[server]` with `_unset = ["tls"]` is the
   same as a top-level `_unset = ["server.tls"]`.
 
@@ -447,12 +465,15 @@ has `server = { port = 8080, … }` with any lower `server.tls` gone. Other keys
 **Other rules:**
 
 - **Only lower layers are affected.** A higher layer can set the key again.
-- **Missing keys:** unsetting a key that no lower layer set does nothing. It isn't an error, because lower layers vary
-  from machine to machine.
+- **Missing keys:** unsetting a key that no lower layer set does nothing, and leaves no trace in the key's history. It
+  isn't an error, because lower layers vary from machine to machine.
+- **A table holding only `_unset`** doesn't count as setting its key. `[server]` with nothing but `_unset = ["tls"]`
+  neither creates an empty `server` table nor replaces a lower `server = 5`. This applies recursively: a table left
+  empty only by such tables doesn't count either.
 - **Arrays:** unsetting removes the whole array. There is no way to remove single items; use a `Replace` rule or
   redefine the array.
-- **Merge rules:** removal happens before [per-key merge rules](#per-key-merge-rules) run. Rules, including `Func`, only
-  run when both sides still have the path after removal.
+- **Merge rules:** removal happens before [per-key merge rules](#per-key-merge-rules) run. Rules, including functions,
+  only run when both sides still have the path after removal.
 - **Never in the result:** `_unset` is stripped from the merged config. `Describe()` records each removal ("`proxy`
   unset by `~/work/app/myapp.local.toml`").
 - **Applies everywhere:** across scopes, variants, same-slot formats and includes.
@@ -483,8 +504,8 @@ is **not** the same as `_unset`:
 - **A higher non-null value replaces a lower null.** An object over a null is taken as it is; there is nothing to
   deep-merge into.
 - **Null is never a type mismatch.** When either side is null, the merge is a `Replace` and the higher value wins. This
-  holds whatever per-key rule matches: `DeepMerge`, `Append` and `Prepend` all give way. `Func` is the exception: it
-  receives `nil` and decides for itself.
+  holds whatever per-key rule matches: `DeepMerge`, `Append` and `Prepend` all give way. A `MergeFunc` is the exception:
+  it receives `nil` and decides for itself.
 - **Same-slot formats:** null follows the normal order. If `myapp.yaml` has `port: ~` and `myapp.toml` has `port = 80`,
   TOML is applied last, so the result is `80`. If only the YAML file sets `port`, the result is `null`.
 - **Decoding into structs:** a null leaves the field untouched, as koanf does. In a fresh struct that means `nil` or the
@@ -558,10 +579,12 @@ The **slot** is one pattern in one directory, with everything except `{ext}` fil
   another pattern's files.
 - **One layer per file:** each file keeps its own metadata (path and format), so diagnostics can show which file set
   which key.
-- **The `FormatConflict` policy** can be:
-  - `merge`: the default, as described here.
-  - `first`: load only the highest-ranked file and report the others as ignored.
-  - `error`: fail when a slot matches more than one format.
+- **The `FormatConflict` policy**, set with `WithFormatConflict` (DL-93), can be:
+  - `ConflictMerge` (`merge`): the default, as described here.
+  - `ConflictFirst` (`first`): load only the highest-ranked file. The others get the status Ignored and a
+    `WarnFormatConflict` warning.
+  - `ConflictFail` (`error`): fail with a `*ConflictError` when a slot matches more than one file. Two files of one
+    format, such as `.yaml` and `.yml`, count too. The error lists every file in the slot.
 - **Format ranking only orders files within a slot.** Across different patterns, pattern order decides as usual. For
   example, `myapp.toml` and `.myapp.yaml` are different slots. `.myapp.yaml` ranks higher because its pattern does, even
   though TOML outranks YAML.
@@ -579,7 +602,7 @@ The **slot** is one pattern in one directory, with everything except `{ext}` fil
 - **The order lists formats, not extensions.** One format can have several extensions: YAML is both `.yaml` and `.yml`.
 - **Within a format, extensions have a fixed rank.** For YAML, `.yaml` ranks above `.yml`, because `yaml` sorts first
   alphabetically. A slot containing both loads both under the default `merge` policy, with `.yaml` applied last so it
-  wins where they overlap. Under `first`, only `.yaml` loads.
+  wins where they overlap. Under `first`, only `.yaml` loads. Under `error`, the pair is a `*ConflictError`.
 - **Extensionless files** (cosmiconfig's `.{name}rc`) are decoded by the format that `WithExtensionlessFormat(format)`
   names. With no such setting, extensionless candidates aren't searched.
 - An order set by the app, an env var or a bootstrap file may only name formats with a registered decoder. A layout's
@@ -1416,6 +1439,14 @@ There are no open questions.
 | 83 | Warnings                                     | A `Warning` type with a `WarningCode` (string), file path, key path and message. The full report format is settled in M5. |
 | 84 | Building errors in other modules             | Each specific error type defines its own fixed `Code()`; the base `BaseError` has exported fields (it can't be named `Error`, because a field and a method can't share a name); `NewError` builds base errors with a code ([api.md](api.md#errors)). |
 | 85 | Path parsing                                 | The empty string is the root; empty segments are errors; segments can be double-quoted as in TOML, and `String()` quotes where needed, so paths round-trip ([api.md](api.md#path)). |
+| 86 | Where the merge engine lives                 | In the root package, because it uses the public types. Its tests call one unexported entry point and check results only through `Result.Tree` and `OriginOf`, so they carry over to `Load`. |
+| 87 | Writing strategies                           | `MergeStrategy` constants `DeepMerge`, `Replace`, `Append`, `Prepend`; a custom `MergeFunc` has its own option, `WithMergeFunc` (see [Per-key merge rules](#per-key-merge-rules)). |
+| 88 | Rule matching                                | Ambiguous means same length, same wildcard count, and some key matches both; the same path again replaces the rule; no root rule; explicit rules can mismatch, the default merge never fails. |
+| 89 | Errors from merge functions                  | A `*MergeError` (422) wrapping the app's error, not a 500 callback error; a non-canonical return value is a 500. Functions get copies. |
+| 90 | Naming both files in a mismatch              | `*MergeError` has `Key` and `Lower`; `Path` is the higher layer's file. Every mismatch is reported, joined ([api.md](api.md#errors)). |
+| 91 | Shape of `Origin`                            | `Layer`, `Kind`, `Elements` and `History`, with kinds including `OriginMerged` and `OriginUnset`; history restarts when an enclosing table is replaced ([api.md](api.md#result-report-and-origin)). |
+| 92 | `_unset` edge cases                          | Malformed values and `_unset` inside arrays are `*ParseError`s; a table holding only `_unset` doesn't set its key; a no-op unset leaves no trace (see [Unsetting keys](#unsetting-keys)). |
+| 93 | Several files in one slot                    | `FormatConflict` constants `ConflictMerge`, `ConflictFirst`, `ConflictFail` (not `ConflictError`, which is the error type's name); `ConflictFail` fires on a second file, even of the same format; `*ConflictError` lists the files; skipped files warn with `WarnFormatConflict`. |
 
 ---
 
