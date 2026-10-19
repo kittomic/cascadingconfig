@@ -102,13 +102,17 @@ Not test-first: this is tooling.
     another project. It becomes `github.com/kittomic/cascadingconfig`.
   - **`.config/mise.toml`:** every tool is pinned to an exact version instead of `latest`, so lint and `govulncheck`
     results only change when a version is deliberately bumped.
-- **Test helpers in a public `cctest` package** (core module):
-  - **`cctest.FS`:** an in-memory filesystem with symlinks, permissions and owners.
-  - **`cctest.Notifier`:** a fake file-change notifier.
-  - **`cctest.Clock`:** a fake clock.
-  - **Golden-file helpers.**
+- **The `cctest` package** (core module) is created empty. It's public, so that the other modules' tests, and app
+  authors' tests, can use it. Each helper is built in the milestone that defines the interface it fakes, so no interface
+  is designed early:
 
-  The package is public so that the other modules' tests, and app authors' tests, can use it too.
+  | Helper                              | Milestone | Fakes                                                          |
+  | ----------------------------------- | --------- | -------------------------------------------------------------- |
+  | `cctest.FS`                         | M4a       | the `FileSystem` interface: symlinks, permissions, owners      |
+  | `cctest.Host`                       | M4a       | the internal host: env vars, home, cwd, `GOOS`, `GOARCH`, UID  |
+  | Golden-file helpers                 | M4a       | discovery orders; reused for reports in M5                     |
+  | `cctest.Clock`                      | M8        | the internal clock, first needed for cache TTLs; reused in M9  |
+  | `cctest.Notifier`                   | M9        | the `Notifier` interface                                       |
 
 ## M1: Foundations
 
@@ -198,6 +202,7 @@ The largest milestone, done in three parts.
 
 **Scope:**
 
+- **Test helpers:** `cctest.FS`, `cctest.Host` and the golden-file helpers ([M0](#m0-repository-and-tooling)).
 - **The filesystem hook:** OS-backed, with `os.Root` and symlinks, plus the `fs.FS` adapter (§
   [Filesystem hook](design.md#filesystem-hook)).
 - **Platform dirs** (DL-14).
@@ -314,6 +319,10 @@ The largest milestone, done in three parts.
 
 **Scope:** `format/toml` (`pelletier/go-toml/v2`) and `format/yaml` (`goccy/go-yaml`).
 
+**Decision needed first:** these are the first modules to import the core, so `scripts/check-gowork-off.sh` can't build
+them until the core can be fetched on its own, as a pushed commit or a release. How that check treats them before the
+first release is decided at the start of this milestone.
+
 **Acceptance tests:**
 
 - **Canonical types:**
@@ -367,6 +376,7 @@ The largest milestone, done in three parts.
 
 **Scope:**
 
+- **Test helper:** `cctest.Clock` ([M0](#m0-repository-and-tooling)).
 - **`httpresolver`.**
 - **`gitresolver`**, which runs the `git` program.
 - **The `ociresolver` module.**
@@ -414,6 +424,7 @@ The largest milestone, done in three parts.
 
 **Scope:** § [Hot reload](design.md#hot-reload) and DL-37 to DL-41:
 
+- **Test helper:** `cctest.Notifier` ([M0](#m0-repository-and-tooling)).
 - **Watching:** `Watch[T]`, `w.Current()`, `w.Reload()` and the watch options.
 - **The watch set:** planning it, including the ancestors of missing dirs.
 - **Reloading:** debounced full reloads, with the last good snapshot kept on failure.
@@ -460,6 +471,8 @@ Not test-first.
 - **CI (GitHub Actions):** a workflow that runs the same `scripts/` on every PR to `wip` and `main`, with merging
   blocked until they pass. It's added now at the latest, or earlier if a second contributor joins.
 - **Release:** `wip` goes to `main` by fast-forward or merge commit, never by squash.
+- **Vulnerability reporting:** `SECURITY.md` points at GitHub's private vulnerability reporting, which GitHub only
+  offers on public repositories. Enable it in the repository settings when the repository is made public.
 - **Tags:** the core `v0.1.0` first, then the other modules, then `presets`, in the order set out in
   [project-layout.md](project-layout.md#versioning-and-releases).
 
