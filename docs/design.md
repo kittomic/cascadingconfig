@@ -1322,6 +1322,9 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 
 ## Decision log
 
+Entries 42 to 80 came from the [planning review](decisions/0001-planning-review.md), which records each finding and why
+it was decided as it was.
+
 There are no open questions.
 
 **Decided:**
