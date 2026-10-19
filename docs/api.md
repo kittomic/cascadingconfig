@@ -261,6 +261,7 @@ Options that only make sense in one place get their own type, so the compiler re
 | `PolicyOption` | `WithDefaultPolicy`, `WithScopePolicy`       | `InheritDefault`, `AllowResolvers`, `Allow`, `AllowFor`, `RequirePinned`, `Confine`, `RequireTrust`, `FilePermissions` |
 | `Matcher`      | `Allow`, `AllowFor`                          | `Prefix`, `Glob`, `Regexp`, `MatchFunc`                                                      |
 | `WatchOption`  | `Watch`, `Watch[T]`                          | `WithDebounce`, `WithPolling`, `WithRemotePoll`, `WithReloadOnAnyEvent`                     |
+| `EnvVarsOption` | `EnvVars(prefix, …)`                        | `MapEnv`                                                                                    |
 
 - **Watch options go on the `Watch` call,** not on the loader, because watching is optional. A loader that's never
   watched never sees them. The file-change *source* (`WithNotifier`) is the exception and stays on the loader, because
@@ -281,7 +282,7 @@ layouts (DL-94).
 | Includes       | `WithIncludeKey(key, nesting)`, where `nesting` allows or forbids includes in included files              |
 | Bootstrap      | `WithBootstrap(scopes, patterns, allowedKeys, limits)`: where bootstrap files are searched, their names, which keys they may set, and the per-scope key limits |
 | Limits         | `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
-| Directories    | `WithUserDir(resolver)` and `WithSystemDir(resolver)`, with resolvers `XDGDirs` (the mise presets) and `EnvPathsDirs` (the cosmiconfig preset) |
+| Directories    | **Settled** (DL-112): `WithPlatformDirs(XDGDirs)` for the mise layouts, and `EnvPathsDirs` for the cosmiconfig layout (M4d). It replaces the proposed `WithUserDir` and `WithSystemDir` pair. |
 | Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
 | Env bindings   | **Settled** (DL-98): `type Binding string`, with constants such as `BindConfigDir` (`"CONFIG_DIR"`), `BindEnv` and `BindConfigFormats`. `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` declares or renames a binding; an empty name means the default `{NAME}_<suffix>`. A custom scope can declare its own binding. |
 
@@ -339,9 +340,44 @@ func WithEnvBinding(b Binding, name string) Option
 func WithoutEnvBinding(b Binding) Option
 ```
 
-- **Sealed kinds.** `Option`, `ScopeKind`, `ScopeOption`, `PolicyOption`, `Matcher` and `WatchOption` are interfaces
-  with unexported methods. The last three exist as types now, so the compiler already rejects them in the wrong place,
-  and get their options in later milestones.
+#### Settled in M4a
+
+```go
+// Loading (DL-107)
+func (l *Loader) Load(ctx context.Context) (*Result, error)
+
+// Files (DL-115)
+func WithFileSystem(fsys FileSystem) Option
+func MountFS(dir string, fsys fs.FS) FileSystem // fsys appears at the absolute dir; nothing else exists
+func WithMaxFileSize(n int64) Option           // default 10 MiB
+func WithLogger(l *slog.Logger) Option         // default slog.Default()
+
+// Directories (DL-112)
+type PlatformDirs interface{ /* sealed */ }
+
+var XDGDirs PlatformDirs // user: $XDG_CONFIG_HOME/{name}, else ~/.config/{name}; system: /etc/{name} or %ProgramData%\{name}
+
+func WithPlatformDirs(d PlatformDirs) Option
+
+// Scope kinds (DL-111, DL-113)
+type Pattern struct {
+	Template string // a relative file path with {name} and {ext}; later milestones add fields
+}
+
+func FixedDir(dir string, patterns ...Pattern) ScopeKind // dir: absolute, or starting with ~, {user} or {system}
+func EmbeddedFS(fsys fs.FS, patterns ...Pattern) ScopeKind
+func ValuesFunc(f func(ctx context.Context) (Tree, error)) ScopeKind
+func EnvVars(prefix string, opts ...EnvVarsOption) ScopeKind
+func MapEnv(f func(name, value string) (Path, any, bool)) EnvVarsOption
+
+// Layer statuses so far: LayerLoaded, LayerEmpty, LayerIgnored, LayerUnreadable (DL-110)
+// Warning codes so far: WarnDuplicateKey, WarnFormatConflict, WarnUnreadable, WarnNotAFile, WarnBrokenSymlink,
+// WarnReservedKey, WarnEnvVarSkipped, WarnEnvVarClash, WarnNoHome
+```
+
+- **Sealed kinds.** `Option`, `ScopeKind`, `ScopeOption`, `EnvVarsOption`, `PolicyOption`, `Matcher` and `WatchOption`
+  are interfaces with unexported methods. The last three exist as types now, so the compiler already rejects them in the
+  wrong place, and get their options in later milestones.
 - **The rules for each group** are in design.md: [Choosing scopes](design.md#choosing-scopes),
   [Custom scopes](design.md#custom-scopes), [File format precedence](design.md#file-format-precedence),
   [Per-key merge rules](design.md#per-key-merge-rules), [Environment variables](design.md#environment-variables) and
@@ -351,7 +387,7 @@ func WithoutEnvBinding(b Binding) Option
 
 | Area          | Options                                                                                                                     |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Scopes        | `WithScopes`, `WithoutScopes`, `WithScope`, `WithDefaults`, `WithStartDir` (default: the current directory at each `Load`), `WithWalkStop`, `WithCeilingPaths`, `WithIgnoredPaths`, `WithSearchStrategy`, `WithStopDir`, `WithRootMarker` |
+| Scopes        | `WithScopes`, `WithoutScopes`, `WithScope`, `WithPlatformDirs`, `WithDefaults`, `WithStartDir` (default: the current directory at each `Load`), `WithWalkStop`, `WithCeilingPaths`, `WithIgnoredPaths`, `WithSearchStrategy`, `WithStopDir`, `WithRootMarker` |
 | Environments  | `WithEnvs`                                                                                                                  |
 | Formats       | `WithDecoder`, `WithFormats`, `WithDefaultFormats`, `WithFormatConflict`, `WithExtensionlessFormat`                                              |
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
@@ -849,7 +885,7 @@ type Layer struct {
 	Trust      TrustLevel
 	Remote     *Remote     // set for remote includes: scheme, normalised reference, fetched identity
 	IncludedBy string      // Path of the including layer, if any
-	Status     LayerStatus // LayerLoaded, LayerEmpty, LayerIgnored, LayerUntrusted, LayerPermissionDenied, …
+	Status     LayerStatus // LayerLoaded, LayerEmpty, LayerIgnored, LayerUnreadable, LayerUntrusted, …
 	Reason     string      // why the layer was skipped, if it was
 	Warnings   []Warning
 }
@@ -972,7 +1008,8 @@ type FileSystem interface {
 	SameFile(a, b fs.FileInfo) bool                 // file identity, for dedup
 }
 
-// OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners.
+// OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners. It arrives
+// with the permission policy in M7 (DL-108).
 type OwnerInfo interface {
 	Owner() (uid int, ok bool)
 }
@@ -1042,7 +1079,11 @@ The core module includes a public `cctest` package, so that the other modules' t
 exercise the loader without real files or timers:
 
 - **`cctest.FS`:** an in-memory filesystem implementing the [`FileSystem`](#extension-interfaces) interface, with
-  symlinks, permissions and owners.
+  symlinks, permissions and owners (DL-109):
+  - **`NewFS(files map[string]string)`** builds a tree from absolute paths and contents, creating directories as needed.
+  - **Methods:** `WriteFile`, `Mkdir`, `Symlink`, `Link` (a hard link), `Mkfifo`, `Chmod` and `Remove`. Owners arrive in
+    M7 (DL-108).
+  - **Safe for concurrent use,** so watch tests can change it while a watcher reads it.
 - **`cctest.Notifier`:** a fake `Notifier` whose events the test triggers.
 - **`cctest.Clock`:** a fake clock for debounce, TTLs and polling. The loader's clock is internal, and `cctest` is the
   only way to replace it, so the public API has no `WithClock` option.
@@ -1051,5 +1092,10 @@ exercise the loader without real files or timers:
   only way to replace it. So tests can run in parallel, and Windows and platform-environment behaviour can be tested on
   any machine.
 - **How fakes reach a loader:** options are sealed, so `cctest` returns ready-made core `Option`s through an internal
-  hook, for example `cctest.WithHost(cctest.Host{GOOS: "windows", Env: map[string]string{…}})`.
-- **Golden-file helpers** for reports and discovery orders.
+  hook, for example `cctest.WithHost(cctest.Host{GOOS: "windows", Env: map[string]string{…}})`. The filesystem uses the
+  public `WithFileSystem`.
+- **What `Host.GOOS` changes** (DL-108): the defaults that depend on the OS, such as `%ProgramData%` instead of `/etc`,
+  `USERPROFILE` instead of `HOME` for a real host, and case-insensitive env-var prefixes. Paths are still joined with
+  the real OS's rules, so a Windows test checks where a directory came from, not its separators.
+- **`cctest.Golden(t, file, got)`** compares `got` with a file under `testdata`, and rewrites the file when the test
+  runs with `-update`. It's used for reports and discovery orders.
