@@ -39,7 +39,8 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
 │       └── go.mod                  module …/internal/compat (test-only, never released): koanf parity tests
 ├── examples/
 │   └── go.mod                      module …/examples (never released)
-├── scripts/                        each-module.sh, check-go-versions.sh, check-gowork-off.sh, check-deps.sh
+├── scripts/                        each-module.sh, check-go-versions.sh, check-gowork-off.sh, check-licenses.sh,
+│                                   check-deps.sh
 ├── docs/
 ├── LICENSE                         Apache-2.0; every module directory above also has its own copy
 ├── README.md, SECURITY.md

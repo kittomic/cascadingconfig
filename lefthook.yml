@@ -22,27 +22,37 @@ pre-commit:
 
     go-lint:
       glob: "*.go"
-      # only report issues introduced since HEAD, so staged work is checked quickly
-      run: golangci-lint run --new-from-rev=HEAD ./...
+      # only report issues introduced since HEAD, so staged work is checked quickly; every module is linted
+      run: scripts/each-module.sh golangci-lint run --new-from-rev=HEAD ./...
 
     go-mod-tidy:
-      glob: "{go.mod,go.sum,*.go}"
-      run: go mod tidy -diff
+      glob: "{go.mod,go.sum,go.work,go.work.sum,*.go}"
+      run: scripts/each-module.sh go mod tidy -diff
 
 pre-push:
   parallel: false
   commands:
+    # until CI exists, these are the only enforcement: never skip them with --no-verify or LEFTHOOK=0
     go-test:
       files: git ls-files '*.go'
-      run: go test -race ./...
+      # every module, on the latest Go with -race and on the minimum Go from go.mod
+      run: scripts/check-go-versions.sh
+
+    gowork-off:
+      files: git ls-files '*.go' 'go.mod' '*/go.mod'
+      # every module on its own, without go.work
+      run: scripts/check-gowork-off.sh
 
     golangci-lint:
       files: git ls-files '*.go'
-      run: golangci-lint run ./...
+      run: scripts/each-module.sh golangci-lint run ./...
 
     govulncheck:
       files: git ls-files '*.go'
-      run: govulncheck ./...
+      run: scripts/each-module.sh govulncheck ./...
+
+    licenses:
+      run: scripts/check-licenses.sh
 
 commit-msg:
   commands:

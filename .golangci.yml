@@ -41,7 +41,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/kittomic/agentic-platform
+        - github.com/kittomic/cascadingconfig
 
 issues:
   max-issues-per-linter: 0
