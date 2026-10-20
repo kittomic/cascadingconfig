@@ -1,0 +1,10 @@
+project /home/me/work/app/myapp.toml shared - /home/me/work/app loaded
+project /home/me/work/app/myapp.unix.toml env unix /home/me/work/app loaded
+project /home/me/work/app/myapp.linux.toml env linux /home/me/work/app loaded
+project /home/me/work/app/myapp.linux-x64.toml env linux-x64 /home/me/work/app loaded
+project /home/me/work/app/myapp.dev.toml env dev /home/me/work/app loaded
+project /home/me/work/app/myapp.local.toml local - /home/me/work/app loaded
+project /home/me/work/app/myapp.unix.local.toml env-local unix /home/me/work/app loaded
+project /home/me/work/app/myapp.linux.local.toml env-local linux /home/me/work/app loaded
+project /home/me/work/app/myapp.linux-x64.local.toml env-local linux-x64 /home/me/work/app loaded
+project /home/me/work/app/myapp.dev.local.toml env-local dev /home/me/work/app loaded
