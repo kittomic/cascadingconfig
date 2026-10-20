@@ -401,7 +401,9 @@ A user-defined preset can name any bootstrap files, or have none.
   `WithoutBootstrapKey(key)` removes one, and `WithBootstrapLimit(scope, keys...)` restricts one scope's bootstrap files
   to the keys listed.
 - **Override files:** bootstrap files are ordered like config files, and each key set in a higher bootstrap file
-  replaces the same key from lower files. Lists are not merged, as in mise.
+  replaces the same key from lower files, as in mise. The exceptions are `ceiling_paths` and `ignored_config_paths`,
+  which only add, so every file's entries are combined: otherwise a project file could cancel a system file's ignored
+  paths.
 - **Values** (DL-133): `env`, `formats` and `override_config_filenames` are lists of strings; `ceiling_paths` and
   `ignored_config_paths` are lists of paths.
 - **Relative paths** in a bootstrap file (`ceiling_paths`, `ignored_config_paths`) are resolved against that file's
@@ -424,7 +426,7 @@ A user-defined preset can name any bootstrap files, or have none.
 
 - **Single settings,** `formats` and `override_config_filenames`: the env var wins, then the bootstrap file, then the
   app's option, then the preset. For `env`, `WithEnvs` comes first, then `{NAME}_ENV`, then the bootstrap file.
-- **Lists that only add,** `ceiling_paths` and `ignored_config_paths`: the option, the env var and the bootstrap files
+- **Lists that only add,** `ceiling_paths` and `ignored_config_paths`: the option, the env var and every bootstrap file
   are combined.
 - **Locking a setting:** an app that wants its own value to stand turns the key off with `WithoutBootstrapKey`, or
   limits it to some scopes with `WithBootstrapLimit`.
