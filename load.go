@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"maps"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -169,6 +170,10 @@ type loading struct {
 	booting        bool     // bootstrap files are being searched, so no probes are recorded
 	settings       bootSettings
 
+	cache       *os.Root // the include cache, once opened
+	cacheOpened bool
+	cacheWarned bool
+
 	selectedEnvs []string             // the selected environments, lowest precedence first, for the report
 	platformEnvs []string             // the platform environments in use, lowest precedence first
 	skipped      map[ScopeName]string // why a selected scope wasn't searched
@@ -193,6 +198,8 @@ type entry struct {
 	value    bool // a value scope's tree, not a file
 	explicit bool // an explicit config file
 	included bool // an included file, already checked against its root file's policy
+
+	remote *remoteRef // a remote include's reference
 }
 
 func (ld *loading) addError(err error) {
@@ -250,6 +257,9 @@ func (ld *loading) closeRoots() {
 		if r != nil {
 			_ = r.Close()
 		}
+	}
+	if ld.cache != nil {
+		_ = ld.cache.Close()
 	}
 }
 

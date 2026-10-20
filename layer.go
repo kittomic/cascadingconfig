@@ -108,6 +108,7 @@ type Layer struct {
 	ConfigRoot string      `json:"config_root,omitempty"`
 	Pattern    string      `json:"pattern,omitempty"` // the pattern that matched, such as ".config/{name}/config.{ext}"
 	Trust      TrustLevel  `json:"trust"`
+	Remote     *Remote     `json:"remote,omitempty"`      // set for remote includes (DL-203)
 	IncludedBy string      `json:"included_by,omitempty"` // Path of the including layer, if any
 	Status     LayerStatus `json:"status"`
 	Reason     string      `json:"reason,omitempty"` // why the layer was skipped, if it was

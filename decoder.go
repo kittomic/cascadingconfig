@@ -94,6 +94,12 @@ const (
 
 	// WarnUntrusted reports a file skipped because its scope's trust store hasn't approved it.
 	WarnUntrusted WarningCode = "untrusted"
+
+	// WarnStaleInclude reports a remote include loaded from a stale cached copy, because fetching it failed.
+	WarnStaleInclude WarningCode = "stale-include"
+
+	// WarnIncludeCache reports an include cache that couldn't be opened, read or written, so the load fetched instead.
+	WarnIncludeCache WarningCode = "include-cache"
 )
 
 // DecodeDocument runs d on data, with the rules every format shares:

@@ -2,6 +2,7 @@ package cascadingconfig
 
 import (
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
 	"slices"
@@ -39,9 +40,17 @@ type fileFormatRule struct {
 // fileFormat returns the format of the file at slashPath: the first rule that matches and names a registered format,
 // the most recently registered first, or else the decoder whose extension the file has.
 func (c *config) fileFormat(slashPath string) (string, bool) {
+	if f, ok := c.ruleFormat(slashPath); ok {
+		return f, true
+	}
+	return c.extFormat(slashPath)
+}
+
+// ruleFormat returns the format of the last WithFileFormat rule matching s with a registered decoder.
+func (c *config) ruleFormat(s string) (string, bool) {
 	for i := len(c.fileFormats) - 1; i >= 0; i-- {
 		r := c.fileFormats[i]
-		if !r.m.matches(slashPath, c.name) {
+		if !r.m.matches(s, c.name) {
 			continue
 		}
 		for _, f := range r.formats {
@@ -50,6 +59,11 @@ func (c *config) fileFormat(slashPath string) (string, bool) {
 			}
 		}
 	}
+	return "", false
+}
+
+// extFormat returns the format of the registered decoder whose extensions include slashPath's.
+func (c *config) extFormat(slashPath string) (string, bool) {
 	ext := strings.TrimPrefix(path.Ext(slashPath), ".")
 	if ext == "" {
 		return "", false
@@ -283,11 +297,43 @@ func (refMatcher) matches(string, string) bool { return false }
 
 func (refMatcher) describe() string { return "MatchRef" }
 
-// matchRef reports whether m accepts ref: a MatchRef gets the whole reference, and any other matcher its normalised
-// form.
+// matchRef reports whether m accepts ref: a MatchRef gets the whole reference, Extension and FileName its file path,
+// and any other matcher its normalised form (DL-202).
 func matchRef(m Matcher, ref IncludeRef, name string) bool {
-	if r, ok := m.(refMatcher); ok {
-		return r.f(ref)
+	switch m := m.(type) {
+	case refMatcher:
+		return m.f(ref)
+	case extensionMatcher, fileNameMatcher:
+		return m.matches(refFile(ref), name)
 	}
-	return m.matches(ref.Location, name)
+	return m.matches(ref.Ref, name)
+}
+
+// refFile returns the file path in a reference: the path inside a repo or artifact, a URL's path, or a local path.
+func refFile(ref IncludeRef) string {
+	switch {
+	case ref.Path != "":
+		return ref.Path
+	case ref.Scheme == "file":
+		return ref.Location
+	}
+	if u, err := url.Parse(ref.Location); err == nil {
+		return u.Path
+	}
+	return ref.Location
+}
+
+// mediaFormat returns the format of the registered decoder that handles the media type mt, without its parameters.
+func (c *config) mediaFormat(mt string) (string, bool) {
+	mt, _, _ = strings.Cut(mt, ";")
+	mt = strings.ToLower(strings.TrimSpace(mt))
+	if mt == "" {
+		return "", false
+	}
+	for _, d := range c.decoders {
+		if slices.ContainsFunc(d.MediaTypes(), func(t string) bool { return strings.EqualFold(t, mt) }) {
+			return d.Format(), true
+		}
+	}
+	return "", false
 }

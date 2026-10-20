@@ -17,6 +17,7 @@
         "resolvers": [
           "file"
         ],
+        "require_pinned": false,
         "require_trust": false,
         "file_permissions": false
       }
@@ -31,6 +32,7 @@
         "resolvers": [
           "file"
         ],
+        "require_pinned": false,
         "require_trust": false,
         "file_permissions": false
       }
@@ -45,6 +47,7 @@
         "resolvers": [
           "file"
         ],
+        "require_pinned": false,
         "require_trust": false,
         "file_permissions": false
       }
@@ -59,6 +62,7 @@
         "resolvers": [
           "file"
         ],
+        "require_pinned": false,
         "require_trust": false,
         "file_permissions": false
       }

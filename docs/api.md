@@ -282,7 +282,7 @@ layouts (DL-94).
 | Patterns       | `Pattern(template, variant, root)` inside a scope kind. `template` uses `{name}`, `{env}` and `{ext}`; `variant` is `VariantShared`, `VariantEnv`, `VariantLocal` or `VariantEnvLocal`; `root` says how the config root is derived (the scope dir, or the file's own dir). |
 | Includes       | **Settled** (DL-178): `WithIncludeKey(key, IncludeFlat \| IncludeNested)` and `WithoutIncludeKey()`       |
 | Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit` and `WithBootstrapTransform` |
-| Limits         | `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
+| Limits         | **Settled** (DL-198): `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
 | Directories    | **Settled** (DL-112): `WithPlatformDirs(XDGDirs)` for the mise layouts, and `EnvPathsDirs` for the cosmiconfig layout (M4d). It replaces the proposed `WithUserDir` and `WithSystemDir` pair. |
 | Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
 | Env bindings   | **Settled** (DL-98): `type Binding string`, with constants such as `BindConfigDir` (`"CONFIG_DIR"`), `BindEnv` and `BindConfigFormats`. `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` declares or renames a binding; an empty name means the default `{NAME}_<suffix>`. A custom scope can declare its own binding. |
@@ -644,6 +644,78 @@ func WithResultTransform(f func(ctx context.Context, t Tree) (Tree, error)) Opti
 - **`PolicyInfo`** is set for `FixedDir`, `Walk` and `ExplicitFile` scopes. Policies don't apply to `EmbeddedFS` or
   value scopes, which have no files on the loader's filesystem.
 
+#### Settled in M8a
+
+```go
+// Resolvers (DL-196 to DL-199)
+type IncludeResolver interface {
+	Schemes() []string
+	Resolve(ctx context.Context, ref IncludeRef) (*Fetched, error)
+}
+
+type Fetched struct {
+	Content   []byte
+	MediaType string // the transport's media type, if any; the reference's path decides the format first (DL-198)
+	Identity  string // shown in reports; empty means sha256:<hex> of Content
+}
+
+func WithIncludeResolver(r IncludeResolver) Option
+func WithIncludeTimeout(d time.Duration) Option // each fetch; default 30 seconds
+func WithMaxIncludeSize(n int64) Option         // remote content; default 1 MiB
+func WithMaxIncludeDepth(n int) Option          // levels below the root file; default 16 (DL-210)
+func WithMaxIncludes(n int) Option              // include references in one load; default 1000 (DL-210)
+func WithoutRemoteIncludes() Option             // DL-205
+
+// IncludeRef gains (DL-198):
+//   Ref     string                 the normalised reference string that matchers see
+//   MaxSize int64                  the size limit the loader enforces
+//   Check   func(ref string) error checks another reference, such as a redirect target, under the same policy
+
+// Pins (DL-201)
+func RequirePinned() PolicyOption
+
+// Cache (DL-206, DL-207)
+func WithIncludeCache(dir string, ttl time.Duration) Option // "" keeps the default dir
+func WithoutIncludeCache() Option
+
+// Report (DL-203, DL-205)
+type Remote struct {
+	Scheme   string
+	Ref      string // the normalised reference
+	Identity string
+	Pinned   bool
+	Cache    string // "" when fetched, "cached", or "stale"
+}
+
+// Added to existing types:
+//   Layer.Remote *Remote; PolicyInfo.RequirePinned
+//   WarnStaleInclude ("stale-include"), WarnIncludeCache ("include-cache")
+
+// cctest (DL-209)
+func NewClock(t time.Time) *Clock
+func (c *Clock) Now() time.Time
+func (c *Clock) Advance(d time.Duration)
+func (c *Clock) Set(t time.Time)
+func WithClock(c *Clock) cascadingconfig.Option
+
+// httpresolver (DL-208)
+func New(opts ...Option) cascadingconfig.IncludeResolver
+func WithClient(c *http.Client) Option
+```
+
+- **No layout registers a remote resolver** (DL-205): `httpresolver` imports the core, so `MiseLayout` can't register
+  it. `mise.Preset` registers the remote resolvers in M10. Until then, a remote reference in a mise layout is a 501
+  unless the app registers a resolver. `MiseHardenedLayout` gets `WithoutRemoteIncludes()`.
+- **Option errors:** these are `*OptionError`s:
+  - in `WithIncludeResolver`, a nil resolver, no schemes, an invalid scheme or `file`
+  - a timeout, size or include limit that isn't positive
+  - a relative cache dir or a negative TTL
+  - under `WithoutRemoteIncludes()`, a policy that allows a remote scheme without an allow-list and `RequirePinned()`
+- **`Report.String()`** shows `remote <ref> @ <identity>` in a remote layer's details, with `(cached)` or `(stale)`, and
+  `pinned` in a policy row, after the allow-lists. The JSON keys are `remote`, `scheme`, `ref`, `identity`, `pinned`,
+  `cache` and `require_pinned`.
+- **`gitresolver` and `ociresolver`** are settled in M8b and M8c.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
@@ -653,7 +725,7 @@ func WithResultTransform(f func(ctx context.Context, t Tree) (Tree, error)) Opti
 | Formats       | `WithDecoder`, `WithFormats`, `WithDefaultFormats`, `WithFormatConflict`, `WithFileFormat`                                                       |
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
 | Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
-| Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |
+| Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithIncludeTimeout`, `WithDefaultPolicy`, `WithScopePolicy` |
 | Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`                                                                                       |
 | Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
 | Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
@@ -1202,7 +1274,7 @@ type Layer struct {
 	ConfigRoot string
 	Pattern    string      // the pattern that matched, e.g. ".config/{name}/config.{ext}"
 	Trust      TrustLevel
-	Remote     *Remote     // set for remote includes: scheme, normalised reference, fetched identity (M8, DL-159)
+	Remote     *Remote     // set for remote includes: scheme, normalised reference, fetched identity (DL-203)
 	IncludedBy string      // Path of the including layer, if any
 	Status     LayerStatus // LayerLoaded, LayerEmpty, LayerIgnored, LayerUnreadable, LayerFailed, LayerDuplicate, …
 	Reason     string      // why the layer was skipped, if it was
@@ -1358,7 +1430,7 @@ type PositionError interface {
 }
 
 // IncludeResolver fetches includes. Implemented by httpresolver, gitresolver and ociresolver; the built-in file
-// resolver is part of the loader (DL-182). Settled in M8. (Defined in design.md: Resolver hooks.)
+// resolver is part of the loader (DL-182). Settled in M8a (DL-196 to DL-199; design.md: Resolver hooks).
 type IncludeResolver interface {
 	Schemes() []string
 	Resolve(ctx context.Context, ref IncludeRef) (*Fetched, error)
@@ -1450,7 +1522,8 @@ exercise the loader without real files or timers:
   - **Safe for concurrent use,** so watch tests can change it while a watcher reads it.
 - **`cctest.Notifier`:** a fake `Notifier` whose events the test triggers.
 - **`cctest.Clock`:** a fake clock for debounce, TTLs and polling. The loader's clock is internal, and `cctest` is the
-  only way to replace it, so the public API has no `WithClock` option.
+  only way to replace it, so the public API has no `WithClock` option. `cctest.NewClock(t)` starts one at `t`, with
+  `Now`, `Advance` and `Set`, and `cctest.WithClock(c)` gives it to a loader (DL-209). M9 adds timers.
 - **`cctest.Host`:** a fake host: env vars, home dir, current dir, `GOOS`, `GOARCH` and the current user's UID. The
   loader reads all of these through an internal host interface, never from the process directly, and `cctest` is the
   only way to replace it. So tests can run in parallel, and Windows and platform-environment behaviour can be tested on

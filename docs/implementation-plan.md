@@ -63,13 +63,16 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M5  | Decoding, results and reports     | core, `internal/compat` (test-only)      | M4         |
 | M6  | Format modules                    | `format/toml`, `format/yaml`             | M1         |
 | M7  | Includes, policies and transforms | core                                     | M4         |
-| M8  | Remote resolvers                  | core (`httpresolver`, `gitresolver`), `ociresolver` | M7 |
+| M8a | Remote includes                   | core (`httpresolver`)                    | M7         |
+| M8b | git resolver                      | core (`gitresolver`)                     | M8a        |
+| M8c | OCI resolver                      | `ociresolver`                            | M8a        |
 | M9  | Hot reload                        | core, `watch/fsnotify`                   | M5, M7     |
-| M10 | Presets                           | `presets`                                | M6, M8, M9 |
+| M10 | Presets                           | `presets`                                | M6, M8b, M8c, M9 |
 | M11 | Release preparation               | all                                      | M10        |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
 
-M2 and M3 can be done in either order. M6 can run any time after M1. M12 comes last, but needs only M6.
+M2 and M3 can be done in either order, as can M8b and M8c. M6 can run any time after M1. M12 comes last, but needs only
+M6.
 
 ## M0: Repository and tooling
 
@@ -113,7 +116,7 @@ Not test-first: this is tooling.
   | `cctest.FS`                         | M4a       | the `FileSystem` interface: symlinks, permissions, owners      |
   | `cctest.Host`                       | M4a       | the internal host: env vars, home, cwd, `GOOS`, `GOARCH`, UID  |
   | Golden-file helpers                 | M4a       | discovery orders; reused for reports in M5                     |
-  | `cctest.Clock`                      | M8        | the internal clock, first needed for cache TTLs; reused in M9  |
+  | `cctest.Clock`                      | M8a       | the internal clock, first needed for cache TTLs; reused in M9  |
   | `cctest.Notifier`                   | M9        | the `Notifier` interface                                       |
 
 ## M1: Foundations
@@ -538,36 +541,72 @@ DL-194.
 
 ## M8: Remote resolvers
 
-**Scope:**
+M8 is split into three parts, each with its own gap list, test review, PR and merge (DL-195). M8a builds what every
+resolver shares, with the http resolver, and M8b and M8c add git and OCI.
 
-- **Test helper:** `cctest.Clock` ([M0](#m0-repository-and-tooling)).
-- **`httpresolver`.**
-- **`gitresolver`**, which runs the `git` program.
-- **The `ociresolver` module.**
-- **Caching** (DL-19).
-- **Traversal protection** (DL-33).
-- **From M7** (DL-182): `IncludeResolver`, `Fetched`, `WithIncludeResolver`, `RequirePinned` (with how a custom resolver
-  reports a pin), reference normalisation and `WithMaxIncludeSize`.
-- **Options** (DL-94): this milestone settles the resolver and cache options, and adds `WithoutRemoteIncludes` to
-  `MiseHardenedLayout`.
+### M8a: Remote includes
 
-**Acceptance tests,** all attack tests first:
+**Scope:** remote references in the loader, as decided in DL-195 to DL-210.
 
-- **References:**
-  - normalised before allow-listing
-  - userinfo rejected
-  - `%2e`, `%2f` and `%5c` rejected
-  - inner paths validated
-  - the normalised string for each scheme matches the documented form (DL-56)
-- **Matchers:** `Glob` `*` doesn't cross `/` and `**` does; `Regexp` must match the whole string.
-- **Pins** (DL-55): an abbreviated git id isn't a pin; an https integrity fragment that doesn't match the downloaded
-  bytes is a `*PolicyError`; the fragment is never sent to the server.
-- **http:**
-  - at most 5 redirects
-  - none from `https` to `http`
-  - every redirect matched against the allow-list again
-  - the size limit gives a 413
-  - `WithClient` is honoured
+- **Test helper:** `cctest.Clock` (DL-209).
+- **The resolver interface** (DL-196 to DL-199): `IncludeResolver`, `Fetched`, `WithIncludeResolver`, `IncludeRef`'s new
+  fields, `WithMaxIncludeSize` and `WithIncludeTimeout`.
+- **Reference forms and normalisation** (DL-33, DL-197, DL-200, DL-202): the URL, getter and image forms, checked before
+  allow-listing.
+- **Pins** (DL-55, DL-201): `RequirePinned`, with integrity fragments verified by the loader.
+- **Remote layers** (DL-203, DL-204): loading once, metadata, and relative references inside remote files.
+- **Caching** (DL-19, DL-58, DL-206, DL-207).
+- **`httpresolver`** (DL-208).
+- **Hardened** (DL-205): `WithoutRemoteIncludes`, added to `MiseHardenedLayout`.
+- **Include limits** (DL-210): `WithMaxIncludeDepth` and `WithMaxIncludes`.
+- **Options** (DL-94): this part settles the resolver, cache, size and timeout options.
+
+**Acceptance tests,** attack tests first, mostly through a fake resolver:
+
+- **Registration** (DL-196): the last registration of a scheme wins; a nil resolver, no schemes, an invalid scheme and
+  `file` are `*OptionError`s; `WithoutIncludeResolver` removes one scheme.
+- **Normalisation** (DL-197, DL-200):
+  - each form's normalised string matches the documented one (DL-56), and the resolver only ever sees normalised
+    references
+  - userinfo is rejected, except an ssh user name
+  - `%2e`, `%2f`, `%5c`, a raw `\`, control characters and non-ASCII hosts are rejected
+  - the query is kept, and inner paths are validated
+  - the getter form rejects unknown parameters and bad refs, and the image form needs an explicit registry
+- **Matchers** (DL-56, DL-202): `Glob` `*` doesn't cross `/` and `**` does; `Regexp` must match the whole string;
+  `Extension` and `FileName` see the file path only.
+- **Pins** (DL-55, DL-201): an abbreviated git id isn't a pin; `RequirePinned` rejects an unpinned reference before
+  fetching; an integrity fragment that doesn't match the content is a `*PolicyError`; the fragment is never passed to
+  the resolver or sent to the server.
+- **Fetched results** (DL-198, DL-199): the format comes from the path, then the media type, else a 415; the size limit
+  gives a 413; resolver errors keep their codes, other errors are 502s and timeouts 504s; `WithIncludeTimeout` is
+  honoured; identities are defaulted and checked.
+- **Remote layers** (DL-203, DL-204): a reference listed twice is fetched once; the layer's metadata and `Layer.Remote`;
+  under `IncludeNested`, relative references resolve against the remote origin, and `~/`, `file://` and climbing out are
+  `*ReferenceError`s.
+- **http** (DL-208): at most 5 redirects; none from `https` to `http`; every redirect matched against the allow-list
+  again; 404 and other statuses; a `Content-Length` over the limit; `WithClient` is honoured and left unchanged.
+- **Caching** (DL-58, DL-206, DL-207):
+  - pinned references are never fetched again, and unpinned ones are refreshed after the TTL (with `cctest.Clock`)
+  - a `*FetchError` uses a stale copy with `WarnStaleInclude`, and other errors don't
+  - no cache file name contains any part of a reference
+  - cached content is rechecked
+  - a corrupt or unwritable cache gives `WarnIncludeCache`
+  - `WithoutIncludeCache()` fetches every time
+- **Hardened** (DL-205): a remote reference under `MiseHardenedLayout` is a 501, and a policy that allows a remote
+  scheme without an allow-list and `RequirePinned()` is an `*OptionError`.
+- **The report** (DL-203, DL-205): `Layer.Remote` and `PolicyInfo.RequirePinned`, in `Describe()`, JSON and text.
+- **Include limits** (DL-210): an include nested deeper than the limit is a 508, and more references than the limit a
+  413, for local and remote includes, with the defaults and with the options.
+- **Fuzz tests:** `FuzzNormaliseReference` (normalising is idempotent, and the result never has userinfo, a `..`
+  segment, an encoded `.`, `/` or `\`, or an invalid inner path) and `FuzzIncludeRemote` (random references through a
+  fake resolver never panic, and never reach it unnormalised).
+
+### M8b: git resolver
+
+**Scope:** `gitresolver`, which runs the `git` program (DL-59). Its details get their own gap list when M8b starts.
+
+**Acceptance tests,** attack tests first:
+
 - **git:**
   - **Fixtures:** test repositories are created in temporary directories.
   - **Modes:** a symlink (mode `120000`) or a submodule is rejected.
@@ -576,6 +615,14 @@ DL-194.
   - **No side effects:** no hooks or filters run.
   - **Isolated config:** a `url.insteadOf` rule in a test `~/.gitconfig` has no effect (DL-59).
   - **Fixtures** are reached through `gitresolver.WithProtocols("file")`, which the tests set explicitly.
+- **Fuzz tests:** ref validation.
+
+### M8c: OCI resolver
+
+**Scope:** the `ociresolver` module (DL-60). Its details get their own gap list when M8c starts.
+
+**Acceptance tests,** attack tests first:
+
 - **oci:**
   - **Fixtures:** an in-memory registry.
   - **Archive entries:** any absolute or `..` entry fails the whole fetch.
@@ -583,10 +630,7 @@ DL-194.
   - **Digests:** a digest mismatch fails.
   - **Both artifact forms** (DL-60): per-file artifacts and tar layers; the last layer wins; an oversized decompressed
     layer fails.
-- **Caching:** pinned references are never re-fetched, unpinned ones are refreshed after the TTL, and a failed fetch
-  uses a stale copy with a warning. No cache file name contains any part of a URL (DL-58). Cached content is rechecked
-  against policy. `WithoutIncludeCache()` fetches every time.
-- **Hardened:** a remote reference under `MiseHardenedLayout` is a load error.
+- **Fuzz tests:** tar entries.
 
 ## M9: Hot reload
 
@@ -677,7 +721,7 @@ conformance a measured number.
 | 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](api.md#test-helpers)). |
 | 5 | `internal/compat` module  | Yes, a test-only module for koanf parity tests, so koanf never enters the core `go.mod`.                     |
 | 6 | Dependency budget         | Yes, from M6, as `scripts/check-deps.sh` in lefthook's pre-push. It doesn't need CI.                         |
-| 7 | Review gate               | Once per milestone, and once per part for M4.                                                                |
+| 7 | Review gate               | Once per milestone, and once per part for M4 and M8.                                                         |
 | 8 | Licence                   | Apache-2.0, with a `LICENSE` file in the repo root and in every module root (M0).                            |
 | 9 | Repository files          | A README stub, `SECURITY.md` and a per-module CHANGELOG convention, added in M0.                             |
 | 10 | Tooling fixes            | Fix the goimports `local-prefixes`, and pin every tool version in `.config/mise.toml` (M0).                  |
