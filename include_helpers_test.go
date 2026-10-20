@@ -31,8 +31,8 @@ var incScopes = cc.Options(
 	cc.WithIncludeKey("include", cc.IncludeFlat),
 )
 
-// nested is incScopes with nested includes.
-var nested = cc.Options(incScopes, cc.WithIncludeKey("include", cc.IncludeNested))
+// nested turns on nested includes; it goes after incScopes, which incLoad and incOK add.
+var nested = cc.WithIncludeKey("include", cc.IncludeNested)
 
 // incLoad loads files over fsys with incScopes and opts.
 func incLoad(t *testing.T, fsys *cctest.FS, opts ...cc.Option) (*cc.Result, error) {
