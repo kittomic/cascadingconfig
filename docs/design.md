@@ -869,16 +869,25 @@ cascadingconfig.WithFileFormat(cascadingconfig.Regexp(`.*/\.?myapprc$`), "yaml")
 ## Format dialects
 
 What each built-in decoder accepts, and the rules every decoder follows. These were checked against the pinned libraries
-(go-toml v2.4.3, goccy/go-yaml v1.19.2, `encoding/json`).
+(go-toml v2.4.3, goccy/go-yaml v1.19.2, `encoding/json`), and the reasoning is in
+[decision record 0002](decisions/0002-yaml-and-toml-dialects.md).
+
+**Each format's spec is the source of truth:** RFC 8259, TOML and YAML 1.2. Where a decoder departs from it, the
+departure is deliberate and listed here. Measuring conformance against each format's test suite is planned for the last
+milestone, [M12](implementation-plan.md#m12-conformance) (DL-174).
 
 | Rule                  | JSON                                              | TOML                                     | YAML                                      |
 | --------------------- | ------------------------------------------------- | ---------------------------------------- | ----------------------------------------- |
-| Dialect               | Strict RFC 8259: no comments, no trailing commas, as cosmiconfig's `JSON.parse` | Whatever the pinned go-toml accepts. v2.4.3 already accepts TOML 1.1 syntax (multi-line inline tables, times without seconds, `\e`). | YAML 1.2 core schema: `yes`, `no`, `on`, `off` and `y` stay **strings**. |
+| Dialect               | Strict RFC 8259: no comments, no trailing commas, as cosmiconfig's `JSON.parse` | Whatever the pinned go-toml accepts. v2.4.3 already accepts TOML 1.1 syntax (multi-line inline tables, times without seconds, `\e`). | YAML 1.2 core schema, parsed by goccy, with the core schema's rules giving unquoted values their types (DL-163): `yes`, `no`, `on`, `off` and `y` stay **strings**. |
+| Numbers               | RFC 8259                                          | The TOML spec; `inf` and `nan` are floats | The core schema: `017` is 17, `0o17` is 15, `1e3` is a float and `+.inf` is infinity; `0b11` and `1_000` stay strings. `WithLegacyNumbers()` accepts the YAML 1.1 forms `017` (octal), `0b11` and `1_000`, as goccy and yaml.v3 do (DL-163). |
 | Duplicate keys        | The **last** one wins, as in `JSON.parse` and `encoding/json`, and a **warning** is logged | `*ParseError`, as the TOML spec requires | `*ParseError`, as the YAML spec requires   |
-| Non-string map keys   | n/a                                               | n/a                                      | Turned into strings (`1:` becomes `"1"`), as goccy does |
+| Non-string map keys   | n/a                                               | n/a                                      | Resolved by the core schema, then printed: `0x1F:` becomes `"31"`, `~:` `"null"`, `true:` `"true"`, as goccy does. Keys equal after resolution (`1:` and `0o1:`) are duplicates, as the spec says; keys that only clash once printed (`1:` and `"1":`) are a `*ParseError` too, because the tree can't hold both. A table or sequence as a key is a `*ParseError` (DL-166). |
 | Several documents     | n/a                                               | n/a                                      | `*ParseError`. goccy would silently keep only the first. |
-| Aliases               | n/a                                               | n/a                                      | Allowed, with a cap on expansion, so a hostile file can't expand without bound |
-| Unknown tags          | n/a                                               | n/a                                      | `*ParseError`                             |
+| Aliases               | n/a                                               | n/a                                      | Allowed. At most 10,000 values may come from aliases and merge keys in one document, and `WithMaxAliasValues(n)` changes it; going over, or an alias inside its own anchor, is a `*ParseError` (DL-168). goccy has no limit. |
+| Merge keys            | n/a                                               | n/a                                      | `<<: *a` and `<<: [*a, *b]` are supported, though they are a YAML 1.1 type: the table's own keys win, then earlier list entries, as the merge-key spec says (goccy lets later ones win). A merge of anything but a table is a `*ParseError` (DL-167). |
+| Tags                  | n/a                                               | n/a                                      | Only the core schema's: `!!str`, `!!int`, `!!float`, `!!bool`, `!!null`, `!!map`, `!!seq` and the non-specific `!`. A tag forces its type, so `!!int abc` is a `*ParseError`. Any other tag, such as `!!binary`, `!!timestamp`, `!!set` or `!foo`, is a `*ParseError`, as the spec treats an unresolved tag (DL-164). |
+| Dates and times       | n/a                                               | Offset date-times as RFC 3339 text (`+00:00` becomes `Z`, and trailing fractional zeros go); local date-times, dates and times as their TOML text (DL-169) | No timestamp type in the core schema: a date stays a string exactly as written (DL-165) |
+| Parse errors          | Position and a short message                      | Position and go-toml's short message     | Position and goccy's short message, never its excerpt of the file (DL-170) |
 
 **Rules for every format:**
 
@@ -893,9 +902,15 @@ What each built-in decoder accepts, and the rules every decoder follows. These w
   first-match layout it stops the search.
 - **Integers** are `int64` only when the literal has no fraction or exponent and fits in range. JSON `1.0` and `1e3` are
   floats. An integer outside the `int64` range is a `*ParseError`.
-- **Dates and times are strings** in the tree, in RFC 3339 form. That includes TOML's offset and local date-times (a
-  TOML `1979-05-27 07:32:00Z` becomes `"1979-05-27T07:32:00Z"`). The choice of type is deferred to decoding, so a
-  `string` field gets the text and a `time.Time` field gets a parsed time ([api.md](api.md#decoding)).
+- **Dates and times are strings** in the tree. TOML's are written in RFC 3339 form (a TOML `1979-05-27 07:32:00Z`
+  becomes `"1979-05-27T07:32:00Z"`); a YAML date is already a string. The choice of type is deferred to decoding, so a
+  `string` field gets the text and a `time.Time` field gets a parsed time when the text is RFC 3339
+  ([api.md](api.md#decoding)).
+- **A library panic** while parsing is recovered and returned as a `*ParseError`, so a hostile file can't crash the app
+  (DL-171).
+- **A custom decoder** can replace a built-in one through the public `Decoder` interface and `WithDecoder`, for example
+  to wrap yaml.v3 for its YAML 1.1 behaviour. `DecodeDocument` still applies the rules above that every format shares
+  ([api.md](api.md#settled-in-m6)).
 
 ## Includes
 
@@ -1775,6 +1790,19 @@ There are no open questions.
 | 159 | Deferred from M5                            | `ScopeInfo`'s policy arrives in M7 and `Layer.Remote` in M8; the transform checks of DL-76 move to M7, with transforms. |
 | 160 | `KoanfProvider` and `DecodeAt`              | `(*Loader).KoanfProvider()` loads with `context.Background()` on each `Read`; the koanf parity tests load through it; `DecodeAt` on a missing path leaves `v` untouched; a bad path or a non-pointer `v` is a 400 `*BaseError`. |
 | 161 | Decoding dependencies                       | mapstructure v2.5.0 is the core module's one requirement; koanf v2.4.1 is pinned in the test-only `internal/compat` module. |
+| 162 | Format modules before the first release     | `format/toml` and `format/yaml` replace the core with the repository's copy until the first release, as `internal/compat` does; M11 swaps in the released version and adds a check that refuses a `replace` in a released module. |
+| 163 | How YAML values get their types             | goccy parses; the YAML 1.2 core schema's rules type unquoted values, because goccy and yaml.v3 both keep YAML 1.1 leftovers and disagree with each other. `WithLegacyNumbers()` opts in to 1.1 integers; it's tentative, and may be dropped if it complicates the decoder, since a custom decoder can do the same ([decision record 0002](decisions/0002-yaml-and-toml-dialects.md)). |
+| 164 | YAML tags                                   | Only the core schema's tags; any other is a `*ParseError`, as the spec treats an unresolved tag. A tag forces its type. |
+| 165 | YAML dates                                  | The core schema has no timestamp type, so a YAML date stays a string as written, as goccy already does; one in RFC 3339 form still decodes into `time.Time`. |
+| 166 | YAML keys                                   | Resolved by the core schema, then printed, as goccy does; keys equal after resolution are duplicates, as the spec says, and so are keys that clash only once printed, because the tree can't hold both. |
+| 167 | Merge keys                                  | Supported, as a deliberate YAML 1.1 extension: the table's own keys win, then earlier list entries, as the merge-key spec says. |
+| 168 | YAML aliases                                | At most 10,000 values from aliases and merge keys per document, set with `WithMaxAliasValues(n)`; going over, or a self-alias, is a `*ParseError`. |
+| 169 | TOML dates and times                        | Offset date-times as `RFC3339Nano` text; local date-times, dates and times as their TOML text; the values are parsed as go-toml parses them (DL-48). |
+| 170 | Parse error messages                        | Never quote the file: YAML errors keep goccy's short message and the position, without its excerpt. |
+| 171 | Library panics                              | Both decoders recover a panic in their library and return a `*ParseError`. |
+| 172 | Format module API                           | `toml.Decoder()`, and `yaml.Decoder(opts...)` with `WithLegacyNumbers` and `WithMaxAliasValues`; formats, extensions and media types as in [api.md](api.md#settled-in-m6). |
+| 173 | Dependency budget                           | `scripts/check-deps.sh` builds throwaway consumers for each setup whose modules exist, and checks their counts; it runs in lefthook's pre-push. |
+| 174 | Conformance                                 | Each format's spec is the guiding principle, and deviations are deliberate and documented. Measuring conformance with yaml-test-suite, toml-test and JSONTestSuite is deferred to M12, the last milestone. |
 
 ---
 

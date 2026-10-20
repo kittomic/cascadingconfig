@@ -79,8 +79,10 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
   consumers.
 - **Release check:** each module is also built and tested with `GOWORK=off`, from lefthook's pre-push for now and from
   CI later. That catches a module that silently depends on unreleased core changes.
-- **Modules that are never released** (`internal/compat`, `examples`) may `replace` the core with the repository's copy,
-  so they build with `GOWORK=off` too. A released module never does.
+- **Replacing the core:** modules that are never released (`internal/compat`, `examples`) may `replace` the core with
+  the repository's copy, so they build with `GOWORK=off` too. Until the first release, so may the modules that will be
+  released (`format/toml`, `format/yaml` and the rest), because the repository is private and the core can't be fetched
+  (DL-162). From the first release on, a released module never does: M11 swaps in the released version and adds a check.
 
 ## Tooling changes
 
@@ -102,6 +104,7 @@ done
 | `go-test` (pre-push)               | Loop over the modules, with `-race`.                                                            |
 | `golangci-lint` (pre-push)         | Loop over the modules.                                                                          |
 | `govulncheck` (pre-push)           | Loop over the modules. Then each module is checked against its own dependencies.               |
+| `deps` (pre-push, from M6)         | `scripts/check-deps.sh` builds a throwaway consumer for each setup whose modules exist and checks the counts below (DL-173). |
 
 In workspace mode, `go test ./...` from the root may already match packages in every workspace module. That should be
 verified when the modules are created, but the loop is used regardless, so that every tool behaves the same way.

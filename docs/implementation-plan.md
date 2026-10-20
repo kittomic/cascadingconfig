@@ -67,8 +67,9 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M9  | Hot reload                        | core, `watch/fsnotify`                   | M5, M7     |
 | M10 | Presets                           | `presets`                                | M6, M8, M9 |
 | M11 | Release preparation               | all                                      | M10        |
+| M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
 
-M2 and M3 can be done in either order. M6 can run any time after M1.
+M2 and M3 can be done in either order. M6 can run any time after M1. M12 comes last, but needs only M6.
 
 ## M0: Repository and tooling
 
@@ -417,33 +418,48 @@ The largest milestone, done in four parts (DL-106).
 
 ## M6: Format modules
 
-**Scope:** `format/toml` (`pelletier/go-toml/v2`) and `format/yaml` (`goccy/go-yaml`).
+**Scope:** `format/toml` (`pelletier/go-toml/v2` v2.4.3) and `format/yaml` (`goccy/go-yaml` v1.19.2), as decided in
+[decision record 0002](decisions/0002-yaml-and-toml-dialects.md) and DL-162 to DL-174.
 
-**Decision needed first:** these are the first modules to import the core, so `scripts/check-gowork-off.sh` can't build
-them until the core can be fetched on its own, as a pushed commit or a release. How that check treats them before the
-first release is decided at the start of this milestone.
+- **Before the first release** (DL-162): both modules replace the core with the repository's copy, so `go mod tidy` and
+  the `GOWORK=off` check work while the repository is private and unreleased.
+- **YAML:** goccy parses, and the decoder builds the tree from goccy's syntax tree, typing unquoted values by the YAML
+  1.2 core schema (DL-163), with the tag, key, merge-key and alias rules of DL-164 to DL-168.
+- **TOML:** go-toml parses, and the decoder turns its date and time types into text (DL-169).
+- **Both:** errors never quote the file (DL-170), and a library panic becomes a `*ParseError` (DL-171).
+- **Options** (DL-172): `yaml.Decoder` takes `WithLegacyNumbers` and `WithMaxAliasValues`; `toml.Decoder` takes none.
+- **Dependency budget** (DL-173): `scripts/check-deps.sh`, in lefthook's pre-push.
+- **Not here:** the conformance suites, which wait for [M12](#m12-conformance) (DL-174).
 
 **Acceptance tests:**
 
 - **Canonical types:**
-  - every TOML date-time and YAML timestamp becomes an RFC 3339 string (DL-48)
-  - YAML `uint64` integers become `int64`, and values out of range are a `*ParseError` (DL-49)
-  - YAML non-string keys become strings (DL-50)
+  - every TOML date-time, date and time becomes text, offset ones in RFC 3339 form (DL-169)
+  - a YAML date stays a string as written (DL-165)
+  - YAML integers outside the `int64` range are a `*ParseError` (DL-49)
+- **YAML values** (DL-163): `yes`, `no`, `on` and `off` stay strings; `017`, `0o17`, `0x1F`, `1e3`, `+.inf`, `.nan`,
+  `0b11` and `1_000` follow the core schema, and with `WithLegacyNumbers` the 1.1 forms are integers.
+- **YAML tags** (DL-164): core tags force their type, `!!int abc` is a `*ParseError`, and `!!binary`, `!!timestamp`,
+  `!!set` and `!foo` are `*ParseError`s naming the tag.
+- **YAML keys** (DL-166): `0x1F:`, `~:` and `true:` become `"31"`, `"null"` and `"true"`; `1:` with `0o1:`, and `1:`
+  with `"1":`, are `*ParseError`s; a table as a key is a `*ParseError`.
+- **Merge keys** (DL-167): a single merge, a list where earlier entries win, the table's own keys winning, and a merge
+  of a scalar as a `*ParseError`.
+- **Aliases** (DL-168): an alias bomb hits the cap, `WithMaxAliasValues` moves it, and a self-alias is a `*ParseError`.
 - **Dialects** (DL-50 to DL-53):
-  - YAML `yes`, `no`, `on` and `off` stay strings
-  - several YAML documents in one file, and unknown tags, are `*ParseError`s
+  - several YAML documents in one file are a `*ParseError`
   - duplicate keys are `*ParseError`s in TOML and YAML
   - a leading byte-order mark is stripped in both, which matters most for YAML, where it would otherwise end up in the
     first key
   - TOML 1.1 syntax that the pinned go-toml accepts parses
-  - an alias bomb hits the expansion cap
-- **Positions:** line and column reach `*ParseError`.
+- **Errors:** line and column reach `*ParseError`, and no message contains an excerpt of the file (DL-170).
 - **YAML extensions:** `.yml` is decoded as YAML, `MYAPP_CONFIG_FORMATS=yml` means `yaml`, and when `.yaml` and `.yml`
   share a slot, `.yaml` wins (DL-47).
 - **Across formats:** the same document in TOML, YAML and JSON gives an identical tree.
-- **Fuzz:** both decoders never panic and only produce canonical types.
+- **Fuzz:** both decoders never panic and only produce canonical types (DL-171).
 - **Dependency budget:** `scripts/check-deps.sh` checks the counts in
-  [project-layout.md](project-layout.md#dependency-analysis), from lefthook's pre-push and from here on.
+  [project-layout.md](project-layout.md#dependency-analysis) for the setups whose modules exist, from lefthook's
+  pre-push and from here on (DL-173).
 
 ## M7: Includes, policies and transforms
 
@@ -585,6 +601,28 @@ Not test-first.
   offers on public repositories. Enable it in the repository settings when the repository is made public.
 - **Tags:** the core `v0.1.0` first, then the other modules, then `presets`, in the order set out in
   [project-layout.md](project-layout.md#versioning-and-releases).
+
+## M12: Conformance
+
+**Scope** (DL-174): measure each built-in decoder against its format's test suite. Spec-correctness is a guiding
+principle from the start, and every deliberate deviation is already documented; this milestone makes the degree of
+conformance a measured number.
+
+- **Suites:** [yaml-test-suite](https://github.com/yaml/yaml-test-suite) for `format/yaml`,
+  [toml-test](https://github.com/toml-lang/toml-test) (the TOML 1.1 set) for `format/toml`, and
+  [JSONTestSuite](https://github.com/nst/JSONTestSuite) for `format/json` and `internal/json`.
+- **Vendored, not imported:** each suite's files at a pinned release, with its licence and a script to refresh them, so
+  the dependency counts don't change.
+- **Every case is sorted into one of three groups,** and the counts are printed:
+  - **pass:** the tree matches the suite's expected result, or a case that must fail does
+  - **deliberate deviation:** with the reason and the decision behind it, such as a multi-document YAML stream, a tag
+    outside the core schema, or a top level that isn't a table
+  - **known library failure:** listed, so that an upgrade that fixes one fails the test until it moves to pass
+
+  Any other outcome fails the test.
+- **JSONTestSuite's arrays and scalars:** most of its cases aren't objects, so each runs twice: as a document, for the
+  top-level rule, and wrapped as `{"v": …}`, for the value itself.
+- **Findings:** a bug found in a decoder approved in an earlier milestone is fixed in its own commit and raised first.
 
 ## Decisions
 
