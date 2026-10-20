@@ -22,6 +22,8 @@ var (
 		WithEnvBinding(BindConfigFormats, ""),
 		WithBootstrapKeys(BootstrapEnv, BootstrapFormats, BootstrapCeilingPaths, BootstrapIgnoredConfigPaths,
 			BootstrapOverrideConfigFilenames),
+		// mise's include key: local paths here, remote references once the presets register resolvers (DL-178).
+		WithIncludeKey("include", IncludeFlat),
 
 		// Bootstrap files are mise's .miserc.toml locations (config-locations.md 3.7), lowest precedence first.
 		WithScope(ScopeSystem, FixedDir("{system}", MiseGlobalPatterns()...),
@@ -94,9 +96,15 @@ var (
 		WithScopes(ScopeSystem, ScopeUser, ScopeProject, ScopeOverride),
 	)
 
-	// MiseHardenedLayout is MiseLayout with hardened settings: project bootstrap files may only set env and formats.
+	// MiseHardenedLayout is MiseLayout with hardened settings: project bootstrap files may only set env and formats,
+	// local includes are confined, and files must pass StrictModes (DL-189).
 	MiseHardenedLayout = MiseLayout.ExtendAs("MiseHardenedLayout",
 		WithBootstrapLimit(ScopeProject, BootstrapEnv, BootstrapFormats),
+		WithDefaultPolicy(
+			AllowResolvers("file"),
+			Confine("{config_root}", "{user}", "{system}"),
+			FilePermissions(StrictModes),
+		),
 	)
 
 	// CosmiconfigLayout is cosmiconfig's layout (DL-146): the first file found wins; the start directory only by

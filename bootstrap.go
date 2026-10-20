@@ -209,6 +209,15 @@ func (ld *loading) readBootstrap() error {
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
+	// Bootstrap files get their scope's permission check and trust requirement (DL-190).
+	for _, e := range ld.boot {
+		if e.layer.Status == LayerLoaded && !ld.checkFile(c.policyFor(e.layer.Scope), e) && e.err != nil {
+			errs = append(errs, e.err)
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
 	for _, e := range ld.boot {
 		if err := ld.applyBootstrap(e); err != nil {
 			errs = append(errs, err)

@@ -21,6 +21,13 @@ type FileSystem interface {
 	SameFile(a, b fs.FileInfo) bool
 }
 
+// OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners, for
+// FilePermissions checks (DL-191).
+type OwnerInfo interface {
+	// Owner returns the owner's uid, or false when it isn't known.
+	Owner() (uid int, ok bool)
+}
+
 // Root is a directory opened by a FileSystem. Names are slash-separated and relative, as io/fs requires.
 type Root interface {
 	fs.StatFS
@@ -77,7 +84,19 @@ func (osFileSystem) OpenRoot(dir string) (Root, error) {
 
 func (osFileSystem) EvalSymlinks(p string) (string, error) { return filepath.EvalSymlinks(p) }
 
-func (osFileSystem) SameFile(a, b fs.FileInfo) bool { return os.SameFile(a, b) }
+func (osFileSystem) SameFile(a, b fs.FileInfo) bool { return os.SameFile(unwrapInfo(a), unwrapInfo(b)) }
+
+// osInfo is an OS file info that reports its owner, as OwnerInfo asks.
+type osInfo struct{ fs.FileInfo }
+
+func (i osInfo) Owner() (uid int, ok bool) { return ownerOf(i.FileInfo) }
+
+func unwrapInfo(info fs.FileInfo) fs.FileInfo {
+	if i, ok := info.(osInfo); ok {
+		return i.FileInfo
+	}
+	return info
+}
 
 type osRoot struct{ r *os.Root }
 
@@ -86,7 +105,13 @@ func (r osRoot) Open(name string) (fs.File, error) {
 	return r.r.OpenFile(name, os.O_RDONLY|openNonBlock, 0)
 }
 
-func (r osRoot) Stat(name string) (fs.FileInfo, error) { return r.r.Stat(name) }
+func (r osRoot) Stat(name string) (fs.FileInfo, error) {
+	info, err := r.r.Stat(name)
+	if err != nil {
+		return nil, err
+	}
+	return osInfo{info}, nil
+}
 
 func (r osRoot) ReadDir(name string) ([]fs.DirEntry, error) {
 	f, err := r.r.Open(name)

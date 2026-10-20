@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 
@@ -23,15 +24,30 @@ type Report struct {
 	Probes    []Probe       `json:"probes,omitempty"`    // locations searched where nothing was found, with WithProbes
 	Bindings  []BindingInfo `json:"bindings,omitempty"`  // every declared binding
 	Warnings  []Warning     `json:"warnings,omitempty"`  // warnings that belong to no layer, and unknown keys
+
+	defaultPolicy *PolicyInfo        // the default policy, for the text form
+	ownPolicy     map[ScopeName]bool // the scopes with a policy of their own, for the text form
 }
 
 // ScopeInfo describes one defined scope.
 type ScopeInfo struct {
-	Name     ScopeName  `json:"name"`
-	Kind     string     `json:"kind"` // "FixedDir", "Walk", "ExplicitFile", "EmbeddedFS", "Values", "ValuesFunc", "EnvVars", "Defaults" or "Scope"
-	Trust    TrustLevel `json:"trust"`
-	Selected bool       `json:"selected"`
-	Skipped  string     `json:"skipped,omitempty"` // why a selected scope wasn't searched
+	Name     ScopeName   `json:"name"`
+	Kind     string      `json:"kind"` // "FixedDir", "Walk", "ExplicitFile", "EmbeddedFS", "Values", "ValuesFunc", "EnvVars", "Defaults" or "Scope"
+	Trust    TrustLevel  `json:"trust"`
+	Selected bool        `json:"selected"`
+	Skipped  string      `json:"skipped,omitempty"` // why a selected scope wasn't searched
+	Policy   *PolicyInfo `json:"policy,omitempty"`  // the effective policy; nil for scopes that read no files (DL-194)
+}
+
+// PolicyInfo describes a scope's effective policy.
+type PolicyInfo struct {
+	Inherited       bool                `json:"inherited"`           // started from the default with InheritDefault
+	Resolvers       []string            `json:"resolvers"`           // the usable schemes
+	Allow           []string            `json:"allow,omitempty"`     // the global allow-list: Prefix("…"), MatchFunc, …
+	AllowFor        map[string][]string `json:"allow_for,omitempty"` // the allow-list for each scheme
+	Confine         []string            `json:"confine,omitempty"`   // the roots, as written
+	RequireTrust    bool                `json:"require_trust"`
+	FilePermissions bool                `json:"file_permissions"`
 }
 
 // EnvInfo describes the environments of a load.
@@ -74,10 +90,17 @@ func (ld *loading) report() *Report {
 	if len(c.presets) > 0 {
 		rep.Preset = c.presets[0]
 	}
+	rep.defaultPolicy, rep.ownPolicy = c.policyInfo(c.policyFor("")), map[ScopeName]bool{}
 	for _, s := range c.scopes {
-		rep.Scopes = append(rep.Scopes, ScopeInfo{
+		info := ScopeInfo{
 			Name: s.name, Kind: scopeKindName(s.kind), Trust: s.trust, Selected: c.selected[s.name], Skipped: ld.skipped[s.name],
-		})
+		}
+		switch s.kind.(type) {
+		case fixedDirKind, walkKind, explicitKind:
+			info.Policy = c.policyInfo(c.policyFor(s.name))
+			_, rep.ownPolicy[s.name] = c.policies[s.name]
+		}
+		rep.Scopes = append(rep.Scopes, info)
 	}
 	rep.Envs = EnvInfo{Selected: ld.selectedEnvs, Platform: ld.platformEnvs}
 	if len(ld.selectedEnvs) > 0 {
@@ -103,6 +126,64 @@ func (ld *loading) report() *Report {
 	slices.SortFunc(rep.Bindings, func(a, b BindingInfo) int { return cmp.Compare(a.Var, b.Var) })
 	rep.Warnings = cloneWarnings(ld.warnings)
 	return rep.clone()
+}
+
+// policyInfo describes a policy for the report, with each matcher as its constructor.
+func (c *config) policyInfo(p *policy) *PolicyInfo {
+	info := &PolicyInfo{
+		Inherited: p.inherited, Resolvers: []string{}, Confine: slices.Clone(p.confine),
+		RequireTrust: p.trust != nil, FilePermissions: p.perms != nil,
+	}
+	for _, s := range c.resolverSchemes() {
+		if p.usable(c, s) {
+			info.Resolvers = append(info.Resolvers, s)
+		}
+	}
+	info.Allow = describeMatchers(p.allow)
+	if len(p.allowFor) > 0 {
+		info.AllowFor = make(map[string][]string, len(p.allowFor))
+		for s, ms := range p.allowFor {
+			info.AllowFor[s] = describeMatchers(ms)
+		}
+	}
+	return info
+}
+
+func describeMatchers(ms []Matcher) []string {
+	var out []string
+	for _, m := range ms {
+		out = append(out, m.describe())
+	}
+	return out
+}
+
+// describePolicy writes a policy for the text form, as one line.
+func describePolicy(p *PolicyInfo) string {
+	var parts []string
+	if p.Inherited {
+		parts = append(parts, "inherits default")
+	}
+	resolvers := "none"
+	if len(p.Resolvers) > 0 {
+		resolvers = strings.Join(p.Resolvers, ", ")
+	}
+	parts = append(parts, "resolvers "+resolvers)
+	if len(p.Allow) > 0 {
+		parts = append(parts, "allow "+strings.Join(p.Allow, ", "))
+	}
+	for _, s := range slices.Sorted(maps.Keys(p.AllowFor)) {
+		parts = append(parts, "allow for "+s+": "+strings.Join(p.AllowFor[s], ", "))
+	}
+	if len(p.Confine) > 0 {
+		parts = append(parts, "confine "+strings.Join(p.Confine, ", "))
+	}
+	if p.RequireTrust {
+		parts = append(parts, "trust")
+	}
+	if p.FilePermissions {
+		parts = append(parts, "permissions")
+	}
+	return strings.Join(parts, "; ")
 }
 
 // scopeKindName names a scope's kind for the report.
@@ -133,6 +214,11 @@ func scopeKindName(k ScopeKind) string {
 func (r *Report) clone() *Report {
 	out := *r
 	out.Scopes = slices.Clone(r.Scopes)
+	for i, s := range out.Scopes {
+		if s.Policy != nil {
+			out.Scopes[i].Policy = s.Policy.clone()
+		}
+	}
 	out.Envs.Selected = slices.Clone(r.Envs.Selected)
 	out.Envs.Platform = slices.Clone(r.Envs.Platform)
 	out.Formats = slices.Clone(r.Formats)
@@ -141,6 +227,20 @@ func (r *Report) clone() *Report {
 	out.Probes = slices.Clone(r.Probes)
 	out.Bindings = slices.Clone(r.Bindings)
 	out.Warnings = cloneWarnings(r.Warnings)
+	return &out
+}
+
+func (p *PolicyInfo) clone() *PolicyInfo {
+	out := *p
+	out.Resolvers = slices.Clone(p.Resolvers)
+	out.Allow = slices.Clone(p.Allow)
+	out.Confine = slices.Clone(p.Confine)
+	if p.AllowFor != nil {
+		out.AllowFor = make(map[string][]string, len(p.AllowFor))
+		for k, v := range p.AllowFor {
+			out.AllowFor[k] = slices.Clone(v)
+		}
+	}
 	return &out
 }
 
@@ -213,6 +313,17 @@ func (r *Report) String() string {
 		scopes = append(scopes, []string{string(s.Name), s.Kind, s.Trust.String(), state})
 	}
 	section("scopes", scopes)
+	// The policies section lists the default and each scope's own, when some scope reads files.
+	var policies [][]string
+	if r.defaultPolicy != nil && slices.ContainsFunc(r.Scopes, func(s ScopeInfo) bool { return s.Policy != nil }) {
+		policies = append(policies, []string{"default", describePolicy(r.defaultPolicy)})
+	}
+	for _, s := range r.Scopes {
+		if s.Policy != nil && r.ownPolicy[s.Name] {
+			policies = append(policies, []string{string(s.Name), describePolicy(s.Policy)})
+		}
+	}
+	section("policies", policies)
 	section("bootstrap", layerRows(r.Bootstrap))
 	section("layers", layerRows(r.Layers))
 	var probes [][]string
@@ -262,6 +373,9 @@ func layerRows(ls []Layer) [][]string {
 				v += " " + l.Env
 			}
 			details = append(details, v)
+		}
+		if l.IncludedBy != "" {
+			details = append(details, "included by "+l.IncludedBy)
 		}
 		rows = append(rows, []string{string(l.Scope), l.Status.String(), p, strings.Join(details, ", "), l.Reason})
 	}

@@ -170,8 +170,9 @@ func NewWithPreset(name string, preset Preset, opts ...Option) (*Loader, error)
 Settings come from two places:
 
 - **Engine defaults** live in the core and apply even without a preset: deep merging with arrays replaced, `_unset`,
-  null semantics, `ConflictMerge` for same-slot files, the `koanf` tag, warnings for unknown keys, `slog.Default()`, and
-  the debounce timings.
+  null semantics, `ConflictMerge` for same-slot files, the `koanf` tag, warnings for unknown keys, `slog.Default()`, the
+  debounce timings, the built-in `file` include resolver, and a default policy that allows every registered resolver
+  (DL-182, DL-189).
 - **Layout settings** come only from a preset: scopes and their patterns, bootstrap files, the include key, decoders and
   format order, resolvers, policies, and env-var bindings.
 
@@ -183,7 +184,7 @@ Settings come from two places:
 | Built-in scope definitions     | `WithScopes(ScopeUser)` names an undefined scope.                                              | No: error at `New` |
 | Decoders                       | Only formats with a decoder are searched, so files exist but never load.                       | Yes                |
 | An include key                 | `include = [...]` is plain data and ends up in the result.                                     | Yes                |
-| The `file` resolver (with an include key) | Every local include fails.                                                          | No                 |
+| The `file` resolver (with an include key), removed with `WithoutIncludeResolver("file")` | Every local include fails. | No: error at `New` |
 | Env-var bindings               | `MYAPP_CONFIG_DIR` and the rest have no effect.                                                | Yes                |
 | Bootstrap files                | `.myapprc.toml` is never read.                                                                 | Yes                |
 
@@ -259,7 +260,7 @@ Options that only make sense in one place get their own type, so the compiler re
 | `ScopeKind`    | `WithScope(name, kind, …)`                   | `FixedDir`, `Walk`, `ExplicitFile`, `Embedded`, `EmbeddedFS`, `EnvVars`, `Values`             |
 | `ScopeOption`  | `WithScope(name, kind, …)`                   | `Before`, `After`, `Trust`                                                                  |
 | `PolicyOption` | `WithDefaultPolicy`, `WithScopePolicy`       | `InheritDefault`, `AllowResolvers`, `Allow`, `AllowFor`, `RequirePinned`, `Confine`, `RequireTrust`, `FilePermissions` |
-| `Matcher`      | `Allow`, `AllowFor`                          | `Prefix`, `Glob`, `Regexp`, `MatchFunc`                                                      |
+| `Matcher`      | `Allow`, `AllowFor`, `WithFileFormat`        | `Extension`, `FileName`, `Prefix`, `Glob`, `Regexp`, `MatchFunc`, and `MatchRef` (allow-lists only) |
 | `WatchOption`  | `Watch`, `Watch[T]`                          | `WithDebounce`, `WithPolling`, `WithRemotePoll`, `WithReloadOnAnyEvent`                     |
 | `EnvVarsOption` | `EnvVars(prefix, …)`                        | `MapEnv`                                                                                    |
 
@@ -279,7 +280,7 @@ layouts (DL-94).
 | -------------- | --------------------------------------------------------------------------------------------------------- |
 | Resolution     | **Settled** (DL-139): `WithResolution(MergeAll \| FirstMatch)`                                            |
 | Patterns       | `Pattern(template, variant, root)` inside a scope kind. `template` uses `{name}`, `{env}` and `{ext}`; `variant` is `VariantShared`, `VariantEnv`, `VariantLocal` or `VariantEnvLocal`; `root` says how the config root is derived (the scope dir, or the file's own dir). |
-| Includes       | `WithIncludeKey(key, nesting)`, where `nesting` allows or forbids includes in included files              |
+| Includes       | **Settled** (DL-178): `WithIncludeKey(key, IncludeFlat \| IncludeNested)` and `WithoutIncludeKey()`       |
 | Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit` and `WithBootstrapTransform` |
 | Limits         | `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
 | Directories    | **Settled** (DL-112): `WithPlatformDirs(XDGDirs)` for the mise layouts, and `EnvPathsDirs` for the cosmiconfig layout (M4d). It replaces the proposed `WithUserDir` and `WithSystemDir` pair. |
@@ -562,6 +563,86 @@ const WarnVersion cascadingconfig.WarningCode = "yaml-version"
   yaml.v3's YAML 1.1 behaviour, an app wraps `yaml.Unmarshal` into `map[string]any` in a type with `Format`,
   `Extensions`, `MediaTypes` and `Decode`, converting its non-canonical values, such as `time.Time` and `uint64`, in
   `Decode`. `DecodeDocument` applies the shared rules and rejects any non-canonical value it misses.
+
+#### Settled in M7
+
+```go
+// Includes (DL-178, DL-182, DL-183)
+type IncludeNesting int // IncludeFlat, IncludeNested
+
+func WithIncludeKey(key string, n IncludeNesting) Option
+func WithoutIncludeKey() Option
+func WithoutIncludeResolver(scheme string) Option
+
+type IncludeRef struct {
+	Raw      string // as written in the config file
+	Scheme   string // "file" until M8
+	Location string // the normalised reference: for "file", the absolute slash path after symlinks
+	Path     string // path inside a repo or artifact, if any
+	Version  string // git ref, tag or digest, if any
+	From     Layer  // the including file
+}
+
+// Policies (DL-188 to DL-190)
+func WithDefaultPolicy(opts ...PolicyOption) Option
+func WithScopePolicy(scope ScopeName, opts ...PolicyOption) Option
+func InheritDefault() PolicyOption
+func AllowResolvers(schemes ...string) PolicyOption
+func Allow(m ...Matcher) PolicyOption
+func AllowFor(scheme string, m ...Matcher) PolicyOption
+func Confine(roots ...string) PolicyOption // absolute, ~, {user}, {system}, {cwd} or {config_root}
+func RequireTrust(store TrustStore) PolicyOption
+func FilePermissions(f func(FileCheck) (Permission, string)) PolicyOption
+
+// Matchers (DL-176); Glob gains ?
+func Prefix(s string) Matcher
+func MatchRef(f func(IncludeRef) bool) Matcher // allow-lists only
+
+// File permissions (DL-191)
+type FileCheck struct {
+	Path  string
+	Info  fs.FileInfo // implements OwnerInfo where the platform has owners
+	Dir   bool        // the file's containing directory, not the file
+	Scope ScopeName
+	UID   int         // the current user
+	GOOS  string      // the host's, so a check can tell Windows apart
+}
+
+type Permission int // PermissionAllow, PermissionIgnore, PermissionError
+
+func StrictModes(c FileCheck) (Permission, string)
+
+// Trust (DL-192)
+type TrustStore interface {
+	Trusted(ctx context.Context, path, digest string) (bool, error)
+}
+
+func TrustPaths(globs ...string) TrustStore
+
+// Transforms (DL-193)
+func WithLayerTransform(f func(ctx context.Context, l Layer, t Tree) (Tree, error)) Option
+func WithResultTransform(f func(ctx context.Context, t Tree) (Tree, error)) Option
+
+// Added to existing types (DL-181, DL-191, DL-192, DL-194)
+//   LayerUntrusted; WarnFilePermissions ("file-permissions"), WarnUntrusted ("untrusted")
+//   ScopeInfo.Policy and PolicyInfo
+//   cctest.FS.Chown
+```
+
+- **Until M8,** `file` is the only scheme, and any other reference is an `*UnsupportedSchemeError` (501).
+  `IncludeResolver`, `Fetched`, `WithIncludeResolver`, `RequirePinned`, `WithMaxIncludeSize`, the cache options and
+  `WithoutRemoteIncludes` are settled in M8 (DL-182).
+- **The layouts:** `MiseLayout` and `MiseHardenedLayout` get `WithIncludeKey("include", IncludeFlat)`, and
+  `MiseHardenedLayout` also gets
+  `WithDefaultPolicy(AllowResolvers("file"), Confine("{config_root}", "{user}", "{system}"), FilePermissions(StrictModes))`.
+  `CosmiconfigLayout` gets no include key (DL-178).
+- **Option errors:** a nil function, store or matcher, an empty include key or one equal to the unset key, an empty
+  scheme or root, and `MatchRef` in `WithFileFormat` are `*OptionError`s, as are the cases in DL-189.
+- **`Report.String()`** marks an included layer with `included by <path>` in its details. When some scope reads files,
+  it adds a `policies:` section after the scopes, with a `default` row and a row for each scope with its own policy, for
+  example `project  inherits default; resolvers file; confine {config_root}; trust; permissions` (DL-194).
+- **`PolicyInfo`** is set for `FixedDir`, `Walk` and `ExplicitFile` scopes. Policies don't apply to `EmbeddedFS` or
+  value scopes, which have no files on the loader's filesystem.
 
 ### Option catalogue
 
@@ -1161,7 +1242,17 @@ type ScopeInfo struct {
 	Trust    TrustLevel
 	Selected bool
 	Skipped  string // why a selected scope wasn't searched, such as "disabled by MYAPP_X" or "replaced by explicit files"
-	// M7 adds the effective policy (DL-159).
+	Policy   *PolicyInfo // the effective policy; nil for scopes that read no files (DL-194)
+}
+
+type PolicyInfo struct {
+	Inherited       bool                // started from the default with InheritDefault
+	Resolvers       []string            // the usable schemes
+	Allow           []string            // the global allow-list, as matchers print: Prefix("…"), MatchFunc, MatchRef
+	AllowFor        map[string][]string // the allow-list for each scheme
+	Confine         []string            // the roots, as written
+	RequireTrust    bool
+	FilePermissions bool
 }
 
 type EnvInfo struct {
@@ -1266,8 +1357,8 @@ type PositionError interface {
 	Position() (line, column int)
 }
 
-// IncludeResolver fetches includes. Implemented by the file resolver, httpresolver, gitresolver and ociresolver.
-// (Defined in design.md: Resolver hooks.)
+// IncludeResolver fetches includes. Implemented by httpresolver, gitresolver and ociresolver; the built-in file
+// resolver is part of the loader (DL-182). Settled in M8. (Defined in design.md: Resolver hooks.)
 type IncludeResolver interface {
 	Schemes() []string
 	Resolve(ctx context.Context, ref IncludeRef) (*Fetched, error)
@@ -1280,8 +1371,8 @@ type FileSystem interface {
 	SameFile(a, b fs.FileInfo) bool                 // file identity, for dedup
 }
 
-// OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners. It arrives
-// with the permission policy in M7 (DL-108).
+// OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners. cctest.FS
+// reports an owner only for files given one with Chown (DL-191).
 type OwnerInfo interface {
 	Owner() (uid int, ok bool)
 }
@@ -1329,7 +1420,8 @@ type Source struct {
 - **The top-level-map rule lives in each decoder,** because a `Tree` can only hold a map. The other shared rules live in
   `DecodeDocument`, so no decoder has to repeat them.
 - **Built-in kinds use the same interfaces.** `FixedDir`, `Walk` and the rest implement `Scope`, and the built-in
-  decoders and resolvers implement `Decoder` and `IncludeResolver`. Nothing built in is special-cased.
+  decoders and remote resolvers implement `Decoder` and `IncludeResolver`. The one exception is the `file` resolver,
+  which is part of the loader, because a local read needs the filesystem hook, dedup and the permission policy (DL-182).
 - **Files go through the pipeline.** A `Source` with a `Path` is read by the loader, through the filesystem hook, so a
   custom scope gets permission checks, symlink handling and dedup for free. Only `Tree` sources skip file handling.
 
@@ -1353,8 +1445,8 @@ exercise the loader without real files or timers:
 - **`cctest.FS`:** an in-memory filesystem implementing the [`FileSystem`](#extension-interfaces) interface, with
   symlinks, permissions and owners (DL-109):
   - **`NewFS(files map[string]string)`** builds a tree from absolute paths and contents, creating directories as needed.
-  - **Methods:** `WriteFile`, `Mkdir`, `Symlink`, `Link` (a hard link), `Mkfifo`, `Chmod` and `Remove`. Owners arrive in
-    M7 (DL-108).
+  - **Methods:** `WriteFile`, `Mkdir`, `Symlink`, `Link` (a hard link), `Mkfifo`, `Chmod`, `Chown` and `Remove`. A file
+    never given an owner with `Chown` reports none (`ok == false`), so owner checks are opt-in (DL-191).
   - **Safe for concurrent use,** so watch tests can change it while a watcher reads it.
 - **`cctest.Notifier`:** a fake `Notifier` whose events the test triggers.
 - **`cctest.Clock`:** a fake clock for debounce, TTLs and polling. The loader's clock is internal, and `cctest` is the

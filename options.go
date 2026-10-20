@@ -45,6 +45,9 @@ type Matcher interface {
 	check(c *config) bool
 	// matches reports whether the matcher accepts slashPath, for app name.
 	matches(slashPath, name string) bool
+	// describe returns the matcher as the report shows it: its constructor and its arguments, or just the
+	// constructor's name for a function.
+	describe() string
 }
 
 // WatchOption configures watching, passed to Watch. Its options arrive in M9.
@@ -121,6 +124,18 @@ type config struct {
 	bootstrapLimits     map[ScopeName][]BootstrapKey
 	bootstrapTransforms []func(ctx context.Context, l Layer, t Tree) (Tree, error)
 
+	includeKey     string // WithIncludeKey; empty means includes are off
+	nesting        IncludeNesting
+	noFileResolver bool // WithoutIncludeResolver("file")
+
+	defaultPolicy *policyDef               // WithDefaultPolicy; nil means the engine default
+	scopePolicies map[ScopeName]*policyDef // WithScopePolicy
+	policyDefault *policy                  // the effective default policy; set by finish
+	policies      map[ScopeName]*policy    // the scopes' own effective policies; set by finish
+
+	layerTransforms  []func(ctx context.Context, l Layer, t Tree) (Tree, error)
+	resultTransforms []func(ctx context.Context, t Tree) (Tree, error)
+
 	errs []error
 }
 
@@ -188,6 +203,8 @@ func (c *config) finish() error {
 		c.fail("New", "no scopes are selected, so nothing would be searched")
 	}
 	c.finishRequirements()
+	c.finishIncludes()
+	c.finishPolicies()
 	for _, s := range c.scopes {
 		if fd, ok := s.kind.(fixedDirKind); ok && !s.invalid && fd.usesPlatformDirs() {
 			switch {

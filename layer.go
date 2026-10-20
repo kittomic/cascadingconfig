@@ -74,11 +74,14 @@ const (
 	LayerFailed
 	// LayerDuplicate is another route to a file that loaded from elsewhere. Reason names the route that was kept.
 	LayerDuplicate
+	// LayerUntrusted is a file its scope's trust store hasn't approved. It is never decoded.
+	LayerUntrusted
 )
 
-// String returns the status's name: "loaded", "ignored", "empty", "unreadable", "failed" or "duplicate".
+// String returns the status's name: "loaded", "ignored", "empty", "unreadable", "failed", "duplicate" or
+// "untrusted".
 func (s LayerStatus) String() string {
-	return enumName(int(s), "loaded", "ignored", "empty", "unreadable", "failed", "duplicate")
+	return enumName(int(s), "loaded", "ignored", "empty", "unreadable", "failed", "duplicate", "untrusted")
 }
 
 // MarshalText returns the status's name.

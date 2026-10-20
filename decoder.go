@@ -88,6 +88,12 @@ const (
 
 	// WarnUnknownKey reports a key that no field consumed when decoding. Path is the file that set it.
 	WarnUnknownKey WarningCode = "unknown-key"
+
+	// WarnFilePermissions reports a searched file skipped by a FilePermissions check. The layer's Reason says why.
+	WarnFilePermissions WarningCode = "file-permissions"
+
+	// WarnUntrusted reports a file skipped because its scope's trust store hasn't approved it.
+	WarnUntrusted WarningCode = "untrusted"
 )
 
 // DecodeDocument runs d on data, with the rules every format shares:
