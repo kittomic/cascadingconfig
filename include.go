@@ -84,3 +84,15 @@ type IncludeRef struct {
 	// reference passed, under the same policy. It returns a *ReferenceError or a *PolicyError.
 	Check func(ref string) error
 }
+
+// WithMaxIncludeDepth limits how deep includes nest: an include more than n levels below its root file is a
+// *CycleError (508). The default is 16 (DL-210). A limit that isn't positive is an *OptionError.
+func WithMaxIncludeDepth(n int) Option {
+	return optionFunc(func(*config) { _ = n }) // stub
+}
+
+// WithMaxIncludes limits how many include references one load follows, a reference listed twice counting twice; more
+// is a *TooLargeError (413). The default is 1000 (DL-210). A limit that isn't positive is an *OptionError.
+func WithMaxIncludes(n int) Option {
+	return optionFunc(func(*config) { _ = n }) // stub
+}
