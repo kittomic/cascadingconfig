@@ -670,13 +670,35 @@ load paths, so concepts specific to Node.js are left out. Users can add them bac
 | Change                                                                 | Why                                                                                  |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | No JS or TS config files (`.{name}rc.js`, `{name}.config.ts`, …).       | They need a JavaScript runtime. `{name}.config.*` drops out entirely, because cosmiconfig only lists it with JS/TS extensions. |
-| No `package.json` or `package.yaml`: no `{name}` property lookup (`packageProp`), and no `cosmiconfig` key in them for the meta config. | Node.js manifests. Users can add a manifest source with the `Embedded` scope kind, for example `package.json#{name}`. |
+| No `package.json` or `package.yaml`: no `{name}` property lookup (`packageProp`), and no `cosmiconfig` key in them for the meta config. | Node.js manifests. Users can add a manifest source with a pattern `Key`, for example `Pattern{Template: "package.json", Key: "{name}"}`. |
 | The `Project` search strategy has no default root marker.              | cosmiconfig stops at the first directory containing `package.json`/`package.yaml`. Here the app names its own marker with `WithRootMarker`, for example `.git` or `go.mod`. |
 | `_unset` removes inherited keys ([Unsetting keys](#unsetting-keys)).    | cosmiconfig would pass `_unset` through as data.                                     |
+| `loaders` and `searchStrategy` in the meta config are unknown keys, with a warning. | cosmiconfig rejects them with an error; here every unknown bootstrap key warns, so a newer meta file doesn't break an older app (DL-142). |
+| `$import` isn't supported yet, and may never be (DL-145).               | It resolves paths relative to the importing file with no allow-list or confinement, which has to be reconciled with the include security and trust model ([Includes](#includes)). |
+
+**`CosmiconfigLayout`** (DL-146), lowest precedence first:
+
+- **`user`,** selected only by `WithSearchStrategy(SearchGlobal)`: `FixedDir("{user}")` with `config.{ext}`, then
+  `config`, which a `WithFileFormat(FileName("config"), "yaml", "json")` rule decodes.
+- **`project`:** a `Walk` with `.config/{name}rc.{ext}`, `.config/{name}rc`, `.{name}rc.{ext}` and `.{name}rc`, so
+  `.{name}rc` ranks highest, as in cosmiconfig. Each `{ext}` slot puts JSON above YAML, and `.yaml` above `.yml`.
+- **`meta`:** `FixedDir("{cwd}", Pattern{Template: ".config/config.{ext}", Key: "{name}"})`, the meta file's `{name}`
+  key, highest, so under first-match resolution it wins outright when it's non-empty (DL-142). The same file's
+  `cosmiconfig` key is the scope's bootstrap file, with the keys `formats`, `searchPlaces` and `mergeSearchPlaces`.
+- **Settings:** `WithResolution(FirstMatch)`, `WithSearchStrategy(SearchNone)`, `WithPlatformDirs(EnvPathsDirs)`,
+  `WithConfigFilesOnly()` and `WithFileFormat(FileName(".{name}rc"), "yaml", "json")`.
 
 ### Search strategies
 
-These options mirror cosmiconfig's `searchStrategy` and `stopDir`:
+These options mirror cosmiconfig's `searchStrategy` and `stopDir`. They are shorthand for general walk stops (DL-140):
+
+- **Walk stops:** `StopAtStart` searches the start directory only. `StopAtMarker` walks up to and including the first
+  directory that contains an entry named by `WithRootMarker(names...)`, or to `/`. `StopAtHome` walks up to and
+  including the stop dir, `~` unless `WithStopDir(dir)` changes it, or to `/` if the stop dir isn't an ancestor; for
+  mise nothing changes. `StopAtRoot` always walks to `/`.
+- **`WithSearchStrategy`:** `SearchNone` sets `StopAtStart` and `SearchProject` sets `StopAtMarker`, and both deselect
+  the `user` scope; `SearchGlobal` sets `StopAtHome` and selects `user`. The selection changes when the option runs,
+  like any other option. The constants are prefixed, because `None` and `Global` would be too generic in the package.
 
 | Strategy                           | Directories searched                                                                                  | Scopes            |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------- |
@@ -684,8 +706,25 @@ These options mirror cosmiconfig's `searchStrategy` and `stopDir`:
 | `WithSearchStrategy(Project)`      | The start dir, then each parent, up to and **including** the first directory containing a root marker set with `WithRootMarker(names...)`, or up to `/`. | `project` |
 | `WithSearchStrategy(Global)`       | The start dir, then each parent, up to and **including** the stop dir (`WithStopDir(dir)`, default `~`), or up to `/` if the stop dir isn't an ancestor. Then the user dir. | `project`, `user` |
 
-- **Invalid combinations are `*OptionError`s,** as in cosmiconfig: `WithStopDir` with a strategy other than `Global`,
-  and `Project` with no root marker.
+- **Invalid combinations are `*OptionError`s,** as in cosmiconfig: `WithStopDir` with a walk stop other than
+  `StopAtHome`, and `StopAtMarker` with no root marker.
+- **First-match resolution** (DL-139): `WithResolution(FirstMatch)` loads only the highest-precedence non-empty file,
+  across every scope, so the nearest file wins and the user directory is reached only if nothing nearer matched. The
+  other files are listed as `LayerIgnored`, without a warning. Files below the chosen one aren't decoded, so a broken
+  file there doesn't fail the load, as in cosmiconfig. Empty files are skipped. `WithResolution(MergeAll)` is the
+  default.
+- **Explicit files replace everything** (DL-144): with `WithConfigFilesOnly()`, explicit config files are the whole
+  load, and no scope is searched, as with cosmiconfig's `load(path)`. Bootstrap files are still read.
+- **The current directory:** `FixedDir` accepts a `{cwd}` placeholder, for cosmiconfig's meta file, which is read from
+  the current directory only, never from the start directory or its parents (DL-142).
+- **Meta config keys:** `BootstrapSearchPlaces` (`searchPlaces`), file names that may use `{name}`, which are added to
+  every walk's patterns at the highest precedence; and `BootstrapMergeSearchPlaces` (`mergeSearchPlaces`), a boolean,
+  true by default, which when false makes them replace the walk's patterns instead. A bootstrap pattern's `Key` picks
+  the table its keys are read from.
+- **`EnvPathsDirs`** (DL-143) is cosmiconfig's `env-paths` user directory: `$XDG_CONFIG_HOME/{name}`, else
+  `~/.config/{name}`, on Linux; `~/Library/Preferences/{name}` on macOS; `%APPDATA%\{name}\Config` on Windows, falling
+  back to `~\AppData\Roaming` when `APPDATA` isn't set. It has no system directory, so `{system}` with it is an
+  `*OptionError`.
 - **`WithRootMarker` is generic.** Any walk can use it, in any preset, for example to stop at a repository root.
 
 ## File format precedence
@@ -726,14 +765,15 @@ The **slot** is one pattern in one directory, with everything except `{ext}` fil
 | Preset              | Format precedence                         | Why                                                                  |
 | ------------------- | ----------------------------------------- | -------------------------------------------------------------------- |
 | `mise.Preset` (default) | `toml`, `yaml`, `json`                  | TOML wins. mise is TOML-only, so the other formats are additions.    |
-| `cosmiconfig.Preset` | *(none)*, `json`, `yaml`                  | cosmiconfig's own search order. *(none)* is the extensionless `.{name}rc`, decoded as set by `WithExtensionlessFormat`: YAML if a YAML decoder is registered, otherwise JSON. TOML is not in this preset. The preset uses `FormatConflict: first`, because cosmiconfig stops at the first match. |
+| `cosmiconfig.Preset` | *(none)*, `json`, `yaml`                  | cosmiconfig's own search order. *(none)* is the extensionless `.{name}rc`, decoded by a `WithFileFormat` rule: YAML if a YAML decoder is registered, otherwise JSON. TOML is not in this preset. The preset uses `FormatConflict: first`, because cosmiconfig stops at the first match. |
 
 - **The order lists formats, not extensions.** One format can have several extensions: YAML is both `.yaml` and `.yml`.
 - **Within a format, extensions have a fixed rank.** For YAML, `.yaml` ranks above `.yml`, because `yaml` sorts first
   alphabetically. A slot containing both loads both under the default `merge` policy, with `.yaml` applied last so it
   wins where they overlap. Under `first`, only `.yaml` loads. Under `error`, the pair is a `*ConflictError`.
-- **Extensionless files** (cosmiconfig's `.{name}rc`) are decoded by the format that `WithExtensionlessFormat(format)`
-  names. With no such setting, extensionless candidates aren't searched.
+- **Files without an extension,** or with one that should mean another format, get their format from a rule (see
+  [Choosing a file's format](#choosing-a-files-format)). A template without `{ext}` that no rule or extension covers
+  isn't searched.
 - An order set by the app, an env var or a bootstrap file may only name formats with a registered decoder. A layout's
   *default* order may name others, which are simply not searched ([api.md](api.md#layouts-vs-presets)).
 - Extensions with no decoder never match, so `.js` and `.ts` are simply never found.
@@ -795,6 +835,34 @@ defaults.
 - **Effect on the bootstrap file:** this is the only source outside the app's code that also changes how the bootstrap
   files themselves are found. The app's own option affects it too.
 
+### Choosing a file's format
+
+Every file the loader decodes gets its format from rules (DL-141), so names without an extension, such as cosmiconfig's
+`.{name}rc`, can be read:
+
+```go
+cascadingconfig.WithFileFormat(cascadingconfig.FileName(".{name}rc"), "yaml", "json") // YAML if registered, else JSON
+cascadingconfig.WithFileFormat(cascadingconfig.Extension(".conf", ".cfg"), "toml")
+cascadingconfig.WithFileFormat(cascadingconfig.Glob("/etc/**/*.settings"), "yaml")
+cascadingconfig.WithFileFormat(cascadingconfig.Regexp(`.*/\.?myapprc$`), "yaml")
+```
+
+- **`WithFileFormat(m, formats...)`:** a file the matcher accepts is decoded with the first listed format that has a
+  registered decoder. With none registered, the rule doesn't apply.
+- **Matchers:** `Extension(exts...)` matches one or more extensions, with or without the dot, so
+  `Extension(".yaml", ".yml")` keeps simple cases simple. `FileName(glob)` matches the base name and may use `{name}`.
+  `Glob(pattern)` matches the whole slash path, with `*` within one segment and `**` across segments. `Regexp(expr)`
+  must match the whole path. `MatchFunc(f)` takes a function. These are the same `Matcher` values that allow-lists use
+  ([Allow-lists](#allow-lists)). A pattern that doesn't compile is an `*OptionError` named after its constructor.
+- **One model with extensions:** each decoder's extensions are built-in rules, `Extension(...)` for its format. Rules
+  from `WithFileFormat` are checked first, the most recently registered first, so an app can override a layout's rule;
+  the extension rules come last.
+- **Everywhere:** the rules apply to searched candidates, explicit files (so `--config ~/.myapprc` works) and includes.
+  A searched file is still only loaded when its format is in the scope's searched order.
+- **Templates:** a template with `{ext}` still expands to the registered decoders' extensions. A template without
+  `{ext}`, such as `.{name}rc`, matches that exact name, and its format comes from the rules; a name no rule matches
+  isn't a candidate.
+
 ## Format dialects
 
 What each built-in decoder accepts, and the rules every decoder follows. These were checked against the pinned libraries
@@ -836,7 +904,7 @@ preset registers the `file` resolver (see [Local files](#local-files)).
 | ------------------- | ----------- | --------------------------- | ----------------------------------------- |
 | `mise.Preset`        | `include`   | `http`/`https`, `git`, `oci` | No: an included file can't include (mise) |
 | `misehardened.Preset`  | `include`   | none, so local files only   | No                                        |
-| `cosmiconfig.Preset` | `$import`   | none, so local files only (as cosmiconfig) | Yes, with cycle detection (as cosmiconfig) |
+| `cosmiconfig.Preset` | `$import`, deferred and possibly never supported (DL-145) | none, so local files only (as cosmiconfig) | Yes, with cycle detection (as cosmiconfig) |
 
 **Rules for every include:**
 
@@ -1680,6 +1748,15 @@ There are no open questions.
 | 136 | `{NAME}_CONFIG_FORMATS`                     | Implemented with `WithFormats`' syntax; an unknown format or one with no decoder is an `*OptionError` at `Load` named after the variable. |
 | 137 | Bootstrap files in results                  | Tests read a private list until M5's report; bootstrap files never merge into the config. |
 | 138 | The layouts' bootstrap files                | `MiseLayout`'s system, user and project files as mise has them, all five keys; `MiseHardenedLayout` limits project files to `env` and `formats`; no extra `.config/{name}/` location. |
+| 139 | First-match resolution                      | `WithResolution(FirstMatch)` loads only the highest-precedence non-empty file; files below it aren't decoded (see [Search strategies](#search-strategies)). |
+| 140 | Walk stops and search strategies            | `StopAtStart` and `StopAtMarker` join the walk stops; `WithStopDir` generalises `StopAtHome`; `WithSearchStrategy(SearchNone \| SearchProject \| SearchGlobal)` is cosmiconfig shorthand. |
+| 141 | Choosing a file's format                    | `WithFileFormat(matcher, formats...)` with `Extension`, `FileName`, `Glob`, `Regexp` and `MatchFunc`; extensions are built-in rules checked last; it replaces `WithExtensionlessFormat` (see [Choosing a file's format](#choosing-a-files-format)). |
+| 142 | The meta config                             | A `meta` scope at `{cwd}` with a `Key`, and its `cosmiconfig` table as a bootstrap file with `searchPlaces` and `mergeSearchPlaces`; `loaders` and `searchStrategy` only warn. |
+| 143 | `EnvPathsDirs`                              | cosmiconfig's `env-paths` user directory on each OS; no system directory. |
+| 144 | Explicit files replace everything           | `WithConfigFilesOnly()`: no scope is searched when explicit files are set; bootstrap files are still read. |
+| 145 | `$import`                                   | Deferred, and possibly never supported, depending on how it fits the include security and trust model. |
+| 146 | `CosmiconfigLayout`'s scopes                | `user`, `project` and `meta`, with first-match resolution and `SearchNone` (see [Deviations from cosmiconfig](#deviations-from-cosmiconfig)). |
+| 147 | Golden tests in M4d                         | One directory with every search place, each strategy's walk, `SearchGlobal` reaching the user directory, and the meta file's key winning. |
 
 ---
 
