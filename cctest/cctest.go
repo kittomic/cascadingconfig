@@ -37,12 +37,13 @@ func (f *FS) Link(oldPath, newPath string) { f.m.Link(oldPath, newPath) }
 // Mkfifo creates a named pipe.
 func (f *FS) Mkfifo(path string) { f.m.Mkfifo(path) }
 
-// Chmod changes a file's or directory's permission bits. A file without read permission can't be read.
+// Chmod changes a file's or directory's permission bits, and its sticky bit. A file without read permission can't be
+// read.
 func (f *FS) Chmod(path string, perm fs.FileMode) { f.m.Chmod(path, perm) }
 
 // Chown gives a file or directory an owner, which its file info reports through cascadingconfig.OwnerInfo. A file
 // never given one reports none.
-func (f *FS) Chown(path string, uid int) { _, _ = path, uid } // stub
+func (f *FS) Chown(path string, uid int) { f.m.Chown(path, uid) }
 
 // Remove removes a file, symlink or directory and everything below it.
 func (f *FS) Remove(path string) { f.m.Remove(path) }

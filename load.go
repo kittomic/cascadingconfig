@@ -94,13 +94,18 @@ func (ld *loading) run() (*Result, error) {
 		return nil, contextError(err)
 	}
 	ld.dedup()
-	layers, err := ld.decode()
+	layers, err := ld.process()
 	if err != nil {
 		return nil, err
 	}
 	res, err := merge(c.merge, layers)
 	if err != nil {
 		return nil, err
+	}
+	if len(c.resultTransforms) > 0 {
+		if res.tree, err = ld.transformResult(res.tree); err != nil {
+			return nil, err
+		}
 	}
 	if err := ld.checkRequirements(); err != nil {
 		return nil, err
@@ -176,14 +181,18 @@ type entry struct {
 	data  []byte      // a file's contents
 	tree  Tree        // a value scope's tree
 	info  fs.FileInfo // a file's identity in the loader's FileSystem, for dedup; nil for EmbeddedFS
-	key   Path        // the table inside the file that holds the config, if the pattern has a Key
-	err   error
-	vars  map[string]string // an EnvVars layer's variable for each key path
+	real  string      // a file's path with symlinks resolved, for permission and trust checks
+	// dirInfo is the containing directory of the file real names, for permission checks.
+	dirInfo fs.FileInfo
+	key     Path // the table inside the file that holds the config, if the pattern has a Key
+	err     error
+	vars    map[string]string // an EnvVars layer's variable for each key path
 
 	dropped  bool // the pattern's key wasn't in the file, so it counts as not found
 	file     bool // read from the loader's FileSystem, not an fs.FS
 	value    bool // a value scope's tree, not a file
 	explicit bool // an explicit config file
+	included bool // an included file, already checked against its root file's policy
 }
 
 func (ld *loading) addError(err error) {
@@ -221,6 +230,16 @@ func failReason(err error) string {
 		return "no decoder for its format"
 	case errors.Is(err, ErrIO):
 		return "the file can't be read"
+	case errors.Is(err, ErrTransform):
+		return "a transform failed"
+	case errors.Is(err, ErrIncludeCycle):
+		return "an include cycle"
+	case errors.Is(err, ErrUnsupportedScheme):
+		return "no resolver for its scheme"
+	case errors.Is(err, ErrInvalidReference):
+		return "an invalid reference"
+	case errors.Is(err, ErrPolicy):
+		return "rejected by a policy"
 	default:
 		return fmt.Sprintf("failed with code %d", CodeOf(err))
 	}
@@ -942,7 +961,14 @@ func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLeve
 			ld.failLayer(l, tooLarge(l, int64(len(data)), c.maxFileSize))
 			continue
 		}
-		ld.entries = append(ld.entries, &entry{layer: l, data: data, info: info, file: true, explicit: true})
+		e := &entry{layer: l, data: data, info: info, file: true, explicit: true, real: resolved}
+		if root, err := c.fsys.OpenRoot(filepath.Dir(resolved)); err == nil {
+			if di, err := root.Stat("."); err == nil {
+				e.dirInfo = di
+			}
+			_ = root.Close()
+		}
+		ld.entries = append(ld.entries, e)
 	}
 }
 
@@ -1000,7 +1026,13 @@ func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow
 	}
 	e := &entry{layer: l, data: data, key: key, file: follow}
 	if follow {
-		e.info = info
+		e.info, e.real = info, l.Path
+		if resolved, err := c.fsys.EvalSymlinks(l.Path); err == nil {
+			e.real = resolved
+		}
+		if di, err := r.Stat(path.Dir(name)); err == nil {
+			e.dirInfo = di
+		}
 	}
 	ld.entries = append(ld.entries, e)
 }
@@ -1071,69 +1103,6 @@ func (ld *loading) dedup() {
 			break
 		}
 	}
-}
-
-// decode decodes every loaded file, and returns the layers to merge, or every problem found. With first-match
-// resolution, only the highest-precedence non-empty file is chosen, and the files below it aren't decoded.
-func (ld *loading) decode() ([]mergeLayer, error) {
-	if ld.c.resolution == FirstMatch {
-		return ld.decodeFirst()
-	}
-	var errs []error
-	var layers []mergeLayer
-	for _, e := range ld.entries {
-		if e.err != nil {
-			errs = append(errs, e.err)
-			continue
-		}
-		ok, err := ld.decodeEntry(e)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if ok {
-			layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree, vars: e.vars})
-		}
-	}
-	return layers, errors.Join(errs...)
-}
-
-// decodeFirst chooses the highest-precedence non-empty file. A problem above it fails the load; the files below it
-// are ignored without being decoded, so a broken one doesn't matter. Value layers aren't files, so they always merge.
-func (ld *loading) decodeFirst() ([]mergeLayer, error) {
-	var chosen *entry
-	var layers []mergeLayer // highest precedence first
-	for i := len(ld.entries) - 1; i >= 0; i-- {
-		e := ld.entries[i]
-		if e.value {
-			if e.layer.Status == LayerLoaded {
-				layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree, vars: e.vars})
-			}
-			continue
-		}
-		if chosen != nil {
-			if e.err != nil {
-				e.err, e.dropped = nil, true
-			} else if e.layer.Status == LayerLoaded {
-				e.layer.Status = LayerIgnored
-				e.layer.Reason = "first-match resolution chose " + chosen.layer.Path
-			}
-			continue
-		}
-		if e.err != nil {
-			return nil, e.err
-		}
-		ok, err := ld.decodeEntry(e)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			chosen = e
-			layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree})
-		}
-	}
-	slices.Reverse(layers)
-	return layers, nil
 }
 
 // decodeEntry decodes one loaded entry, and reports whether it has config to merge. Empty files, and files whose

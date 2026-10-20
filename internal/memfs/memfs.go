@@ -28,6 +28,8 @@ type node struct {
 	target   string      // a symlink's target, as written
 	children map[string]*node
 	modTime  time.Time
+	owner    int  // the owner's uid, when hasOwner is set
+	hasOwner bool // Chown gave it an owner
 }
 
 func newDir(perm fs.FileMode) *node {
@@ -140,8 +142,8 @@ func (f *FS) Mkfifo(p string) {
 	f.put(p, &node{mode: fs.ModeNamedPipe | 0o644, modTime: time.Now()})
 }
 
-// Chmod changes a file's or directory's permission bits, without following a symlink. A file without owner read
-// permission can't be opened, and a directory without it can't be listed.
+// Chmod changes a file's or directory's permission bits, and its sticky, setuid and setgid bits, without following a
+// symlink. A file without owner read permission can't be opened, and a directory without it can't be listed.
 func (f *FS) Chmod(p string, perm fs.FileMode) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -149,7 +151,18 @@ func (f *FS) Chmod(p string, perm fs.FileMode) {
 	if err != nil {
 		panic("memfs: " + err.Error())
 	}
-	n.mode = n.mode.Type() | perm.Perm()
+	n.mode = n.mode.Type() | perm&(fs.ModePerm|fs.ModeSticky|fs.ModeSetuid|fs.ModeSetgid)
+}
+
+// Chown gives a file or directory an owner, without following a symlink.
+func (f *FS) Chown(p string, uid int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n, _, err := f.resolve(segments(p), false)
+	if err != nil {
+		panic("memfs: " + err.Error())
+	}
+	n.owner, n.hasOwner = uid, true
 }
 
 // Remove removes a file, symlink or directory and everything below it. Removing nothing is a no-op.
@@ -355,16 +368,23 @@ func entries(dir *node) []fs.DirEntry {
 
 // fileInfo is a snapshot of a node's metadata. Sys returns the node, which SameFile compares.
 type fileInfo struct {
-	name    string
-	size    int64
-	mode    fs.FileMode
-	modTime time.Time
-	n       *node
+	name     string
+	size     int64
+	mode     fs.FileMode
+	modTime  time.Time
+	owner    int
+	hasOwner bool
+	n        *node
 }
 
 func info(name string, n *node) fileInfo {
-	return fileInfo{name: name, size: int64(len(n.data)), mode: n.mode, modTime: n.modTime, n: n}
+	return fileInfo{
+		name: name, size: int64(len(n.data)), mode: n.mode, modTime: n.modTime, owner: n.owner, hasOwner: n.hasOwner, n: n,
+	}
 }
+
+// Owner returns the uid Chown gave the node, or false when it has none, as cascadingconfig.OwnerInfo asks.
+func (i fileInfo) Owner() (uid int, ok bool) { return i.owner, i.hasOwner }
 
 func (i fileInfo) Name() string       { return i.name }
 func (i fileInfo) Size() int64        { return i.size }
