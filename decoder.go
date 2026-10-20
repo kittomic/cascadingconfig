@@ -78,6 +78,13 @@ const (
 
 	// WarnNoHome reports that the user directory couldn't be worked out, so scopes that use it were skipped.
 	WarnNoHome WarningCode = "no-home"
+
+	// WarnBootstrapUnknownKey reports a key a bootstrap file may not use, because it isn't a bootstrap key or isn't
+	// enabled.
+	WarnBootstrapUnknownKey WarningCode = "bootstrap-unknown-key"
+
+	// WarnBootstrapKeyDropped reports a bootstrap key, or an entry of one, dropped because of a scope's limits.
+	WarnBootstrapKeyDropped WarningCode = "bootstrap-key-dropped"
 )
 
 // DecodeDocument runs d on data, with the rules every format shares:

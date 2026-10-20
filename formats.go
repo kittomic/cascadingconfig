@@ -1,6 +1,7 @@
 package cascadingconfig
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -88,31 +89,41 @@ func (c *config) finishFormats() {
 	}
 }
 
-// resolveFormats turns a format list as written into format names. With strict, every entry needs a registered
-// decoder; otherwise an entry no decoder knows is kept as written. A format listed twice is an error either way.
+// resolveFormats turns a format list as written into format names, reporting each problem as an *OptionError for
+// op. With strict, every entry needs a registered decoder; otherwise an entry no decoder knows is kept as written.
 func (c *config) resolveFormats(op string, formats []string, strict bool) []string {
+	out, errs := c.parseFormats(formats, strict)
+	for _, err := range errs {
+		c.fail(op, "%w", err)
+	}
+	return out
+}
+
+// parseFormats turns a format list as written into format names. A format listed twice is an error either way.
+func (c *config) parseFormats(formats []string, strict bool) ([]string, []error) {
 	var out []string
+	var errs []error
 	for _, entry := range formats {
 		name := strings.TrimPrefix(strings.TrimSpace(entry), ".")
 		if name == "" {
-			c.fail(op, "an empty format in %q", formats)
+			errs = append(errs, fmt.Errorf("an empty format in %q", formats))
 			continue
 		}
 		format, ok := c.formatFor(name)
 		if !ok {
 			if strict {
-				c.fail(op, "%q isn't the format or extension of a registered decoder", name)
+				errs = append(errs, fmt.Errorf("%q isn't the format or extension of a registered decoder", name))
 				continue
 			}
 			format = name
 		}
 		if slices.Contains(out, format) {
-			c.fail(op, "the format %q is listed twice", format)
+			errs = append(errs, fmt.Errorf("the format %q is listed twice", format))
 			continue
 		}
 		out = append(out, format)
 	}
-	return out
+	return out, errs
 }
 
 // formatFor returns the registered format that name is, or whose extension it is.

@@ -27,6 +27,9 @@ type Pattern struct {
 	Root RootMode
 	// Key, if set, is a dotted path, which may use {name}, to the table inside the file that holds the config.
 	Key string
+	// SkipHomeAndRoot keeps a Walk from searching for the pattern in ~ or /, as mise does for .config/miserc.toml.
+	// Other kinds ignore it.
+	SkipHomeAndRoot bool
 }
 
 // RootMode says where a pattern's files have their config root, the directory their relative paths resolve against.
@@ -62,10 +65,12 @@ func (k walkKind) discover(ld *loading, s *scopeDef) {
 	if !ok {
 		return
 	}
-	dirs, ok := ld.walkDirs(s)
+	dirs, ok := ld.walkDirs(s, false)
 	if !ok {
 		return
 	}
+	ld.walking = true
+	defer func() { ld.walking = false }()
 	for _, dir := range dirs {
 		root, ok := ld.root(dir)
 		if !ok {

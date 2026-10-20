@@ -13,8 +13,9 @@ type Result struct {
 	layers  []Layer     // the merged layers, lowest precedence first; origins refer to them by index
 	origins *originNode // the root; its children follow the tree's tables
 
-	found    []Layer   // every layer the load considered, lowest precedence first, with its status
-	warnings []Warning // warnings that belong to no layer, such as WarnNoHome
+	found     []Layer   // every layer the load considered, lowest precedence first, with its status
+	warnings  []Warning // warnings that belong to no layer, such as WarnNoHome
+	bootstrap []Layer   // the bootstrap files the load read, lowest precedence first
 }
 
 // Tree returns a copy of the merged tree, so changing it can't affect the result or another caller.

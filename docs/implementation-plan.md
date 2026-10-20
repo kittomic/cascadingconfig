@@ -306,21 +306,30 @@ The largest milestone, done in four parts (DL-106).
 
 **Scope:**
 
-- **Format precedence:** env var > bootstrap file > option > preset (DL-4).
-- **Bootstrap search,** allowed keys and scope limits (DL-7, DL-26).
+- **Format precedence:** env var > bootstrap file > option > preset (DL-4, DL-134), including `{NAME}_CONFIG_FORMATS`
+  (DL-136).
+- **Bootstrap search,** allowed keys and scope limits (DL-7, DL-26, DL-131 to DL-135).
 - **Scope trust levels.**
-- **Options** (DL-94): this milestone settles `WithBootstrap` and `WithoutBootstrapKey`, and adds the layouts' bootstrap
-  files.
+- **Options** (DL-94): `BootstrapFiles`, `Pattern.SkipHomeAndRoot`, `WithBootstrapKeys`, `WithoutBootstrapKey`,
+  `WithBootstrapLimit` and `WithBootstrapTransform`, and the layouts' bootstrap files (DL-138).
 
 **Acceptance tests:**
 
-- **Format order:** a project bootstrap file's `formats` affects only the project scope, and `formats = []` is an error.
+- **Bootstrap search:** the files are found in their scopes' places, lowest precedence first, a higher file replacing a
+  key; `SkipHomeAndRoot` isn't searched in `~` or `/`; an unselected scope's files aren't read; the bootstrap walk
+  ignores `ceiling_paths` from bootstrap files.
+- **Format order:** the env var beats bootstrap files, which beat the option; each scope takes `formats` from the
+  highest file at least as trusted (DL-135); `formats = []` is an error; `{NAME}_CONFIG_FORMATS` errors name the
+  variable.
 - **Scope limits:** a project bootstrap file's `ignored_config_paths` entry that points at `/etc/{name}/…` is dropped
   with a warning (DL-26). Bootstrap paths resolve against their file (DL-68).
+- **Keys:** `WithoutBootstrapKey` and `WithBootstrapLimit` drop keys with a warning; `WithBootstrapTransform` can
+  rewrite a file, and its error is a 422 naming the file.
 - **Hardened layout:** project bootstrap files may only set `env` and `formats` in `MiseHardenedLayout`; any other key
   is dropped with a warning.
 - **Bootstrap keys** (DL-78): an unknown key warns, `env = "dev"` is an `*OptionError`, and `include` or `_unset` in a
   bootstrap file is ignored with a warning.
+- **Golden:** `MiseLayout`'s bootstrap files from inside and outside `~`.
 
 ### M4d: `CosmiconfigLayout`
 

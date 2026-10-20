@@ -387,41 +387,87 @@ A user-defined preset can name any bootstrap files, or have none.
 
 | Preset              | Bootstrap files, highest first                                                                                                                                                                 | Allowed keys |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `mise.Preset`        | Walk from the start dir, with the same stop rule as above: `.{name}rc.local.{ext}`, `.{name}rc.{ext}`, `.config/{name}rc.{ext}` (not read in `~` or `/`). Then `{user}/{name}rc.local.{ext}` and `{user}/{name}rc.{ext}`. Then `{system}/{name}rc.{ext}`. | `.miserc.toml`'s keys except mise's migration flags (`env`, `ceiling_paths`, `ignored_config_paths`, `override_config_filenames`), plus `formats` |
+| `mise.Preset`        | Walk from the start dir, with the same stop rule as above: `.{name}rc.local.{ext}`, `.{name}rc.{ext}`, `.config/{name}rc.{ext}` (not read in `~` or `/`). Then `{user}/{name}rc.local.{ext}` and `{user}/{name}rc.{ext}`. Then `{system}/{name}rc.{ext}`. | `env`, `ceiling_paths`, `ignored_config_paths` and `override_config_filenames` (`.miserc.toml`'s keys, without mise's migration flags), plus `formats` |
 | `misehardened.Preset`  | As `mise.Preset`.                                                                                                                                                                              | As `mise.Preset`, except that **project**-scope bootstrap files may only set `env` and `formats`. |
 | `cosmiconfig.Preset` | The cwd only: the `cosmiconfig` key of `.config/config.{ext}`. cosmiconfig also reads `package.json` and `package.yaml`; we don't (see [Deviations from cosmiconfig](#deviations-from-cosmiconfig)). | cosmiconfig's keys (`searchPlaces`, `mergeSearchPlaces`), plus `formats` |
 
-- **Override files:** each key set in a higher bootstrap file replaces the same key from lower files. Lists are not
-  merged, as in mise.
+- **Declaring them** (DL-131): the scope option `BootstrapFiles(patterns...)` makes a scope's own kind also search for
+  bootstrap files, in the same places as its config files: the directory of a `FixedDir`, every directory of a `Walk`.
+  On any other kind it is an `*OptionError`. A pattern with `SkipHomeAndRoot` isn't searched in `~` or `/`; only `Walk`
+  honours it. A bootstrap search runs before the main search, and an unselected scope's bootstrap files aren't read. A
+  scope whose config is replaced, by explicit files or `ReplacedByFile`, still has its bootstrap files read.
+- **Keys** (DL-132) are of type `BootstrapKey`: `BootstrapEnv`, `BootstrapFormats`, `BootstrapCeilingPaths`,
+  `BootstrapIgnoredConfigPaths` and `BootstrapOverrideConfigFilenames`. `WithBootstrapKeys(keys...)` enables keys,
+  `WithoutBootstrapKey(key)` removes one, and `WithBootstrapLimit(scope, keys...)` restricts one scope's bootstrap files
+  to the keys listed.
+- **Override files:** bootstrap files are ordered like config files, and each key set in a higher bootstrap file
+  replaces the same key from lower files, as in mise. The exceptions are `ceiling_paths` and `ignored_config_paths`,
+  which only add, so every file's entries are combined: otherwise a project file could cancel a system file's ignored
+  paths.
+- **Values** (DL-133): `env`, `formats` and `override_config_filenames` are lists of strings; `ceiling_paths` and
+  `ignored_config_paths` are lists of paths.
 - **Relative paths** in a bootstrap file (`ceiling_paths`, `ignored_config_paths`) are resolved against that file's
   directory, as mise does, and a leading `~` is expanded.
 - **App config inside the meta file:** in `cosmiconfig.Preset`, as in cosmiconfig, the meta file's `{name}` key is also
   checked as app config (see [2.5](config-locations.md#25-meta-config)).
 - **Formats:** bootstrap files use the format order from the environment variable, the app's setting or the preset,
   never from a bootstrap file (see [File format precedence](#file-format-precedence)).
-- **Unknown keys** are a warning, so a newer bootstrap file doesn't break an older app.
-- **Keys outside the limits** (the scope limits below, or `misehardened.Preset`'s project limits) are dropped, with a
-  warning naming the file and the key.
+- **Unknown keys** are a `WarnBootstrapUnknownKey` warning, so a newer bootstrap file doesn't break an older app.
+- **Keys outside the limits** (the scope limits below, `WithBootstrapLimit`, or `misehardened.Preset`'s project limits)
+  are dropped, with a `WarnBootstrapKeyDropped` warning naming the file and the key.
 - **Wrong types**, such as `env = "dev"` instead of a list, are an `*OptionError` at `Load`.
 - **No includes and no `_unset`.** Bootstrap files are read before the main search, so they stay simple. Either key is
   an unknown key, with a warning.
+- **Ceilings for the bootstrap walk:** it honours the ceilings from `WithCeilingPaths` and `{NAME}_CEILING_PATHS` only,
+  not `ceiling_paths` from a bootstrap file, which can only be read once the walk has found it. mise has the same rule.
+- **Not merged:** bootstrap files never become part of the config (DL-137).
 
-**Scope limits.** A bootstrap file belongs to the scope it was found in. Any key that can **hide or skip** files only
-takes effect in that scope and in less-trusted scopes (see [Scope trust](#scope-trust)). Those keys are
-`ignored_config_paths`, `formats`, `ceiling_paths` and `override_config_filenames`. So a project's bootstrap file can't
-make the loader skip `/etc/{name}/config.toml`:
+**Precedence against options and env vars** (DL-134):
 
-- **`ignored_config_paths`:** an entry that points into a more trusted scope is dropped, with a warning naming the
-  bootstrap file.
-- **`formats`:** from a project bootstrap file, it orders and filters formats in the `project` scope only. More trusted
-  scopes keep the order from the env var, the app's setting or the preset.
+- **Single settings,** `formats` and `override_config_filenames`: the env var wins, then the bootstrap file, then the
+  app's option, then the preset. For `env`, `WithEnvs` comes first, then `{NAME}_ENV`, then the bootstrap file.
+- **Lists that only add,** `ceiling_paths` and `ignored_config_paths`: the option, the env var and every bootstrap file
+  are combined.
+- **Locking a setting:** an app that wants its own value to stand turns the key off with `WithoutBootstrapKey`, or
+  limits it to some scopes with `WithBootstrapLimit`.
+- **Per-value control:** `WithBootstrapTransform(func(ctx context.Context, l Layer, t Tree) (Tree, error))` runs on each
+  bootstrap file's tree, a copy, before its keys are read, in registration order. It can rewrite or drop keys, for
+  example to allow only some environments. An error it returns is a `*TransformError` naming the file. It is the
+  bootstrap counterpart of `WithLayerTransform`, which never sees bootstrap files.
+
+**Scope limits** (DL-135). A bootstrap file belongs to the scope it was found in, and has that scope's trust. Any key
+that can **hide or skip** files only takes effect in scopes **at most as trusted** as that file's scope (see
+[Scope trust](#scope-trust)). Those keys are `ignored_config_paths`, `formats`, `ceiling_paths` and
+`override_config_filenames`. So a project's bootstrap file can't make the loader skip `/etc/{name}/config.toml`:
+
+- **`ignored_config_paths`:** an entry never applies to a more trusted scope. If it would have matched a file there, it
+  is dropped for that file, with a `WarnBootstrapKeyDropped` warning naming the bootstrap file and the entry.
+- **`formats`:** each scope uses the `formats` of the highest-precedence bootstrap file that is at least as trusted as
+  the scope, or else the env var, the app's setting or the preset. So a project bootstrap file's `formats` orders and
+  filters formats in the `project` scope only, and a user bootstrap file's in the `user`, `override` and `project`
+  scopes. The env var, when set, still wins in every scope.
+
+| Bootstrap file sets `formats` in | `system` scope uses | `user` and `override` use | `project` uses |
+| -------------------------------- | ------------------- | ------------------------- | -------------- |
+| `project` only                   | app or preset       | app or preset             | project file   |
+| `user` only                      | app or preset       | user file                 | user file      |
+| `user` and `project`             | app or preset       | user file                 | project file   |
+| `system` only                    | system file         | system file               | system file    |
+
 - **`ceiling_paths` and `override_config_filenames`:** these only ever act on the `project` walk, so they are already
   within the limit for every bootstrap file.
 - **`env` is the exception.** It applies in every scope, as in mise. It doesn't hide files; it chooses among variants
   such as `config.{env}.toml` that each scope's own author wrote.
 
 `misehardened.Preset` goes further, and project-scope bootstrap files may only set `env` and `formats` (see the table
-above).
+above), through `WithBootstrapLimit(ScopeProject, BootstrapEnv, BootstrapFormats)` (DL-138).
+
+**`MiseLayout`'s bootstrap files** (DL-138), lowest precedence first, with all five keys enabled:
+
+- **system:** `{name}rc.{ext}`.
+- **user:** `{name}rc.{ext}`, then `{name}rc.local.{ext}`.
+- **project, on the walk:** `.config/{name}rc.{ext}` with `SkipHomeAndRoot`, then `.{name}rc.{ext}`, then
+  `.{name}rc.local.{ext}`. These are mise's locations exactly; no `.config/{name}/` location is added.
 
 ## Merging
 
@@ -711,7 +757,8 @@ defaults.
   themselves are found, because they have to be found before they can be read. Bootstrap discovery uses sources 1, 3 and
   4. This is the same rule mise applies to `MISE_CEILING_PATHS` during `.miserc.toml` discovery.
 - **Several bootstrap files:** when more than one sets `formats`, the highest-precedence file's list **replaces** the
-  others. Lists aren't merged, just as mise's `env` key replaces the inherited list.
+  others. Lists aren't merged, just as mise's `env` key replaces the inherited list. Which file applies to which scope
+  follows the [scope limits](#bootstrap-file).
 - **Empty list:** `formats = []` is an error, because it would disable every format.
 - **Same rules as the variable:** values are validated just like the environment variable (see below). Listed formats
   are the only ones enabled, and an unknown format is an error.
@@ -1625,6 +1672,14 @@ There are no open questions.
 | 128 | A moved user directory                      | The walk drops files under the default user directory when `{NAME}_CONFIG_DIR` moves it, as mise does. |
 | 129 | Golden tests in M4b                         | The worked example, a full directory with layers A–D, the user and override scopes, and walks from inside and outside `~`. |
 | 130 | Sharing mise's global patterns              | `MiseGlobalPatterns()` returns them, a fresh copy each call, for the system and user scopes and for apps' own scopes, such as a mounted config directory. A package can't hold them, because `Pattern` lives in the core. |
+| 131 | Declaring bootstrap files                   | The scope option `BootstrapFiles(patterns...)` searches with the scope's own kind; `Pattern.SkipHomeAndRoot` for `Walk`; unselected scopes' bootstrap files aren't read (see [Bootstrap file](#bootstrap-file)). |
+| 132 | Bootstrap keys and limits                   | `BootstrapKey` constants for the five keys; `WithBootstrapKeys`, `WithoutBootstrapKey` and `WithBootstrapLimit(scope, keys...)`. |
+| 133 | Reading bootstrap files                     | Ordered like config files, a higher file replacing a key; list values; paths relative to the file; unknown keys and dropped keys warn; wrong types are `*OptionError`s at `Load`; the bootstrap walk uses only option and env-var ceilings. |
+| 134 | Bootstrap precedence and transforms         | Env var > bootstrap > option > preset for single settings, with `WithEnvs` first for `env`; adding lists combine; `WithBootstrapTransform` for per-value control, with `*TransformError`s. |
+| 135 | Scope limits by trust                       | Hiding keys only act on scopes at most as trusted as the file; each scope takes `formats` from the highest file at least as trusted; ignored entries never apply to a more trusted scope, with a warning. |
+| 136 | `{NAME}_CONFIG_FORMATS`                     | Implemented with `WithFormats`' syntax; an unknown format or one with no decoder is an `*OptionError` at `Load` named after the variable. |
+| 137 | Bootstrap files in results                  | Tests read a private list until M5's report; bootstrap files never merge into the config. |
+| 138 | The layouts' bootstrap files                | `MiseLayout`'s system, user and project files as mise has them, all five keys; `MiseHardenedLayout` limits project files to `env` and `formats`; no extra `.config/{name}/` location. |
 
 ---
 
