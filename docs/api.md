@@ -638,8 +638,11 @@ func WithResultTransform(f func(ctx context.Context, t Tree) (Tree, error)) Opti
   `CosmiconfigLayout` gets no include key (DL-178).
 - **Option errors:** a nil function, store or matcher, an empty include key or one equal to the unset key, an empty
   scheme or root, and `MatchRef` in `WithFileFormat` are `*OptionError`s, as are the cases in DL-189.
-- **`Report.String()`** marks an included layer with `included by <path>` in its details, and adds a `policies:` section
-  with a `default` row and a row for each scope with its own policy (DL-194).
+- **`Report.String()`** marks an included layer with `included by <path>` in its details. When some scope reads files,
+  it adds a `policies:` section after the scopes, with a `default` row and a row for each scope with its own policy, for
+  example `project  inherits default; resolvers file; confine {config_root}; trust; permissions` (DL-194).
+- **`PolicyInfo`** is set for `FixedDir`, `Walk` and `ExplicitFile` scopes. Policies don't apply to `EmbeddedFS` or
+  value scopes, which have no files on the loader's filesystem.
 
 ### Option catalogue
 

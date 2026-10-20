@@ -974,8 +974,9 @@ built-in layout nests includes while `$import` is deferred, so `IncludeNested` i
 - **Errors:** a reference that can't be loaded is a load error. Includes are never silently skipped, because silently
   dropping config is worse than failing, so an included file that a permission policy would ignore is a `*PolicyError`
   (403) (DL-181). Where the error points (DL-185):
-  - **Errors about the reference** (missing 404, policy or confinement 403, unknown scheme 501, cycle 508): `Path` is
-    the including file, `Op` is `"include"`, and the message quotes the reference as written.
+  - **Errors about the reference** (missing 404, policy or confinement 403, unknown scheme 501, cycle 508, and an
+    invalid reference 400): `Path` is the including file, `Op` is `"include"`, and the message quotes the reference as
+    written. A broken symlink points at nothing, so it counts as missing.
   - **Errors inside the included file** (parse 400, too large 413, unreadable or not a regular file `*IOError`): `Path`
     is the included file, and its `LayerFailed` entry shows `IncludedBy`.
   - **An empty included file** is `LayerEmpty`, as any empty file is.
@@ -991,7 +992,8 @@ replaced.
   with an empty host or `localhost` both go to this resolver. A relative path resolves against the including file's
   directory, and a leading `~/` against the home directory. A reference is remote only if it starts with `name::` (as
   `git::` and `oci::` do) or with `scheme://`, where the scheme has two or more letters. Anything else is a path, so
-  `C:\cfg\base.toml` is a Windows path, not the scheme `c`.
+  `C:\cfg\base.toml` is a Windows path, not the scheme `c`. A `file://` URL naming any other host is a `*ReferenceError`
+  (400).
 - **Allow-lists:** it accepts the same matchers as the remote resolvers. They are matched against the absolute slash
   path after symlinks are resolved.
 - **`Confine(roots...)`** (DL-180): the resolved path must be one of the roots or lie below one, compared by whole path
@@ -1394,7 +1396,8 @@ cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
   concern. A `TrustPaths(globs...)` store, equivalent to mise's `trusted_config_paths`, is provided because it needs no
   writes. Its entries follow the same rules as the [`Glob` matcher](#allow-lists), applied to absolute slash paths after
   resolving symlinks, with `~` expanded. An entry without wildcards trusts that path and everything beneath it, as
-  `trusted_config_paths` trusts whole trees ([3.12](config-locations.md#312-trust)).
+  `trusted_config_paths` trusts whole trees ([3.12](config-locations.md#312-trust)). A store has no host to ask, so `~`
+  is the process's home directory, not `cctest.Host`'s.
 - **The digest** is the lowercase hex SHA-256 of the file's raw bytes, before decoding or any byte-order-mark stripping.
   So an app can compute it with `sha256sum` and pre-populate its store.
 - **Defaults:** no preset requires trust. `mise.Preset` trusts every file, as D18 decided. `misehardened.Preset` relies
