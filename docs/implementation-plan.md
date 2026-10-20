@@ -197,7 +197,7 @@ now are included ([Settled signatures](api.md#settled-signatures)):
 - **Formats and decoders,** and the merge options, which feed M2's engine.
 - **`WithEnvs`, `WithConfigFiles`** and env-var bindings.
 - **The three layouts,** with the parts these options cover: JSON through `internal/json` (DL-95), the format order, the
-  conflict policy, the array default and the bindings. They get their scopes in M4a.
+  conflict policy, the array default and the bindings. They get their scopes in M4b and M4d (DL-106).
 
 Each later milestone settles its own options at its test review and adds them to the layouts.
 
@@ -227,24 +227,64 @@ Each later milestone settles its own options at its test review and adds them to
 
 ## M4: Discovery
 
-The largest milestone, done in three parts.
+The largest milestone, done in four parts (DL-106).
 
-### M4a: Filesystem, scopes and the walk
+### M4a: Filesystem and loading
 
 **Scope:**
 
-- **Test helpers:** `cctest.FS`, `cctest.Host` and the golden-file helpers ([M0](#m0-repository-and-tooling)).
-- **The filesystem hook:** OS-backed, with `os.Root` and symlinks, plus the `fs.FS` adapter (§
+- **Test helpers:** `cctest.FS`, `cctest.Host` and `cctest.Golden` ([api.md](api.md#test-helpers), DL-109).
+- **The filesystem hook:** OS-backed, with `os.Root` and symlinks, plus `MountFS`, the `fs.FS` adapter (§
   [Filesystem hook](design.md#filesystem-hook)).
-- **Platform dirs** (DL-14).
-- **Scope kinds:** `FixedDir`, `Walk`, `ExplicitFile`, `Embedded`, `EmbeddedFS`, `Values` and `EnvVars` (DL-25, DL-35).
-- **`MiseLayout`'s scopes and patterns.**
+- **Loading:** `Loader.Load` reads, decodes and merges every selected scope (DL-107). Several files in one slot go
+  through M2's `orderSlot`.
+- **Reading rules** (DL-110): unreadable, non-regular, missing, oversized and empty files; dedup by file identity.
+- **Platform dirs** (DL-14, DL-112): `WithPlatformDirs(XDGDirs)`, `{NAME}_CONFIG_DIR` and `{NAME}_SYSTEM_CONFIG_DIR`.
+- **Scope kinds:** `FixedDir` with simple patterns (DL-111), `EmbeddedFS`, `ValuesFunc` and `EnvVars` (DL-35, DL-113).
+- **Options** (DL-94, DL-115): `WithFileSystem`, `WithMaxFileSize`, `WithLogger` and `WithPlatformDirs`. A file-reading
+  scope with an empty format order becomes an `*OptionError`, the bare-loader check moved from M3 (DL-114).
+
+**Acceptance tests:**
+
+- **Loading:** patterns apply lowest precedence first, scopes in their order; a missing directory loads nothing, without
+  a warning; `{ext}` expands to the searched formats only, and an extension with no decoder never matches.
+- **Same-slot files** (DL-3, DL-93): merged in format order; `ConflictFirst` ignores the rest with warnings;
+  `ConflictFail` is a 409.
+- **Golden discovery order** for `FixedDir` scopes, with every layer's status (DL-116).
+- **Dedup:** a file reached twice, through two patterns, a symlink or a hard link, loads once at its higher position,
+  with the trust of its most trusted route (DL-66).
+- **Symlinks:** a dotfiles symlink leaving the searched directory loads (DL-62); a broken symlink or a loop is skipped
+  with a warning.
+- **Special files:** a FIFO or a directory named like a candidate is skipped with a warning, without blocking, on
+  `cctest.FS` and on a real filesystem (DL-63).
+- **Size:** a local file over the limit is a 413 (DL-64).
+- **Case:** `MyApp.TOML` doesn't match `myapp.toml`, on `cctest.FS` and on a real case-insensitive filesystem (DL-66).
+- **Unreadable files** are skipped with a warning, as `LayerUnreadable` (D16, DL-110).
+- **Errors:** every broken file is reported, joined, and the rest are still read; empty files are `LayerEmpty`.
+- **Platform dirs:** `$XDG_CONFIG_HOME/{name}`, then `~/.config/{name}`, and `/etc/{name}`; the bindings override them,
+  resolving relative values against the current directory and expanding `~`; no home skips the user dir with a warning;
+  Windows uses `%ProgramData%\{name}`, tested through `cctest.Host{GOOS: "windows"}` (DL-70).
+- **Kinds:** `ValuesFunc` runs on every load, and its errors are 500s; `EmbeddedFS` reads an `fs.FS`; `EnvVars` maps
+  `__` to nesting, excludes discovery bindings, warns on empty segments and clashes, and takes `MapEnv`; value scopes
+  drop the unset key with a warning.
+- **Options:** invalid `FixedDir`s, file sizes, filesystems and loggers are `*OptionError`s; warnings reach the logger
+  with their code and file.
+- **Loads:** a cancelled load keeps `errors.Is(err, context.Canceled)` (DL-75); parallel loads under `-race` agree.
+
+### M4b: Patterns, environments and the walk
+
+**Scope:**
+
+- **Patterns:** variants, config roots, globs and `conf.d` fragments.
+- **Scope kinds:** `Walk`, `ExplicitFile` and `Embedded` (DL-25).
 - **The directory walk** and ceilings (DL-5).
-- **Dedup** after resolving symlinks.
-- **Explicit config files** (DL-16).
-- **Options** (DL-94): this milestone settles the scope kinds, patterns, directories and walk options, and adds
-  `MiseLayout`'s scopes. A file-reading scope with no registered decoder becomes an `*OptionError`, the bare-loader
-  check moved from M3.
+- **Environment selection** and platform envs (DL-30), and **safe environment names** (DL-32).
+- **`MiseLayout`'s scopes and patterns.**
+- **Explicit config files** (DL-16), and the single-file bindings.
+- **Override filenames** and **ignored paths.**
+- **Dedup across scopes**, such as a user file that is also a project file of `~` (DL-61).
+- **Options** (DL-94): this milestone settles the pattern fields, the walk options and the explicit-file options, and
+  adds `MiseLayout`'s scopes.
 
 **Acceptance tests:**
 
@@ -253,25 +293,19 @@ The largest milestone, done in three parts.
   [worked example](design.md#environments).
 - **Walk limits:** a start dir inside `~` stops after `~`, and one outside `~` walks to `/`. Ceilings are exclusive.
 - **Dedup:** a file reached as both a project file of `~` and a user file is loaded once, at its higher position, with
-  user trust and user policy (DL-61). Hard links count as one file (DL-66).
-- **Symlinks:** a dotfiles symlink leaving the searched directory loads, and `Confine` judges its target (DL-62).
-- **Special files:** a FIFO named like a candidate is skipped with a warning, without blocking (DL-63).
-- **Size:** a local file over the limit is a 413 (DL-64).
-- **Case:** `MyApp.TOML` doesn't match `myapp.toml`, on `cctest.FS` and on a real case-insensitive filesystem (DL-66).
-- **Paths:** relative env-var paths resolve against the current directory and bootstrap paths against their file; `~` is
-  expanded; ignored paths match files and directory prefixes (DL-68, DL-69).
-- **Explicit files** replace the project scope only (everything in `CosmiconfigLayout`), and a missing one is a 404.
-  They load with any registered decoder, even one the format order leaves out, and an unregistered format is a 415
-  (DL-67).
-- **`EnvVars`:** `__` nesting, and discovery bindings are excluded.
-- **Windows:** `%ProgramData%\{name}`, tested through `cctest.Host{GOOS: "windows"}` (DL-70).
+  user trust and user policy (DL-61).
+- **Platform envs** rank below selected ones, and an explicitly selected platform name ranks as selected.
+- **Names:** dotted names match literally and are never combined (DL-31). Traversal attempts are rejected from every
+  source.
+- **Paths:** relative env-var paths resolve against the current directory; `~` is expanded; ignored paths match files
+  and directory prefixes (DL-68, DL-69).
+- **Explicit files** replace the project scope only, and a missing one is a 404. They load with any registered decoder,
+  even one the format order leaves out, and an unregistered format is a 415 (DL-67).
 
-### M4b: Environments, formats and bootstrap
+### M4c: Formats and bootstrap
 
 **Scope:**
 
-- **Environment selection** and platform envs (DL-30).
-- **Safe environment names** (DL-32).
 - **Format precedence:** env var > bootstrap file > option > preset (DL-4).
 - **Bootstrap search,** allowed keys and scope limits (DL-7, DL-26).
 - **Scope trust levels.**
@@ -280,18 +314,15 @@ The largest milestone, done in three parts.
 
 **Acceptance tests:**
 
-- **Platform envs** rank below selected ones, and an explicitly selected platform name ranks as selected.
-- **Names:** dotted names match literally and are never combined (DL-31). Traversal attempts are rejected from every
-  source.
 - **Format order:** a project bootstrap file's `formats` affects only the project scope, and `formats = []` is an error.
 - **Scope limits:** a project bootstrap file's `ignored_config_paths` entry that points at `/etc/{name}/…` is dropped
-  with a warning (DL-26).
+  with a warning (DL-26). Bootstrap paths resolve against their file (DL-68).
 - **Hardened layout:** project bootstrap files may only set `env` and `formats` in `MiseHardenedLayout`; any other key
   is dropped with a warning.
 - **Bootstrap keys** (DL-78): an unknown key warns, `env = "dev"` is an `*OptionError`, and `include` or `_unset` in a
   bootstrap file is ignored with a warning.
 
-### M4c: `CosmiconfigLayout`
+### M4d: `CosmiconfigLayout`
 
 **Scope:**
 
@@ -302,7 +333,7 @@ The largest milestone, done in three parts.
 - **The meta config** in `.config/config.{ext}`. There's no `package.json` or `package.yaml` support
   ([Deviations from cosmiconfig](design.md#deviations-from-cosmiconfig)).
 - **Extensionless `.{name}rc`** through `WithExtensionlessFormat`.
-- **The global dir** through an `env-paths`-compatible resolver.
+- **The global dir** through `EnvPathsDirs`, the `env-paths`-compatible resolver (DL-112).
 - **Options** (DL-94): this milestone settles `WithResolution`, the search-strategy options and
   `WithExtensionlessFormat`, and adds `CosmiconfigLayout`'s scopes.
 
@@ -312,6 +343,7 @@ The largest milestone, done in three parts.
   default searches only the start dir and not the user dir (DL-42).
 - **Invalid combinations:** `WithStopDir` without `Global`, and `Project` without a root marker, are `*OptionError`s.
 - **Node.js sources are ignored:** a `package.json` with a `{name}` key loads nothing (DL-44).
+- **Explicit files** replace everything in `CosmiconfigLayout`.
 - **`$import` arrays** concatenate in `CosmiconfigLayout` (DL-43).
 - **Empty files** are skipped.
 - **The meta config's `{name}` key** is checked before the normal search.
@@ -393,7 +425,7 @@ first release is decided at the start of this milestone.
 - **Allow-lists** and matchers.
 - **Policies:** `WithDefaultPolicy` and `WithScopePolicy`, with replace-not-merge semantics (DL-24).
 - **Trust:** `RequireTrust` and `TrustPaths` (DL-28).
-- **The permission policy** (DL-20).
+- **The permission policy** (DL-20), with owners in `cctest.FS` (DL-108).
 - **Layer and result transforms** (DL-36).
 - **Options** (DL-94): this milestone settles the include, policy, matcher and transform options, and adds the layouts'
   include keys and `MiseHardenedLayout`'s policies. An include key with no `file` resolver becomes an `*OptionError`,

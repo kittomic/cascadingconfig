@@ -40,8 +40,13 @@ const (
 	// LayerLoaded is a layer that was merged.
 	LayerLoaded LayerStatus = iota
 	// LayerIgnored is a layer that was found but not loaded, such as a lower-ranked file in a slot under
-	// ConflictFirst. Reason says why.
+	// ConflictFirst, a FIFO or a broken symlink. Reason says why.
 	LayerIgnored
+	// LayerEmpty is a file that holds nothing: whitespace, comments only, or a null document. It merges nothing.
+	LayerEmpty
+	// LayerUnreadable is a searched file that couldn't be read, for example because of its permissions. Reason says
+	// why.
+	LayerUnreadable
 )
 
 // Layer is the metadata for one source. It never contains the layer's tree, so it is safe to log and to keep.

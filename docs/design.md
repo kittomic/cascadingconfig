@@ -229,6 +229,10 @@ mise.Preset.Extend(
 )
 ```
 
+- **`FixedDir(dir, patterns...)`** (DL-111) searches one directory. `dir` is absolute, or starts with `~`, `{user}` or
+  `{system}`, and may use `{name}`. Each `Pattern`'s `Template` is a relative file path that may use `{name}` and
+  `{ext}`, and may include subdirectories. Patterns are listed lowest precedence first. A relative directory, a template
+  that leaves its directory, or an unknown placeholder is an `*OptionError`. Its default trust is `TrustProject`.
 - **Kinds:** a custom scope is built from one of the existing kinds: `FixedDir`, `Walk` (with a stop marker, such as a
   workspace root), `ExplicitFile`, `Embedded` (a key inside a manifest file, such as `package.json#{name}`; no preset
   uses it), or `EmbeddedFS` / any `fs.FS`. Fully custom discovery implements the `Scope` interface, just as resolvers
@@ -1052,13 +1056,22 @@ var Preset = cascadingconfig.MiseHardenedLayout.Extend( /* decoders, notifier */
 Every read goes through one filesystem: the main search, the bootstrap search and the `file` resolver. The default reads
 the OS filesystem. An app or a test can supply its own with `WithFileSystem(fsys)`.
 
-- **`fs.FS` compatibility:** an adapter mounts any `fs.FS` (such as `fstest.MapFS` or `embed.FS`) at a virtual root, so
-  a test can run the whole search against an in-memory tree.
+- **`fs.FS` compatibility:** `MountFS(dir, fsys)` mounts any `fs.FS` (such as `fstest.MapFS` or `embed.FS`) at the
+  absolute directory `dir`, so a test can run the whole search against an in-memory tree.
 - **Symlinks are followed.** A candidate that's a symlink is resolved, and the target is opened from its own directory,
   as a new root. A dotfiles setup such as `~/.config/{name} -> ~/dotfiles/{name}` therefore works, even though `os.Root`
   refuses links that escape it. Dedup ([3.1](config-locations.md#31-tiers)) and `Confine` apply to the **target**.
 - **Regular files only.** A FIFO, device, socket or directory where a config file is expected is skipped with a warning.
-  Opening a FIFO would block forever, so a cloned repo could otherwise hang the loader.
+  Opening a FIFO would block forever, so a cloned repo could otherwise hang the loader. A broken symlink or a symlink
+  loop is skipped with a warning too. None of them is ever opened (DL-110).
+- **Unreadable files:** a searched file that can't be read, for example because of its permissions or an I/O error, is
+  skipped with a warning and the status `LayerUnreadable` (D16). An explicit file that can't be read is an `*IOError`.
+- **Missing directories** load nothing, without a warning.
+- **Empty files** are kept in the layer list with the status `LayerEmpty`, and merge nothing.
+- **Errors:** an oversized file and a parse error fail the load. Every broken file is reported, joined, and the others
+  are still read.
+- **A file reached twice,** by identity, is loaded once at its highest position, with the scope and trust of its most
+  trusted route (DL-110).
 - **Size limit:** a local file larger than the limit is a `*TooLargeError` (413). The default is 10 MiB, and
   `WithMaxFileSize(n)` changes it. Remote includes have their own limit ([Traversal protection](#traversal-protection)).
 - **Name matching is case-sensitive,** and done against the directory listing rather than by opening each candidate
@@ -1185,6 +1198,13 @@ or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
 The user dir follows mise on every OS (D4) in `mise.Preset` and `misehardened.Preset`. Only the system dir differs on
 Windows.
 
+- **Setting them** (DL-112): `WithPlatformDirs(XDGDirs)` gives the table above. A scope uses them through the `{user}`
+  and `{system}` placeholders in `FixedDir`. Using a placeholder without `WithPlatformDirs` is an `*OptionError`.
+- **Overrides:** `{NAME}_CONFIG_DIR` and `{NAME}_SYSTEM_CONFIG_DIR`, when declared, replace `{user}` and `{system}`. A
+  relative value resolves against the current directory, and a leading `~` is expanded.
+- **No home directory:** if the user dir can't be worked out, scopes that use it are skipped with a `WarnNoHome`
+  warning.
+
 `cosmiconfig.Preset` uses cosmiconfig's `env-paths` locations for its user dir instead
 ([2.3](config-locations.md#23-global-config-directory)), with cosmiconfig's global filenames (`config`, `config.{ext}`):
 
@@ -1222,6 +1242,12 @@ mise.Preset.Extend(
 - **Why `__`:** a single `_` is too common inside key names to separate levels.
 - **Custom mapping:** `MapEnv(func(name, value string) (Path, any, bool))` replaces the default, for example to parse
   lists or numbers. Without it, every value is a **string**, and any type conversion happens when the result is decoded.
+  `MapEnv` is an `EnvVarsOption`, a kind of its own (DL-113). Returning `false` skips the variable. A value outside the
+  canonical types is a bug in the app, a code-500 `*BaseError`.
+- **Edge cases** (DL-113): a name with an empty segment, such as `MYAPP_A____B`, is skipped with a `WarnEnvVarSkipped`
+  warning. Variables apply in name order, so when two clash, such as `MYAPP_A` and `MYAPP_A__B`, the later name wins,
+  with a `WarnEnvVarClash` warning. The prefix is matched case-sensitively, except on Windows. An empty prefix is an
+  `*OptionError`.
 - **Discovery bindings are excluded:** variables that are bound to discovery knobs, such as `MYAPP_CONFIG_DIR` or
   `MYAPP_ENV` (see [Environment variables](#environment-variables)), are never read as values, even though they share
   the prefix.
@@ -1229,7 +1255,8 @@ mise.Preset.Extend(
   *trigger* a reload, because env vars can't be watched; only a manual `Reload` picks one up straight away.
 
 **`Values(tree)`** takes a ready-made tree, typically built from the app's parsed flags. It may also be a function that
-returns a tree, so a reload can re-read it.
+returns a tree, so a reload can re-read it: `ValuesFunc(f)` calls `f` on every load (DL-113). An error from `f`, or a
+value outside the canonical types, is a code-500 `*BaseError` whose `Op` is `ValuesFunc`.
 
 - **Copied when called** (DL-103), so changing the tree afterwards has no effect.
 - **Canonical values only:** a value outside the [canonical types](api.md#tree-and-values), such as an `int` from flag
@@ -1491,6 +1518,17 @@ There are no open questions.
 | 103 | The `Values` kind                           | Copied when called; non-canonical values are an `*OptionError` naming the key; trust `TrustUser`. `ValuesFunc` and the other kinds come in M4a. |
 | 104 | Option errors                               | Each problem is an `*OptionError` whose `Op` is the option's name; all problems from one `New` are joined. |
 | 105 | A layout's default format order             | `WithDefaultFormats`, which may name formats with no decoder; they're skipped. `WithFormats` stays strict and replaces it (see [File format precedence](#file-format-precedence)). |
+| 106 | Splitting M4                                | Four parts: M4a filesystem and loading; M4b patterns, environments and the walk, with `MiseLayout`'s scopes; M4c formats and bootstrap; M4d `CosmiconfigLayout` ([implementation-plan.md](implementation-plan.md#m4-discovery)). |
+| 107 | Loading before reports                      | `Loader.Load(ctx)` returns a `*Result` with `Tree()` and `OriginOf`. Tests read the private layer list until `Report` arrives in M5. |
+| 108 | Paths and fake hosts                        | `cctest.Host.GOOS` picks OS-dependent defaults; paths are joined with the real OS's rules. Owners in `cctest.FS` arrive with the permission policy in M7. |
+| 109 | The `cctest` API                            | `NewFS` and its methods, `Host` and `WithHost`, and `Golden` with `-update` ([api.md](api.md#test-helpers)). |
+| 110 | Reading rules                               | Unreadable searched files are `LayerUnreadable` with a warning; non-regular files and broken symlinks are skipped unopened; missing dirs are silent; empty files are `LayerEmpty`; a file reached twice loads once, at its highest position, with its most trusted route (see [Filesystem hook](#filesystem-hook)). |
+| 111 | `FixedDir` and patterns                     | `FixedDir(dir, patterns...)` with `Pattern{Template}`; `{name}`, `{user}`, `{system}` and `~` in `dir`, `{name}` and `{ext}` in templates; patterns lowest first; later milestones add fields to `Pattern` (see [Custom scopes](#custom-scopes)). |
+| 112 | Platform directories                        | `WithPlatformDirs(XDGDirs)` replaces `WithUserDir` and `WithSystemDir`; the dir bindings override it; no home skips the user dir with a warning (see [Platform directories](#platform-directories)). |
+| 113 | Value scope kinds                           | `ValuesFunc` runs on every load, with 500s for its errors; `EmbeddedFS` reads an `fs.FS`; `EnvVars` takes `EnvVarsOption`s such as `MapEnv`, and its edge cases are settled; value scopes drop the unset key with a warning (see [Value overrides](#value-overrides-env-vars-and-flags)). |
+| 114 | The file-reading check                      | A selected file-reading scope with an empty format order is an `*OptionError`. |
+| 115 | Options settled in M4a                      | `WithFileSystem`, `MountFS`, `WithMaxFileSize` and `WithLogger`; a nil filesystem or logger, or a size of zero or less, is an `*OptionError`; warnings are logged at Warn level with their code and file. |
+| 116 | Golden tests in M4a                         | They cover `FixedDir` scopes; the worked example moves to M4b. |
 
 ---
 

@@ -1,0 +1,6 @@
+system   /etc/myapp/config.json                   loaded
+system   /etc/myapp/config.toml                   loaded
+system   /etc/myapp/conf/extra.json               loaded
+user     /home/me/.config/myapp/config.json       empty
+user     /home/me/.config/myapp/myapp.json        ignored not-a-file
+user     /home/me/.config/myapp/local.json        loaded

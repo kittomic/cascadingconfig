@@ -63,13 +63,11 @@ func WithScope(name ScopeName, kind ScopeKind, opts ...ScopeOption) Option {
 			c.fail("WithScope", "the scope %q is already defined", name)
 			return
 		}
-		if v, ok := kind.(valuesKind); ok {
-			if err := checkCanonical(v.tree, nil); err != nil {
-				c.fail("Values", "the tree for scope %q has %w", name, err)
-			}
-		}
+		before := len(c.errs)
+		kind.check(c)
+		invalid := len(c.errs) > before
 
-		spec := scopeSpec{def: &scopeDef{name: name, kind: kind, trust: kind.defaultTrust()}}
+		spec := scopeSpec{def: &scopeDef{name: name, kind: kind, trust: kind.defaultTrust(), invalid: invalid}}
 		for _, o := range opts {
 			if o == nil {
 				c.fail("WithScope", "the scope %q has a nil option", name)
@@ -153,3 +151,14 @@ type valuesKind struct {
 }
 
 func (valuesKind) defaultTrust() TrustLevel { return TrustUser }
+func (valuesKind) readsFiles() bool         { return false }
+
+func (k valuesKind) check(c *config) {
+	if err := checkCanonical(k.tree, nil); err != nil {
+		c.fail("Values", "the tree has %w", err)
+	}
+}
+
+func (k valuesKind) discover(ld *loading, s *scopeDef) {
+	ld.addValues(s, tree.CopyMap(k.tree))
+}
