@@ -43,25 +43,68 @@ const (
 // Walk is a scope kind that searches the start directory and each parent, up to the walk's stop, applying them
 // root-most first. Its default trust is TrustProject.
 func Walk(patterns ...Pattern) ScopeKind {
-	_ = patterns // stub
-	return stubKind{}
+	return walkKind{patterns: slices.Clone(patterns)}
+}
+
+type walkKind struct {
+	patterns []Pattern
+}
+
+func (walkKind) defaultTrust() TrustLevel { return TrustProject }
+func (walkKind) readsFiles() bool         { return true }
+
+func (k walkKind) check(c *config) {
+	checkPatterns(c, "Walk", k.patterns)
+}
+
+func (k walkKind) discover(ld *loading, s *scopeDef) {
+	patterns, ok := ld.overrideFilenames(k.patterns)
+	if !ok {
+		return
+	}
+	dirs, ok := ld.walkDirs(s)
+	if !ok {
+		return
+	}
+	for _, dir := range dirs {
+		root, ok := ld.root(dir)
+		if !ok {
+			continue
+		}
+		configRoot, ok := ld.scopeRoot(s, dir)
+		if !ok {
+			return
+		}
+		ld.search(root, dir, configRoot, patterns, s, true)
+	}
 }
 
 // ExplicitFile is a scope kind that loads the files as given, with any registered decoder. A missing file is a
 // *NotFoundError, an unregistered format an *UnsupportedFormatError, and a file that can't be read an *IOError. Its
 // default trust is TrustProject.
 func ExplicitFile(paths ...string) ScopeKind {
-	_ = paths // stub
-	return stubKind{}
+	return explicitKind{paths: slices.Clone(paths)}
 }
 
-// stubKind stands in for the kinds until they are implemented.
-type stubKind struct{}
+type explicitKind struct {
+	paths []string
+}
 
-func (stubKind) defaultTrust() TrustLevel     { return TrustProject }
-func (stubKind) check(*config)                {}
-func (stubKind) readsFiles() bool             { return false }
-func (stubKind) discover(*loading, *scopeDef) {}
+func (explicitKind) defaultTrust() TrustLevel { return TrustProject }
+func (explicitKind) readsFiles() bool         { return true }
+
+func (k explicitKind) check(c *config) {
+	if len(k.paths) == 0 {
+		c.fail("ExplicitFile", "no paths")
+	}
+	if slices.Contains(k.paths, "") {
+		c.fail("ExplicitFile", "an empty path")
+	}
+}
+
+func (k explicitKind) discover(ld *loading, s *scopeDef) {
+	ld.loadExplicit(k.paths, s.name, s.trust, s)
+}
 
 // FixedDir is a scope kind that searches one directory. dir is absolute, or starts with ~, {user} or {system}, and may
 // use {name}. Patterns are listed lowest precedence first. Its default trust is TrustProject.
@@ -97,7 +140,11 @@ func (k fixedDirKind) discover(ld *loading, s *scopeDef) {
 	if !ok {
 		return
 	}
-	ld.search(root, dir, k.patterns, s, true)
+	configRoot, ok := ld.scopeRoot(s, dir)
+	if !ok {
+		return
+	}
+	ld.search(root, dir, configRoot, k.patterns, s, true)
 }
 
 // checkDir checks a FixedDir directory template.
@@ -114,7 +161,7 @@ func checkDir(dir string) error {
 			return fmt.Errorf("in %q, %s must be followed by a path separator", dir, dir[:len(dir)-len(rest)])
 		}
 	default:
-		if !filepath.IsAbs(expand(dir, "x", "")) {
+		if !filepath.IsAbs(expand(dir, "x", "", "")) {
 			return fmt.Errorf("the directory %q must be absolute, or start with ~, {user} or {system}", dir)
 		}
 	}
@@ -132,26 +179,53 @@ func checkPatterns(c *config, op string, patterns []Pattern) {
 		c.fail(op, "no patterns")
 	}
 	for _, p := range patterns {
-		tpl := p.Template
-		if tpl == "" {
-			c.fail(op, "an empty pattern template")
-			continue
-		}
-		bad := false
-		for _, ph := range placeholders(tpl) {
-			if ph != "{name}" && ph != "{ext}" {
-				c.fail(op, "unknown placeholder %s in the template %q", ph, tpl)
-				bad = true
-			}
-		}
-		if strings.Contains(path.Dir(tpl), "{ext}") {
-			c.fail(op, "in the template %q, {ext} can only be in the file name", tpl)
-			bad = true
-		}
-		if !bad && !filepath.IsLocal(filepath.FromSlash(expand(tpl, "x", "x"))) {
-			c.fail(op, "the template %q must be a relative path inside the directory", tpl)
+		if err := checkPattern(p); err != nil {
+			c.fail(op, "%w", err)
 		}
 	}
+}
+
+// checkPattern checks one pattern.
+func checkPattern(p Pattern) error {
+	tpl := p.Template
+	if tpl == "" {
+		return errors.New("an empty pattern template")
+	}
+	if p.Variant < VariantShared || p.Variant > VariantEnvLocal {
+		return fmt.Errorf("the template %q has an unknown variant %d", tpl, int(p.Variant))
+	}
+	if p.Root != RootSearchDir && p.Root != RootFileDir {
+		return fmt.Errorf("the template %q has an unknown root mode %d", tpl, int(p.Root))
+	}
+	hasEnv := false
+	for _, ph := range placeholders(tpl) {
+		switch ph {
+		case "{name}", "{ext}":
+		case "{env}":
+			hasEnv = true
+		default:
+			return fmt.Errorf("unknown placeholder %s in the template %q", ph, tpl)
+		}
+	}
+	envVariant := p.Variant == VariantEnv || p.Variant == VariantEnvLocal
+	switch {
+	case envVariant && !hasEnv:
+		return fmt.Errorf("the template %q is an env variant, so it needs {env}", tpl)
+	case !envVariant && hasEnv:
+		return fmt.Errorf("the template %q has {env}, so it must be an env or env-local variant", tpl)
+	case strings.Contains(path.Dir(tpl), "{ext}"):
+		return fmt.Errorf("in the template %q, {ext} can only be in the file name", tpl)
+	case strings.Contains(tpl, "**"):
+		return fmt.Errorf("the template %q uses **, but * only matches within one path segment", tpl)
+	case !filepath.IsLocal(filepath.FromSlash(expand(tpl, "x", "x", "x"))):
+		return fmt.Errorf("the template %q must be a relative path inside the directory", tpl)
+	}
+	if p.Key != "" {
+		if _, err := parsePath(expand(p.Key, "x", "", "")); err != nil {
+			return fmt.Errorf("the key %q of the template %q: %w", p.Key, tpl, err)
+		}
+	}
+	return nil
 }
 
 // placeholders returns every {…} in s, and an unclosed { with the rest of s.
@@ -171,14 +245,17 @@ func placeholders(s string) []string {
 	}
 }
 
-// expand fills in {name} and {ext} in one pass, so text that a value brings in is never expanded again.
-func expand(tpl, name, ext string) string {
+// expand fills in {name}, {env} and {ext} in one pass, so text that a value brings in is never expanded again.
+func expand(tpl, name, env, ext string) string {
 	var b strings.Builder
 	for i := 0; i < len(tpl); {
 		switch {
 		case strings.HasPrefix(tpl[i:], "{name}"):
 			b.WriteString(name)
 			i += len("{name}")
+		case strings.HasPrefix(tpl[i:], "{env}"):
+			b.WriteString(env)
+			i += len("{env}")
 		case strings.HasPrefix(tpl[i:], "{ext}"):
 			b.WriteString(ext)
 			i += len("{ext}")
@@ -212,7 +289,7 @@ func (k embeddedKind) check(c *config) {
 }
 
 func (k embeddedKind) discover(ld *loading, s *scopeDef) {
-	ld.search(mountRoot{fsys: k.fsys, sub: "."}, "", k.patterns, s, false)
+	ld.search(mountRoot{fsys: k.fsys, sub: "."}, "", s.configRoot, k.patterns, s, false)
 }
 
 // ValuesFunc is a scope kind for a tree computed on every load, so a reload can re-read it. An error from f, or a
