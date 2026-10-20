@@ -136,7 +136,7 @@ func FuzzLsTree(f *testing.F) {
 }
 
 // FuzzGitArgs checks the git commands built from a reference (DL-212): there are five, each has --end-of-options,
-// everything before it is the same whatever the reference, and the path only ever follows a --.
+// everything before it is the same whatever the reference, and ls-tree gets the path last, after --.
 func FuzzGitArgs(f *testing.F) {
 	commit, blob := strings.Repeat("1", 40), strings.Repeat("2", 40)
 	fixed := commands("https://h.example/r.git", "main", "a.json", commit, blob)
@@ -161,14 +161,9 @@ func FuzzGitArgs(f *testing.F) {
 			if !slices.Equal(cmd[:sep], fixed[i][:fsep]) {
 				t.Errorf("command %q has options %q that depend on the reference, want %q", cmd, cmd[:sep], fixed[i][:fsep])
 			}
-			if path == "" {
-				continue
-			}
-			for j, a := range cmd {
-				if a == path && !slices.Contains(cmd[:j], "--") && !slices.Contains(cmd[:j], "--end-of-options") {
-					t.Errorf("command %q passes the path %q before -- or --end-of-options", cmd, path)
-				}
-			}
+		}
+		if ls := cmds[2]; len(ls) < 2 || ls[len(ls)-1] != path || ls[len(ls)-2] != "--" {
+			t.Errorf("ls-tree command %q doesn't pass the path %q last, after --", ls, path)
 		}
 	})
 }

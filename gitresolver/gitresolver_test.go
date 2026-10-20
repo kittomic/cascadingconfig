@@ -80,7 +80,7 @@ func TestModes(t *testing.T) {
 	}
 	sub := r.commit("files")
 	r.git("update-index", "--add", "--cacheinfo", "160000,"+sub+",sub.json")
-	r.commit("submodule")
+	r.git("commit", "-q", "-m", "submodule") // not commit(), whose add -A would drop the gitlink
 	loadOK(t, fileGit(), []string{gitRef(r.url(), "exec.json", "main")})
 	for _, path := range []string{"link.json", "sub.json", "dir"} {
 		t.Run(path, func(t *testing.T) {
@@ -210,7 +210,7 @@ func TestGitProgram(t *testing.T) {
 func TestTimeout(t *testing.T) {
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{}`).commit("one")
-	slow := wrapper(t, `case "$*" in *version*) ;; *) sleep 30 ;; esac`)
+	slow := wrapper(t, `[ "$1" = version ] || sleep 30`)
 	start := time.Now()
 	_, err := load(t, fileGit(gitresolver.WithGit(slow)), []string{gitRef(r.url(), "a.json", "main")},
 		cc.WithIncludeTimeout(300*time.Millisecond))
