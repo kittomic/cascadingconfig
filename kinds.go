@@ -65,6 +65,7 @@ func (k walkKind) discover(ld *loading, s *scopeDef) {
 	if !ok {
 		return
 	}
+	patterns = ld.searchPlaces(patterns)
 	dirs, ok := ld.walkDirs(s, false)
 	if !ok {
 		return
@@ -160,14 +161,14 @@ func checkDir(dir string) error {
 		return errors.New("the directory is empty")
 	case dir == "~" || strings.HasPrefix(dir, "~/") || strings.HasPrefix(dir, `~\`):
 		rest = dir[1:]
-	case strings.HasPrefix(dir, "{user}"), strings.HasPrefix(dir, "{system}"):
+	case strings.HasPrefix(dir, "{user}"), strings.HasPrefix(dir, "{system}"), strings.HasPrefix(dir, "{cwd}"):
 		rest = dir[strings.IndexByte(dir, '}')+1:]
 		if rest != "" && rest[0] != '/' && rest[0] != filepath.Separator {
 			return fmt.Errorf("in %q, %s must be followed by a path separator", dir, dir[:len(dir)-len(rest)])
 		}
 	default:
 		if !filepath.IsAbs(expand(dir, "x", "", "")) {
-			return fmt.Errorf("the directory %q must be absolute, or start with ~, {user} or {system}", dir)
+			return fmt.Errorf("the directory %q must be absolute, or start with ~, {user}, {system} or {cwd}", dir)
 		}
 	}
 	for _, p := range placeholders(rest) {

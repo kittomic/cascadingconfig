@@ -31,7 +31,7 @@ func WithStartDir(dir string) Option {
 // WithWalkStop sets where walks stop.
 func WithWalkStop(s WalkStop) Option {
 	return optionFunc(func(c *config) {
-		if s != StopAtHome && s != StopAtRoot {
+		if s < StopAtHome || s > StopAtMarker {
 			c.fail("WithWalkStop", "unknown walk stop %d", int(s))
 			return
 		}

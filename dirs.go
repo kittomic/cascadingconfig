@@ -6,6 +6,7 @@ import "path/filepath"
 type PlatformDirs interface {
 	userDir(h host, name string) (string, error)
 	systemDir(h host, name string) string
+	hasSystem() bool
 }
 
 // XDGDirs puts the user directory at $XDG_CONFIG_HOME/{name}, else ~/.config/{name}, on every OS, as mise does, and the
@@ -13,6 +14,8 @@ type PlatformDirs interface {
 var XDGDirs PlatformDirs = xdgDirs{}
 
 type xdgDirs struct{}
+
+func (xdgDirs) hasSystem() bool { return true }
 
 // userDir returns the user directory for app name on h. A relative $XDG_CONFIG_HOME is ignored, as the XDG spec says.
 func (xdgDirs) userDir(h host, name string) (string, error) {
@@ -41,7 +44,34 @@ func (xdgDirs) systemDir(h host, name string) string {
 // EnvPathsDirs puts the user directory where cosmiconfig's env-paths does: $XDG_CONFIG_HOME/{name}, else
 // ~/.config/{name}, on Linux; ~/Library/Preferences/{name} on macOS; %APPDATA%\{name}\Config on Windows. It has no
 // system directory. Never reassign it.
-var EnvPathsDirs PlatformDirs = xdgDirs{} // stub
+var EnvPathsDirs PlatformDirs = envPathsDirs{}
+
+type envPathsDirs struct{}
+
+func (envPathsDirs) hasSystem() bool               { return false }
+func (envPathsDirs) systemDir(host, string) string { return "" }
+
+func (envPathsDirs) userDir(h host, name string) (string, error) {
+	switch h.GOOS() {
+	case "darwin":
+		home, err := h.Home()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "Library", "Preferences", name), nil
+	case "windows":
+		if appData, ok := h.LookupEnv("APPDATA"); ok && appData != "" {
+			return filepath.Join(appData, name, "Config"), nil
+		}
+		home, err := h.Home()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "AppData", "Roaming", name, "Config"), nil
+	default:
+		return xdgDirs{}.userDir(h, name)
+	}
+}
 
 // WithPlatformDirs sets where the user and system directories are. {NAME}_CONFIG_DIR and {NAME}_SYSTEM_CONFIG_DIR,
 // when declared, override them.

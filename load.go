@@ -20,6 +20,7 @@ import (
 func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	c := l.cfg
 	ld := &loading{ctx: ctx, c: c, roots: map[string]Root{}, dirs: map[string][]fs.DirEntry{}}
+	ld.settings.mergeSearchPlaces = true
 	defer ld.closeRoots()
 	if err := ld.formatOrder(); err != nil {
 		return nil, err
@@ -40,7 +41,11 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 		}
 	}
 	placed := false
-	for _, s := range c.scopes {
+	scopes := c.scopes
+	if explicit != nil && c.configFilesOnly {
+		scopes = nil
+	}
+	for _, s := range scopes {
 		if err := ctx.Err(); err != nil {
 			return nil, contextError(err)
 		}
@@ -198,6 +203,14 @@ func (ld *loading) resolveDir(tpl string, s *scopeDef) (string, bool) {
 			return "", false
 		}
 		base = dir
+	case strings.HasPrefix(tpl, "{cwd}"):
+		rest = tpl[len("{cwd}"):]
+		cwd, err := c.host.Cwd()
+		if err != nil {
+			ld.addError(&IOError{BaseError: BaseError{Op: "load", Scope: string(s.name), Err: err}})
+			return "", false
+		}
+		base = cwd
 	case isHomePath(tpl):
 		home, err := c.host.Home()
 		if err != nil {
@@ -442,15 +455,19 @@ func (ld *loading) candidates(last, env string, entries []fs.DirEntry, dir, sub 
 		}
 		if !strings.Contains(e, "*") {
 			if hasEntry(entries, e) {
-				slots[""] = append(slots[""], match{e, format})
+				if f, ok := ld.searchedFormat(dir, sub, e, format); ok {
+					slots[""] = append(slots[""], match{e, f})
+				}
 			}
 			return
 		}
 		re := globPattern(e, true)
 		for _, en := range entries {
 			if m := re.FindStringSubmatch(en.Name()); m != nil {
-				stem := strings.Join(m[1:], "\x00")
-				slots[stem] = append(slots[stem], match{en.Name(), format})
+				if f, ok := ld.searchedFormat(dir, sub, en.Name(), format); ok {
+					stem := strings.Join(m[1:], "\x00")
+					slots[stem] = append(slots[stem], match{en.Name(), f})
+				}
 			}
 		}
 	}
@@ -460,13 +477,13 @@ func (ld *loading) candidates(last, env string, entries []fs.DirEntry, dir, sub 
 			re := globPattern(e, true)
 			for _, en := range entries {
 				if re.MatchString(en.Name()) {
-					if format, ok := ld.formatOf(en.Name()); ok {
+					if format, ok := ld.searchedFormat(dir, sub, en.Name(), ""); ok {
 						slots[en.Name()] = append(slots[en.Name()], match{en.Name(), format})
 					}
 				}
 			}
-		} else if format, ok := ld.formatOf(e); ok {
-			add(e, format)
+		} else {
+			add(e, "")
 		}
 	} else {
 		for _, d := range ld.order {
@@ -496,12 +513,20 @@ func hasEntry(entries []fs.DirEntry, name string) bool {
 	return slices.ContainsFunc(entries, func(e fs.DirEntry) bool { return e.Name() == name })
 }
 
-// formatOf returns the searched format whose decoder claims file's extension.
-func (ld *loading) formatOf(file string) (string, bool) {
-	ext := strings.TrimPrefix(path.Ext(file), ".")
+// searchedFormat returns the format of a candidate named file in sub of dir, from the file-format rules or else
+// fallback (the decoder whose extension {ext} stood for) or the file's extension. It must be one the scope searches.
+func (ld *loading) searchedFormat(dir, sub, file, fallback string) (string, bool) {
+	p := filepath.ToSlash(ld.join(dir, path.Join(sub, file)))
+	format, ok := ld.c.fileFormat(p)
+	if fallback != "" && !ld.c.ruleMatches(p) {
+		format, ok = fallback, true
+	}
+	if !ok {
+		return "", false
+	}
 	for _, d := range ld.order {
-		if slices.Contains(d.Extensions(), ext) {
-			return d.Format(), true
+		if d.Format() == format {
+			return format, true
 		}
 	}
 	return "", false
@@ -669,6 +694,22 @@ func (ld *loading) overrideFilenames(patterns []Pattern) ([]Pattern, bool) {
 	return out, true
 }
 
+// searchPlaces applies a bootstrap file's searchPlaces to a walk's patterns: added at the highest precedence, or,
+// with mergeSearchPlaces false, replacing them.
+func (ld *loading) searchPlaces(patterns []Pattern) []Pattern {
+	if ld.settings.searchPlaces == nil {
+		return patterns
+	}
+	var places []Pattern
+	for _, n := range ld.settings.searchPlaces {
+		places = append(places, Pattern{Template: n})
+	}
+	if !ld.settings.mergeSearchPlaces {
+		return places
+	}
+	return append(slices.Clone(patterns), places...)
+}
+
 // walkDirs returns the directories a walk searches, root-most first. The bootstrap walk honours only the option's
 // and the env var's ceilings; the main walk adds the bootstrap files' ceilings.
 func (ld *loading) walkDirs(s *scopeDef, bootstrap bool) ([]string, bool) {
@@ -703,11 +744,20 @@ func (ld *loading) walkDirs(s *scopeDef, bootstrap bool) ([]string, bool) {
 			ceilings[filepath.Clean(p)] = true
 		}
 	}
-	home, homeErr := h.Home()
+	stop, stopErr := h.Home()
+	if c.stopDir != "" {
+		var ok bool
+		if stop, ok = ld.hostPath(c.stopDir, s); !ok {
+			return nil, false
+		}
+		stopErr = nil
+	}
 	var dirs []string
 	for d := filepath.Clean(start); !ceilings[d]; {
 		dirs = append(dirs, d)
-		if c.walkStop == StopAtHome && homeErr == nil && d == filepath.Clean(home) {
+		if c.walkStop == StopAtStart ||
+			c.walkStop == StopAtHome && stopErr == nil && d == filepath.Clean(stop) ||
+			c.walkStop == StopAtMarker && ld.hasMarker(d) {
 			break
 		}
 		parent := filepath.Dir(d)
@@ -732,6 +782,20 @@ func (ld *loading) walkDirs(s *scopeDef, bootstrap bool) ([]string, bool) {
 	}
 	ld.walk, ld.walked = dirs, true
 	return dirs, true
+}
+
+// hasMarker reports whether dir contains an entry named by WithRootMarker.
+func (ld *loading) hasMarker(dir string) bool {
+	root, ok := ld.root(dir)
+	if !ok {
+		return false
+	}
+	for _, e := range ld.readDir(root, dir, ".") {
+		if slices.Contains(ld.c.markers, e.Name()) {
+			return true
+		}
+	}
+	return false
 }
 
 // loadExplicit loads files as given, at the current position: no variants, any registered decoder, and errors for
@@ -760,9 +824,9 @@ func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLeve
 			}
 			continue
 		}
-		format, ok := c.formatFor(strings.TrimPrefix(filepath.Ext(abs), "."))
+		format, ok := c.fileFormat(filepath.ToSlash(abs))
 		if !ok {
-			base.Err = fmt.Errorf("no registered decoder handles the extension %q", filepath.Ext(abs))
+			base.Err = fmt.Errorf("no format rule or registered decoder's extension matches %s", abs)
 			ld.addError(&UnsupportedFormatError{BaseError: base})
 			continue
 		}
@@ -930,8 +994,12 @@ func (ld *loading) dedup() {
 	ld.entries = kept
 }
 
-// decode decodes every loaded file, and returns the layers to merge, or every problem found.
+// decode decodes every loaded file, and returns the layers to merge, or every problem found. With first-match
+// resolution, only the highest-precedence non-empty file is chosen, and the files below it aren't decoded.
 func (ld *loading) decode() ([]mergeLayer, error) {
+	if ld.c.resolution == FirstMatch {
+		return ld.decodeFirst()
+	}
 	var errs []error
 	var layers []mergeLayer
 	for _, e := range ld.entries {
@@ -939,44 +1007,92 @@ func (ld *loading) decode() ([]mergeLayer, error) {
 			errs = append(errs, e.err)
 			continue
 		}
-		if e.layer.Status != LayerLoaded {
+		ok, err := ld.decodeEntry(e)
+		if err != nil {
+			errs = append(errs, err)
 			continue
 		}
-		if e.tree == nil {
-			doc, err := DecodeDocument(ld.c.decoder(e.layer.Format), e.layer.Path, e.data)
-			if err != nil {
-				var pe *ParseError
-				if errors.As(err, &pe) && pe.Scope == "" {
-					pe.Scope = string(e.layer.Scope)
-				}
-				errs = append(errs, err)
-				continue
-			}
-			e.layer.Warnings = append(e.layer.Warnings, doc.Warnings...)
-			if doc.Empty {
-				e.layer.Status = LayerEmpty
-				continue
-			}
-			e.tree = doc.Tree
-			if e.key != nil {
-				t, ok, err := subtree(doc.Tree, e.key)
-				if err != nil {
-					errs = append(errs, &ParseError{
-						BaseError: BaseError{Op: "decode", Path: e.layer.Path, Scope: string(e.layer.Scope), Err: err},
-						Format:    e.layer.Format,
-					})
-					continue
-				}
-				if !ok {
-					e.dropped = true
-					continue
-				}
-				e.tree = t
-			}
+		if ok {
+			layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree})
 		}
-		layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree})
 	}
 	return layers, errors.Join(errs...)
+}
+
+// decodeFirst chooses the highest-precedence non-empty file. A problem above it fails the load; the files below it
+// are ignored without being decoded, so a broken one doesn't matter.
+func (ld *loading) decodeFirst() ([]mergeLayer, error) {
+	var chosen *entry
+	for i := len(ld.entries) - 1; i >= 0; i-- {
+		e := ld.entries[i]
+		if chosen != nil {
+			if e.err != nil {
+				e.err, e.dropped = nil, true
+			} else if e.layer.Status == LayerLoaded {
+				e.layer.Status = LayerIgnored
+				e.layer.Reason = "first-match resolution chose " + chosen.layer.Path
+			}
+			continue
+		}
+		if e.err != nil {
+			return nil, e.err
+		}
+		ok, err := ld.decodeEntry(e)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			chosen = e
+		}
+	}
+	if chosen == nil {
+		return nil, nil
+	}
+	return []mergeLayer{{layer: chosen.layer, tree: chosen.tree}}, nil
+}
+
+// decodeEntry decodes one loaded entry, and reports whether it has config to merge. Empty files, and files whose
+// pattern key is missing or holds an empty table, have none.
+func (ld *loading) decodeEntry(e *entry) (bool, error) {
+	if e.layer.Status != LayerLoaded {
+		return false, nil
+	}
+	if e.tree != nil {
+		return true, nil
+	}
+	doc, err := DecodeDocument(ld.c.decoder(e.layer.Format), e.layer.Path, e.data)
+	if err != nil {
+		var pe *ParseError
+		if errors.As(err, &pe) && pe.Scope == "" {
+			pe.Scope = string(e.layer.Scope)
+		}
+		return false, err
+	}
+	e.layer.Warnings = append(e.layer.Warnings, doc.Warnings...)
+	if doc.Empty {
+		e.layer.Status = LayerEmpty
+		return false, nil
+	}
+	e.tree = doc.Tree
+	if e.key != nil {
+		t, ok, err := subtree(doc.Tree, e.key)
+		if err != nil {
+			return false, &ParseError{
+				BaseError: BaseError{Op: "decode", Path: e.layer.Path, Scope: string(e.layer.Scope), Err: err},
+				Format:    e.layer.Format,
+			}
+		}
+		if !ok {
+			e.dropped = true
+			return false, nil
+		}
+		if len(t) == 0 {
+			e.layer.Status = LayerEmpty
+			return false, nil
+		}
+		e.tree = t
+	}
+	return true, nil
 }
 
 // subtree returns the table at key in t, false if there's nothing there, or an error if the value isn't a table.

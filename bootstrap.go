@@ -57,6 +57,7 @@ const (
 
 var bootstrapKeys = []BootstrapKey{
 	BootstrapEnv, BootstrapFormats, BootstrapCeilingPaths, BootstrapIgnoredConfigPaths, BootstrapOverrideConfigFilenames,
+	BootstrapSearchPlaces, BootstrapMergeSearchPlaces,
 }
 
 // WithBootstrapKeys enables bootstrap keys. A bootstrap file's other keys are warned about and ignored.
@@ -143,6 +144,9 @@ type bootSettings struct {
 	formats  []bootFormats
 	ceilings []string
 	ignored  []ignoredPath
+
+	searchPlaces      []string // the highest file's searchPlaces; nil when no file set them
+	mergeSearchPlaces bool     // whether searchPlaces add to a walk's patterns, rather than replace them
 }
 
 // bootFormats is one bootstrap file's formats, which apply to scopes at most as trusted as the file.
@@ -227,6 +231,17 @@ func (ld *loading) applyBootstrap(e *entry) error {
 		return nil
 	}
 	t := doc.Tree
+	if e.key != nil {
+		sub, ok, err := subtree(t, e.key)
+		switch {
+		case err != nil:
+			return &ParseError{BaseError: BaseError{Op: "bootstrap", Path: e.layer.Path, Err: err}, Format: e.layer.Format}
+		case !ok:
+			e.layer.Status = LayerEmpty
+			return nil
+		}
+		t = sub
+	}
 	for _, f := range c.bootstrapTransforms {
 		next, err := f(ld.ctx, e.layer, tree.CopyMap(t))
 		if err != nil {
@@ -251,6 +266,14 @@ func (ld *loading) applyBootstrap(e *entry) error {
 		if limited && !slices.Contains(limit, key) {
 			warn(WarnBootstrapKeyDropped, "%s: the %s scope's bootstrap files may not set %q, so it was dropped",
 				e.layer.Path, e.layer.Scope, k)
+			continue
+		}
+		if key == BootstrapMergeSearchPlaces {
+			merge, ok := t[k].(bool)
+			if !ok {
+				return ld.bootError(e, key, fmt.Errorf("the value must be a boolean, not %s", describeType(t[k])))
+			}
+			ld.settings.mergeSearchPlaces = merge
 			continue
 		}
 		list, err := stringList(t[k])
@@ -293,6 +316,13 @@ func (ld *loading) applyBootstrap(e *entry) error {
 				}
 			}
 			ld.settings.override = list
+		case BootstrapSearchPlaces:
+			for _, n := range list {
+				if err := checkPattern(Pattern{Template: n}); err != nil {
+					return ld.bootError(e, key, err)
+				}
+			}
+			ld.settings.searchPlaces = list
 		}
 	}
 	return nil

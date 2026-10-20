@@ -686,7 +686,8 @@ load paths, so concepts specific to Node.js are left out. Users can add them bac
   key, highest, so under first-match resolution it wins outright when it's non-empty (DL-142). The same file's
   `cosmiconfig` key is the scope's bootstrap file, with the keys `formats`, `searchPlaces` and `mergeSearchPlaces`.
 - **Settings:** `WithResolution(FirstMatch)`, `WithSearchStrategy(SearchNone)`, `WithPlatformDirs(EnvPathsDirs)`,
-  `WithConfigFilesOnly()` and `WithFileFormat(FileName(".{name}rc"), "yaml", "json")`.
+  `WithConfigFilesOnly()`, and `WithFileFormat(…, "yaml", "json")` rules for `FileName(".{name}rc")`, for
+  `FileName("{name}rc")`, which `.config/{name}rc` needs, and for the user directory's `FileName("config")`.
 
 ### Search strategies
 
