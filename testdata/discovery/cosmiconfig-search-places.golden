@@ -1,0 +1,8 @@
+project /srv/app/.config/myapprc.yml shared - /srv/app ignored format-conflict
+project /srv/app/.config/myapprc.yaml shared - /srv/app ignored format-conflict
+project /srv/app/.config/myapprc.json shared - /srv/app ignored
+project /srv/app/.config/myapprc shared - /srv/app ignored
+project /srv/app/.myapprc.yml shared - /srv/app ignored format-conflict
+project /srv/app/.myapprc.yaml shared - /srv/app ignored format-conflict
+project /srv/app/.myapprc.json shared - /srv/app ignored
+project /srv/app/.myapprc shared - /srv/app loaded

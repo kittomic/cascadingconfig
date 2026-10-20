@@ -1,0 +1,27 @@
+# SearchNone (the default)
+project /home/me/work/app/.myapprc.json shared - /home/me/work/app loaded
+# SearchProject with a marker
+project /home/me/work/.myapprc.json shared - /home/me/work ignored
+project /home/me/work/app/.myapprc.json shared - /home/me/work/app loaded
+# SearchProject without a marker in reach
+project /.myapprc.json shared - / ignored
+project /home/.myapprc.json shared - /home ignored
+project /home/me/.myapprc.json shared - /home/me ignored
+project /home/me/work/.myapprc.json shared - /home/me/work ignored
+project /home/me/work/app/.myapprc.json shared - /home/me/work/app loaded
+# SearchGlobal
+user /home/me/.config/myapp/config.json shared - /home/me/.config/myapp ignored
+project /home/me/.myapprc.json shared - /home/me ignored
+project /home/me/work/.myapprc.json shared - /home/me/work ignored
+project /home/me/work/app/.myapprc.json shared - /home/me/work/app loaded
+# SearchGlobal with a stop dir
+user /home/me/.config/myapp/config.json shared - /home/me/.config/myapp ignored
+project /home/me/work/.myapprc.json shared - /home/me/work ignored
+project /home/me/work/app/.myapprc.json shared - /home/me/work/app loaded
+# SearchGlobal with a stop dir that isn't an ancestor
+user /home/me/.config/myapp/config.json shared - /home/me/.config/myapp ignored
+project /.myapprc.json shared - / ignored
+project /home/.myapprc.json shared - /home ignored
+project /home/me/.myapprc.json shared - /home/me ignored
+project /home/me/work/.myapprc.json shared - /home/me/work ignored
+project /home/me/work/app/.myapprc.json shared - /home/me/work/app loaded
