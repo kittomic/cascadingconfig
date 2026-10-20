@@ -1,0 +1,193 @@
+{
+  "preset": "MiseLayout",
+  "scopes": [
+    {
+      "name": "defaults",
+      "kind": "Defaults",
+      "trust": "system",
+      "selected": true
+    },
+    {
+      "name": "system",
+      "kind": "FixedDir",
+      "trust": "system",
+      "selected": true
+    },
+    {
+      "name": "user",
+      "kind": "FixedDir",
+      "trust": "user",
+      "selected": true
+    },
+    {
+      "name": "project",
+      "kind": "Walk",
+      "trust": "project",
+      "selected": true
+    },
+    {
+      "name": "override",
+      "kind": "FixedDir",
+      "trust": "user",
+      "selected": true
+    },
+    {
+      "name": "env",
+      "kind": "EnvVars",
+      "trust": "user",
+      "selected": true
+    }
+  ],
+  "envs": {
+    "selected": [
+      "dev"
+    ],
+    "source": "/home/me/.config/myapp/myapprc.json",
+    "platform": [
+      "unix",
+      "linux",
+      "linux-x64"
+    ]
+  },
+  "formats": [
+    "json"
+  ],
+  "bootstrap": [
+    {
+      "path": "/home/me/.config/myapp/myapprc.json",
+      "scope": "user",
+      "variant": "shared",
+      "format": "json",
+      "config_root": "/home/me",
+      "pattern": "{name}rc.{ext}",
+      "trust": "user",
+      "status": "loaded"
+    }
+  ],
+  "layers": [
+    {
+      "scope": "defaults",
+      "variant": "shared",
+      "trust": "system",
+      "status": "loaded"
+    },
+    {
+      "path": "/etc/myapp/config.json",
+      "scope": "system",
+      "variant": "shared",
+      "format": "json",
+      "config_root": "/etc/myapp",
+      "pattern": "config.{ext}",
+      "trust": "system",
+      "status": "loaded"
+    },
+    {
+      "path": "/home/me/.config/myapp/config.json",
+      "scope": "user",
+      "variant": "shared",
+      "format": "json",
+      "config_root": "/home/me",
+      "pattern": "config.{ext}",
+      "trust": "user",
+      "status": "duplicate",
+      "reason": "loaded at a higher position through the project scope"
+    },
+    {
+      "path": "/home/me/.config/myapp/config.json",
+      "scope": "user",
+      "variant": "shared",
+      "format": "json",
+      "config_root": "/home/me",
+      "pattern": ".config/{name}/config.{ext}",
+      "trust": "user",
+      "status": "loaded"
+    },
+    {
+      "path": "/home/me/work/myapp.json",
+      "scope": "project",
+      "variant": "shared",
+      "format": "json",
+      "config_root": "/home/me/work",
+      "pattern": "{name}.{ext}",
+      "trust": "project",
+      "status": "loaded"
+    },
+    {
+      "path": "/home/me/work/myapp.dev.json",
+      "scope": "project",
+      "variant": "env",
+      "env": "dev",
+      "format": "json",
+      "config_root": "/home/me/work",
+      "pattern": "{name}.{env}.{ext}",
+      "trust": "project",
+      "status": "empty"
+    },
+    {
+      "scope": "env",
+      "variant": "shared",
+      "trust": "user",
+      "status": "loaded"
+    }
+  ],
+  "bindings": [
+    {
+      "binding": "CEILING_PATHS",
+      "var": "MYAPP_CEILING_PATHS",
+      "set": false
+    },
+    {
+      "binding": "CONFIG_DIR",
+      "var": "MYAPP_CONFIG_DIR",
+      "set": false
+    },
+    {
+      "binding": "CONFIG_FILE",
+      "var": "MYAPP_CONFIG_FILE",
+      "set": false
+    },
+    {
+      "binding": "CONFIG_FORMATS",
+      "var": "MYAPP_CONFIG_FORMATS",
+      "set": false
+    },
+    {
+      "binding": "ENV",
+      "var": "MYAPP_ENV",
+      "set": false
+    },
+    {
+      "binding": "GLOBAL_CONFIG_FILE",
+      "var": "MYAPP_GLOBAL_CONFIG_FILE",
+      "set": false
+    },
+    {
+      "binding": "IGNORED_CONFIG_PATHS",
+      "var": "MYAPP_IGNORED_CONFIG_PATHS",
+      "set": true
+    },
+    {
+      "binding": "OVERRIDE_CONFIG_FILENAMES",
+      "var": "MYAPP_OVERRIDE_CONFIG_FILENAMES",
+      "set": false
+    },
+    {
+      "binding": "SYSTEM_CONFIG_DIR",
+      "var": "MYAPP_SYSTEM_CONFIG_DIR",
+      "set": false
+    },
+    {
+      "binding": "SYSTEM_CONFIG_FILE",
+      "var": "MYAPP_SYSTEM_CONFIG_FILE",
+      "set": false
+    }
+  ],
+  "warnings": [
+    {
+      "code": "unknown-key",
+      "path": "/home/me/.config/myapp/config.json",
+      "key": "password",
+      "message": "password (set by /home/me/.config/myapp/config.json) matches no field"
+    }
+  ]
+}
