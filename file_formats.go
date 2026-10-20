@@ -209,3 +209,31 @@ func (m funcMatcher) check(c *config) bool {
 }
 
 func (m funcMatcher) matches(slashPath, _ string) bool { return m.f(slashPath) }
+
+// Prefix matches the paths, or normalised include references, that start with s. It's a plain string prefix, so end s
+// with / to match a directory.
+func Prefix(s string) Matcher {
+	return prefixMatcher{s: s}
+}
+
+type prefixMatcher struct{ s string }
+
+func (prefixMatcher) matcher() {}
+
+func (prefixMatcher) check(*config) bool { return true } // stub
+
+func (prefixMatcher) matches(string, string) bool { return false } // stub
+
+// MatchRef matches the include references f accepts, with the whole IncludeRef, including the file that asked for it.
+// It's for allow-lists only: in WithFileFormat it is an *OptionError (DL-176).
+func MatchRef(f func(ref IncludeRef) bool) Matcher {
+	return refMatcher{f: f}
+}
+
+type refMatcher struct{ f func(ref IncludeRef) bool }
+
+func (refMatcher) matcher() {}
+
+func (refMatcher) check(*config) bool { return true } // stub
+
+func (refMatcher) matches(string, string) bool { return false } // stub

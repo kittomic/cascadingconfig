@@ -27,11 +27,23 @@ type Report struct {
 
 // ScopeInfo describes one defined scope.
 type ScopeInfo struct {
-	Name     ScopeName  `json:"name"`
-	Kind     string     `json:"kind"` // "FixedDir", "Walk", "ExplicitFile", "EmbeddedFS", "Values", "ValuesFunc", "EnvVars", "Defaults" or "Scope"
-	Trust    TrustLevel `json:"trust"`
-	Selected bool       `json:"selected"`
-	Skipped  string     `json:"skipped,omitempty"` // why a selected scope wasn't searched
+	Name     ScopeName   `json:"name"`
+	Kind     string      `json:"kind"` // "FixedDir", "Walk", "ExplicitFile", "EmbeddedFS", "Values", "ValuesFunc", "EnvVars", "Defaults" or "Scope"
+	Trust    TrustLevel  `json:"trust"`
+	Selected bool        `json:"selected"`
+	Skipped  string      `json:"skipped,omitempty"` // why a selected scope wasn't searched
+	Policy   *PolicyInfo `json:"policy,omitempty"`  // the effective policy; nil for scopes that read no files (DL-194)
+}
+
+// PolicyInfo describes a scope's effective policy.
+type PolicyInfo struct {
+	Inherited       bool                `json:"inherited"`           // started from the default with InheritDefault
+	Resolvers       []string            `json:"resolvers"`           // the usable schemes
+	Allow           []string            `json:"allow,omitempty"`     // the global allow-list: Prefix("…"), MatchFunc, …
+	AllowFor        map[string][]string `json:"allow_for,omitempty"` // the allow-list for each scheme
+	Confine         []string            `json:"confine,omitempty"`   // the roots, as written
+	RequireTrust    bool                `json:"require_trust"`
+	FilePermissions bool                `json:"file_permissions"`
 }
 
 // EnvInfo describes the environments of a load.

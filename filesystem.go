@@ -21,6 +21,13 @@ type FileSystem interface {
 	SameFile(a, b fs.FileInfo) bool
 }
 
+// OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners, for
+// FilePermissions checks (DL-191).
+type OwnerInfo interface {
+	// Owner returns the owner's uid, or false when it isn't known.
+	Owner() (uid int, ok bool)
+}
+
 // Root is a directory opened by a FileSystem. Names are slash-separated and relative, as io/fs requires.
 type Root interface {
 	fs.StatFS
