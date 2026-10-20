@@ -189,11 +189,11 @@ func (ld *loading) remoteAllowed(pol *policy, name string, rr remoteRef) (why, r
 	return "", ""
 }
 
-// remoteFormat picks a remote file's format: a WithFileFormat rule on the normalised reference, then the extension of
-// its file path, then its media type (DL-198).
+// remoteFormat picks a remote file's format: a WithFileFormat rule, matched as allow-lists match the reference, then
+// the extension of its file path, then its media type (DL-198).
 func (ld *loading) remoteFormat(rr remoteRef, mediaType string) (string, bool) {
 	c := ld.c
-	if f, ok := c.ruleFormat(rr.ref.Ref); ok {
+	if f, ok := c.refRuleFormat(rr.ref); ok {
 		return f, true
 	}
 	if f, ok := c.extFormat(rr.file); ok {
