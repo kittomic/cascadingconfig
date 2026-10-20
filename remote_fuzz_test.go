@@ -9,6 +9,7 @@ import (
 
 	cc "github.com/kittomic/cascadingconfig"
 	"github.com/kittomic/cascadingconfig/cctest"
+	ccjson "github.com/kittomic/cascadingconfig/format/json"
 )
 
 // checkNormalised fails the test if ref breaks a rule every normalised reference keeps (DL-200, design.md Traversal
@@ -61,7 +62,8 @@ func normalisedOnce(t *testing.T, raw string) (cc.IncludeRef, bool) {
 	t.Helper()
 	f := allSchemes()
 	fsys := cctest.NewFS(map[string]string{rootCfg: includeOf("", raw)})
-	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), incScopes, remOpts(f))
+	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), cc.WithDecoder(ccjson.Decoder()),
+		incScopes, remOpts(f))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -106,7 +108,9 @@ func FuzzNormaliseReference(f *testing.F) {
 		if !ok {
 			t.Fatalf("%q normalised to %q, which no resolver is asked for", raw, ref.Ref)
 		}
-		if again.Ref != ref.Ref || again.Location != ref.Location || again.Path != ref.Path || again.Version != ref.Version {
+		// A URL's Version comes only from its integrity fragment, which the normalised string drops.
+		sameVersion := again.Version == ref.Version || (ref.Path == "" && again.Version == "")
+		if again.Ref != ref.Ref || again.Location != ref.Location || again.Path != ref.Path || !sameVersion {
 			t.Errorf("%q normalised to %+v, and again to %+v", raw, ref, again)
 		}
 	})
@@ -145,7 +149,8 @@ func FuzzIncludeRemote(f *testing.F) {
 			"/home/me/secret.json": `{"secret": 1}`,
 			work + "/x.json":       `{"secret": 1}`,
 		})
-		l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), incScopes, nested, remOpts(res))
+		l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), cc.WithDecoder(ccjson.Decoder()),
+			incScopes, nested, remOpts(res))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}

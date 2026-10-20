@@ -1,6 +1,7 @@
 package cascadingconfig_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -136,8 +137,9 @@ func TestRejectedReferences(t *testing.T) {
 			f := allSchemes()
 			_, err := remFails(t, f, []string{raw})
 			wantErr[*cc.ReferenceError](t, err, cc.CodeBadRequest, rootCfg)
-			if op := baseOp(err); op != "include" {
-				t.Errorf("Op = %q, want include", op)
+			var re *cc.ReferenceError
+			if errors.As(err, &re) && re.Op != "include" {
+				t.Errorf("Op = %q, want include", re.Op)
 			}
 			if n := len(f.refs()); n != 0 {
 				t.Errorf("the resolver was asked %d times, want 0", n)
