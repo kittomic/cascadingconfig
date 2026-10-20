@@ -54,6 +54,11 @@ pre-push:
     licenses:
       run: scripts/check-licenses.sh
 
+    deps:
+      files: git ls-files 'go.mod' '*/go.mod' 'scripts/check-deps.sh'
+      # the dependency budget in docs/project-layout.md (DL-173)
+      run: scripts/check-deps.sh
+
 commit-msg:
   commands:
     conventional-commit:
