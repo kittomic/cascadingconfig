@@ -2,8 +2,10 @@ package toml
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
-	_ "github.com/pelletier/go-toml/v2" // stub: keeps the requirement until Decode uses it
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/kittomic/cascadingconfig"
 )
@@ -28,6 +30,60 @@ func (decoder) Extensions() []string { return []string{"toml"} }
 
 func (decoder) MediaTypes() []string { return []string{"application/toml"} }
 
-func (decoder) Decode([]byte) (cascadingconfig.Document, error) {
-	return cascadingconfig.Document{}, errors.New("not implemented") // stub
+// Decode parses data. go-toml's errors carry their position and a short message that doesn't quote the file; a panic
+// in go-toml is returned as an error, so a hostile file can't crash the app.
+func (decoder) Decode(data []byte) (doc cascadingconfig.Document, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			doc, err = cascadingconfig.Document{}, errors.New("the TOML parser failed on this file")
+		}
+	}()
+	var m map[string]any
+	if err := toml.Unmarshal(data, &m); err != nil {
+		return cascadingconfig.Document{}, err
+	}
+	if len(m) == 0 {
+		return cascadingconfig.Document{Empty: true}, nil
+	}
+	t, err := canonical(m)
+	if err != nil {
+		return cascadingconfig.Document{}, err
+	}
+	return cascadingconfig.Document{Tree: t.(map[string]any)}, nil
+}
+
+// canonical turns go-toml's values into canonical ones: its date and time types become text.
+func canonical(v any) (any, error) {
+	switch v := v.(type) {
+	case map[string]any:
+		for k, e := range v {
+			c, err := canonical(e)
+			if err != nil {
+				return nil, err
+			}
+			v[k] = c
+		}
+		return v, nil
+	case []any:
+		for i, e := range v {
+			c, err := canonical(e)
+			if err != nil {
+				return nil, err
+			}
+			v[i] = c
+		}
+		return v, nil
+	case time.Time:
+		return v.Format(time.RFC3339Nano), nil
+	case toml.LocalDateTime:
+		return v.String(), nil
+	case toml.LocalDate:
+		return v.String(), nil
+	case toml.LocalTime:
+		return v.String(), nil
+	case string, bool, int64, float64:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("go-toml returned a %T, which this decoder doesn't convert", v)
+	}
 }
