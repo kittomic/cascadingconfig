@@ -77,7 +77,7 @@ func TestEmbeddedFS(t *testing.T) {
 		"conf/extra.json": {Data: []byte(`{"b": 2}`)},
 	}
 	res := mustLoad(t, memfs.New(nil),
-		WithScope("defaults", EmbeddedFS(fsys, Pattern{"{name}.{ext}"}, Pattern{"conf/extra.{ext}"})),
+		WithScope("defaults", EmbeddedFS(fsys, Pattern{Template: "{name}.{ext}"}, Pattern{Template: "conf/extra.{ext}"})),
 		WithScopes("defaults"),
 	)
 	wantTree(t, res, `{"a": "embedded", "b": 2}`)
