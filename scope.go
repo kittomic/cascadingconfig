@@ -125,6 +125,30 @@ func After(scope ScopeName) ScopeOption {
 	return scopeOptionFunc(func(s *scopeSpec) { s.after = append(s.after, scope) })
 }
 
+// ConfigRoot sets the config root of the scope's RootSearchDir patterns, such as ~. It may start with ~.
+func ConfigRoot(dir string) ScopeOption {
+	_ = dir // stub
+	return scopeOptionFunc(func(*scopeSpec) {})
+}
+
+// ReplacedByFile makes the scope load exactly the file that binding b names, when it is set, as an explicit file.
+func ReplacedByFile(b Binding) ScopeOption {
+	_ = b // stub
+	return scopeOptionFunc(func(*scopeSpec) {})
+}
+
+// DisabledBy skips the scope when binding b is set.
+func DisabledBy(b Binding) ScopeOption {
+	_ = b // stub
+	return scopeOptionFunc(func(*scopeSpec) {})
+}
+
+// ReplacedByConfigFiles marks the scope that explicit config files replace, from WithConfigFiles or
+// {NAME}_CONFIG_FILE. They load at its position, even when it isn't selected.
+func ReplacedByConfigFiles() ScopeOption {
+	return scopeOptionFunc(func(*scopeSpec) {})
+}
+
 // Trust sets a scope's trust level, overriding its kind's default.
 func Trust(level TrustLevel) ScopeOption {
 	return scopeOptionFunc(func(s *scopeSpec) { s.def.trust = level })

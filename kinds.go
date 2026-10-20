@@ -13,12 +13,55 @@ import (
 	"github.com/kittomic/cascadingconfig/internal/tree"
 )
 
-// Pattern is one file a scope looks for. Later milestones add fields; their zero values keep today's meaning.
+// Pattern is one file a scope looks for.
 type Pattern struct {
-	// Template is a relative file path that may use {name} and {ext}, and may include subdirectories. {ext} stands for
-	// each extension of the searched formats, so one template can match several files: a slot.
+	// Template is a relative file path that may use {name}, {env} and {ext}, and * inside a path segment, and may
+	// include subdirectories. {ext} stands for each extension of the searched formats, so one template can match
+	// several files: a slot. In a file name, * matches a non-empty name with no dots; in a directory, any name that
+	// doesn't start with a dot.
 	Template string
+	// Variant says which variant the files are. A template has {env} exactly when Variant is VariantEnv or
+	// VariantEnvLocal.
+	Variant Variant
+	// Root says where the files' config root is.
+	Root RootMode
+	// Key, if set, is a dotted path, which may use {name}, to the table inside the file that holds the config.
+	Key string
 }
+
+// RootMode says where a pattern's files have their config root, the directory their relative paths resolve against.
+type RootMode int
+
+// Root modes.
+const (
+	// RootSearchDir is the directory being searched, or the scope's ConfigRoot. It is the default.
+	RootSearchDir RootMode = iota
+	// RootFileDir is the file's own directory.
+	RootFileDir
+)
+
+// Walk is a scope kind that searches the start directory and each parent, up to the walk's stop, applying them
+// root-most first. Its default trust is TrustProject.
+func Walk(patterns ...Pattern) ScopeKind {
+	_ = patterns // stub
+	return stubKind{}
+}
+
+// ExplicitFile is a scope kind that loads the files as given, with any registered decoder. A missing file is a
+// *NotFoundError, an unregistered format an *UnsupportedFormatError, and a file that can't be read an *IOError. Its
+// default trust is TrustProject.
+func ExplicitFile(paths ...string) ScopeKind {
+	_ = paths // stub
+	return stubKind{}
+}
+
+// stubKind stands in for the kinds until they are implemented.
+type stubKind struct{}
+
+func (stubKind) defaultTrust() TrustLevel     { return TrustProject }
+func (stubKind) check(*config)                {}
+func (stubKind) readsFiles() bool             { return false }
+func (stubKind) discover(*loading, *scopeDef) {}
 
 // FixedDir is a scope kind that searches one directory. dir is absolute, or starts with ~, {user} or {system}, and may
 // use {name}. Patterns are listed lowest precedence first. Its default trust is TrustProject.
