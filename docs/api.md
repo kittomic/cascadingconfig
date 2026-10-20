@@ -712,8 +712,8 @@ func WithClient(c *http.Client) Option
   - a relative cache dir or a negative TTL
   - under `WithoutRemoteIncludes()`, a policy that allows a remote scheme without an allow-list and `RequirePinned()`
 - **`Report.String()`** shows `remote <ref> @ <identity>` in a remote layer's details, with `(cached)` or `(stale)`, and
-  `pinned` in a policy row. The JSON keys are `remote`, `scheme`, `ref`, `identity`, `pinned`, `cache` and
-  `require_pinned`.
+  `pinned` in a policy row, after the allow-lists. The JSON keys are `remote`, `scheme`, `ref`, `identity`, `pinned`,
+  `cache` and `require_pinned`.
 - **`gitresolver` and `ociresolver`** are settled in M8b and M8c.
 
 ### Option catalogue

@@ -1042,7 +1042,10 @@ gets the same parsing and checks as a built-in one written the same way:
   - **`ref`** is optional, and without it the default branch is fetched. Any other query parameter, such as go-getter's
     `sshkey` or `depth`, is a `*ReferenceError`.
   - **A ref** follows git's ref-name rules: it isn't empty, doesn't start with `-`, and contains no `..`, `@{`,
-    whitespace, control characters or any of `~^:?*[\`.
+    whitespace, control characters or any of `~^:?*[\`. It also can't contain `&`, `#`, `%` or `+`, which the
+    reference's own syntax uses.
+  - **A trailing `/`** on the repo URL is dropped, since it names the same repository and would run into the `//` before
+    the path.
 - **`http::…`,** the getter form with a URL scheme, is a `*ReferenceError`.
 
 **Format** (DL-198): a remote file's format is chosen as a local file's is: `WithFileFormat` rules, matched against the
@@ -1083,7 +1086,7 @@ type IncludeResolver interface {
 type IncludeRef struct {
 	Raw      string // as written in the config file
 	Scheme   string // "https", "git", "oci", …
-	Ref      string // the normalised reference string that matchers see
+	Ref      string // the normalised reference string that matchers see; for "file", the resolved path
 	Location string // the URL without its fragment, the repo URL, or registry/repository; normalised
 	Path     string // path inside a repo or artifact, if any
 	Version  string // git ref; oci tag, digest or tag@digest; sha256:<hex> from an integrity fragment
@@ -1191,23 +1194,27 @@ These checks also cover resolvers that apps write themselves:
      `https`, 22 for `ssh`) removed, dot segments resolved (RFC 3986 §5.2.4), an empty path made `/`, escapes of
      unreserved characters decoded, and other escapes uppercased. A bad port is a `*ReferenceError`.
    - **Hosts must be ASCII:** a host with any other character is a `*ReferenceError`, so write it in its `xn--` form.
-     This keeps IDNA's dependency out of the core, and rules out lookalike hosts.
+     This keeps IDNA's dependency out of the core, and rules out lookalike hosts. A host must be a name of non-empty
+     labels (letters, digits, `-` and `_`) separated by single dots, an IPv4 address, or a bracketed IPv6 address.
    - **Userinfo is rejected,** because `https://config.acme.internal@evil.example/` would otherwise match a `Prefix` on
      the internal host. The one exception is a user name without a password in an `ssh` URL, which
-     `git::ssh://git@github.com/…` needs; it stays in the normalised string. The scp form
-     (`git@github.com:acme/config.git`) isn't accepted.
+     `git::ssh://git@github.com/…` needs; it stays in the normalised string, and may only hold letters, digits, `.`, `_`
+     and `-`. The scp form (`git@github.com:acme/config.git`) isn't accepted.
    - **Also rejected:** a percent-encoded `.`, `/` or `\` in the path (`%2e`, `%2f` or `%5c`, in either case), a raw
      `\`, NUL and control characters, and any fragment other than an integrity fragment.
    - **The query** is kept in the normalised string, so an allow-list can see it.
    - **Inner paths** (the `//<path>` of `git::` and `oci::`) are cleaned with `path.Clean` and must then satisfy
-     `fs.ValidPath`, which rules out a leading `/` and `..` segments. They must not contain `\`, NUL or control
-     characters, and must have a known format.
+     `fs.ValidPath`, which rules out a leading `/` and `..` segments. They must not contain `\`, `#`, NUL, control
+     characters or a percent-encoded `.`, `/` or `\` (a resolver that builds a URL from the path would have the server
+     decode it), and must have a known format.
 2. **After fetching:** the `Fetched` result is checked. `Content` must be within `MaxSize`, an integrity fragment must
    match its SHA-256, and its format is chosen as described in [Remote references](#remote-references) (DL-198).
 3. **Relative references inside a remote file** (DL-204) resolve against that file's **remote origin**, relative to its
    directory: against its URL (RFC 3986 §5.2), or in the same repo and ref, or in the same artifact.
    - **Never local:** climbing above the repo or artifact root, `~/` and `file://` are `*ReferenceError`s, so a remote
-     file can never reach the local filesystem.
+     file can never reach the local filesystem. In a repo or artifact, a path starting with `/` is a `*ReferenceError`
+     too; in a URL-form file, it resolves against the URL's origin, as RFC 3986 says.
+   - **Errors** about a relative reference name the remote file that wrote it, by its `Path`.
    - **Absolute remote references** are allowed, and judged by the root file's policy.
    - **Rechecked:** the joined reference is checked again from step 1.
    - **Nesting only:** this only matters for layouts with `IncludeNested`, because the mise layouts don't nest.
@@ -1262,11 +1269,12 @@ These checks also cover resolvers that apps write themselves:
 - **Options** (DL-208): `httpresolver.New(opts...)` handles `http` and `https`. Its one option, `WithClient(c)`,
   supplies the `*http.Client`. The resolver copies it and installs its own redirect check, which runs before the
   client's own, so the app's client isn't changed. Auth headers go in the client's transport.
-- **Redirects:** at most 5 hops, and a redirect from `https` to `http` is a `*PolicyError`. Each hop goes through
-  `IncludeRef.Check`, which normalises it and matches it against the allow-lists again. The final URL is what's fetched.
-- **Responses** (DL-208): only a 200 is content. A 404 or 410 is a `*NotFoundError`, and any other status a 502
-  `*FetchError`. A `Content-Length` over `MaxSize` is a 413 before the body is read. `MediaType` is the `Content-Type`
-  header, and `Identity` is `sha256:<hex>` of the body.
+- **Redirects:** at most 5 hops, and more is a 502 `*FetchError`. A redirect from `https` to `http` is a `*PolicyError`.
+  Each hop goes through `IncludeRef.Check`, which normalises it and matches it against the allow-lists again. The final
+  URL is what's fetched.
+- **Responses** (DL-208): only a 200 is content. A 404 or 410 is a `*NotFoundError`, and any other status, 204 and 304
+  included, a 502 `*FetchError`. A `Content-Length` over `MaxSize` is a 413 before the body is read. `MediaType` is the
+  `Content-Type` header, and `Identity` is `sha256:<hex>` of the body.
 - **No local schemes:** `file://` URLs never reach this resolver. They go to the `file` resolver, with its own
   confinement.
 - **Exact bytes:** the response body is the content, and no decompression beyond `Content-Encoding` is applied. A `.tar`
