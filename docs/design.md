@@ -1048,11 +1048,12 @@ gets the same parsing and checks as a built-in one written the same way:
     the path.
 - **`http::…`,** the getter form with a URL scheme, is a `*ReferenceError`.
 
-**Format** (DL-198): a remote file's format is chosen as a local file's is: `WithFileFormat` rules, matched against the
-normalised reference, then the extension of the reference's file path (the URL path, or the inner path). Only when
-neither gives one does it come from the media type the resolver reports, such as http's `Content-Type`, matched against
-the decoders' media types. Finding none is a 415. For the getter and image forms, an inner path with no known format is
-a 415 before anything is fetched.
+**Format** (DL-198): a remote file's format is chosen as a local file's is: `WithFileFormat` rules, matched as
+allow-lists match the reference (`Extension` and `FileName` see its file path, the other matchers its normalised form),
+then the extension of the reference's file path (the URL path, or the inner path). Only when neither gives one does it
+come from the media type the resolver reports, such as http's `Content-Type`, matched against the decoders' media types.
+Finding none is a 415. For the getter and image forms, an inner path with no known format is a 415 before anything is
+fetched.
 
 **Pinned references** name content that can't change. A policy with `RequirePinned()` accepts only these:
 
@@ -1244,16 +1245,18 @@ These checks also cover resolvers that apps write themselves:
 - **Isolated environment** (DL-212): git runs with every `GIT_*` variable removed, because `GIT_CONFIG_COUNT` and
   `GIT_CONFIG_KEY_<n>` set config even with `GIT_CONFIG_NOSYSTEM=1`. It keeps `PATH`, `HOME`, `SSH_AUTH_SOCK`, the proxy
   variables and, on Windows, the system variables, and gets `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL` pointing at an
-  empty file, `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` and an empty stdin. So the user's and the system's git
-  config never apply: otherwise a `url.<base>.insteadOf` rule could rewrite a URL *after* the allow-list check, and
-  `includeIf` or credential helpers would run. Credential helpers are opt-in, with
-  `gitresolver.WithCredentialHelper(helper)`. ssh runs with `BatchMode=yes`, so nothing prompts.
+  empty file, `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `LC_ALL=C` (so its messages can be recognised) and an
+  empty stdin. Automatic `gc` and maintenance are off. So the user's and the system's git config never apply: otherwise
+  a `url.<base>.insteadOf` rule could rewrite a URL *after* the allow-list check, and `includeIf` or credential helpers
+  would run. Credential helpers are opt-in, with `gitresolver.WithCredentialHelper(helper)`. ssh runs with
+  `BatchMode=yes`, so nothing prompts.
 - **Redirects** (DL-213): git never follows one itself (`http.followRedirects=false`), because with its default it
   silently follows a redirect to another host. For an `http` or `https` repo URL, the resolver first requests
   `<repo>/info/refs?service=git-upload-pack` with Go's HTTP client, following redirects under `httpresolver`'s rules: at
   most 5 hops, none from `https` to `http`, and each one through `IncludeRef.Check`. git then fetches from the final
   URL. The layer's `Remote.Ref` and the cache key stay the original reference. An answer that isn't a redirect, such as
-  a 401 from a private repo, leaves the original URL. `gitresolver.WithClient(c)` sets that client.
+  a 401 from a private repo, leaves the original URL, and so does a network failure, which git then reports.
+  `gitresolver.WithClient(c)` sets that client.
 - **Version:** git 2.24 or newer is required, for `--end-of-options`, and 2.29 for SHA-256 repositories. An older or
   missing git is a `*FetchError` that says so, checked once per resolver. `gitresolver.WithGit(path)` names the program;
   by default it's found on `PATH`.
