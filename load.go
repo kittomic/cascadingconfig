@@ -21,8 +21,12 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	c := l.cfg
 	ld := &loading{ctx: ctx, c: c, roots: map[string]Root{}, dirs: map[string][]fs.DirEntry{}}
 	defer ld.closeRoots()
-	for _, f := range c.order {
-		ld.order = append(ld.order, c.decoder(f))
+	if err := ld.formatOrder(); err != nil {
+		return nil, err
+	}
+	if err := ld.readBootstrap(); err != nil {
+		ld.log()
+		return nil, err
 	}
 	if err := ld.selectEnvs(); err != nil {
 		return nil, err
@@ -40,6 +44,7 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, contextError(err)
 		}
+		ld.order = ld.orderFor(s)
 		switch {
 		case s.explicitFiles && explicit != nil:
 			ld.loadExplicit(explicit, s.name, TrustProject, s)
@@ -70,7 +75,26 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	}
 	res.found = ld.found()
 	res.warnings = ld.warnings
+	for _, e := range ld.boot {
+		res.bootstrap = append(res.bootstrap, e.layer)
+	}
 	return res, nil
+}
+
+// formatOrder works out the order bootstrap files are found with, and every scope's order unless a bootstrap file
+// changes it: {NAME}_CONFIG_FORMATS, or else the app's or the preset's order.
+func (ld *loading) formatOrder() error {
+	c := ld.c
+	formats := c.order
+	if v := ld.binding(BindConfigFormats); v != "" {
+		parsed, errs := c.parseFormats(strings.Split(v, ","), true)
+		if len(errs) > 0 {
+			return &OptionError{BaseError: BaseError{Op: c.vars[BindConfigFormats], Err: errors.Join(errs...)}}
+		}
+		formats, ld.formatsFromEnv = parsed, true
+	}
+	ld.baseOrder = ld.decoders(formats)
+	return nil
 }
 
 func contextError(err error) error {
@@ -90,12 +114,18 @@ type loading struct {
 	roots    map[string]Root
 	dirs     map[string][]fs.DirEntry // directory listings, by root and path
 
-	envs      []string // the environments, lowest precedence first
-	envSource string   // where the selected environments came from, for errors
-	ignored   []string // ignored paths, with symlinks resolved
-	dropUnder string   // the default user directory, when {NAME}_CONFIG_DIR moved it
-	walk      []string // the walk's directories, once worked out
+	envs      []string      // the environments, lowest precedence first
+	envSource string        // where the selected environments came from, for errors
+	ignored   []ignoredPath // ignored paths, with symlinks resolved
+	dropUnder string        // the default user directory, when {NAME}_CONFIG_DIR moved it
+	walk      []string      // the main walk's directories, once worked out
 	walked    bool
+	walking   bool // a Walk is searching, so SkipHomeAndRoot applies
+
+	baseOrder      []Decoder // {NAME}_CONFIG_FORMATS, or the app's or the preset's order
+	formatsFromEnv bool
+	boot           []*entry // the bootstrap files, lowest precedence first
+	settings       bootSettings
 }
 
 // entry is one layer the load considered, or a problem that fails it.
@@ -229,6 +259,11 @@ func (ld *loading) noHome(s *scopeDef, err error) {
 	if s != nil {
 		msg = fmt.Sprintf("the scope %q was skipped: %v", s.name, err)
 	}
+	for _, w := range ld.warnings {
+		if w.Code == WarnNoHome && w.Message == msg {
+			return
+		}
+	}
 	ld.warnings = append(ld.warnings, Warning{Code: WarnNoHome, Message: msg})
 }
 
@@ -264,7 +299,11 @@ func (ld *loading) expansions(patterns []Pattern) []expansion {
 // are named by their slash path. configRoot is the root of RootSearchDir patterns. follow says whether symlinks can be
 // followed through the loader's FileSystem.
 func (ld *loading) search(root Root, dir, configRoot string, patterns []Pattern, s *scopeDef, follow bool) {
+	skip := ld.walking && ld.isHomeOrRoot(dir)
 	for _, x := range ld.expansions(patterns) {
+		if skip && x.p.SkipHomeAndRoot {
+			continue
+		}
 		segs := strings.Split(x.p.Template, "/")
 		subs := []string{"."}
 		for _, seg := range segs[:len(segs)-1] {
@@ -299,6 +338,15 @@ func (ld *loading) search(root Root, dir, configRoot string, patterns []Pattern,
 			}
 		}
 	}
+}
+
+// isHomeOrRoot reports whether dir is ~ or a filesystem root.
+func (ld *loading) isHomeOrRoot(dir string) bool {
+	if filepath.Dir(dir) == dir {
+		return true
+	}
+	home, err := ld.c.host.Home()
+	return err == nil && filepath.Clean(home) == dir
 }
 
 func typeOf(entries []fs.DirEntry, name string) fs.FileMode {
@@ -515,6 +563,9 @@ func (ld *loading) selectEnvs() error {
 			}
 		}
 	}
+	if selected == nil && ld.settings.env != nil {
+		selected, ld.envSource = ld.settings.env, "bootstrap"
+	}
 	var envs []string
 	for i, e := range selected {
 		if !slices.Contains(selected[i+1:], e) {
@@ -541,18 +592,40 @@ func (ld *loading) ignoredPaths() {
 		if !ok {
 			continue
 		}
-		if resolved, err := ld.c.fsys.EvalSymlinks(abs); err == nil {
-			abs = resolved
-		}
-		ld.ignored = append(ld.ignored, abs)
+		ld.ignored = append(ld.ignored, ignoredPath{path: ld.realPath(abs), trust: TrustSystem})
+	}
+	for _, p := range ld.settings.ignored {
+		p.path = ld.realPath(p.path)
+		ld.ignored = append(ld.ignored, p)
 	}
 }
 
-// isIgnored reports whether a file, whose resolved path is resolved, is under an ignored path.
-func (ld *loading) isIgnored(resolved string) (string, bool) {
-	for _, p := range ld.ignored {
-		if within(resolved, p) {
-			return p, true
+// realPath resolves p's symlinks, if it exists.
+func (ld *loading) realPath(p string) string {
+	if resolved, err := ld.c.fsys.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
+}
+
+// isIgnored reports whether a file in a scope with trust, whose resolved path is resolved, is under an ignored path.
+// An entry from a less trusted bootstrap file is dropped for it, with a warning on that file.
+func (ld *loading) isIgnored(resolved string, trust TrustLevel) (string, bool) {
+	for i := range ld.ignored {
+		p := &ld.ignored[i]
+		if !within(resolved, p.path) {
+			continue
+		}
+		if p.trust >= trust {
+			return p.path, true
+		}
+		if !p.drop && p.from != nil {
+			p.drop = true
+			p.from.layer.Warnings = append(p.from.layer.Warnings, Warning{
+				Code: WarnBootstrapKeyDropped, Path: p.from.layer.Path,
+				Message: fmt.Sprintf("%s: the ignored path %s points into a more trusted scope, so it was dropped for %s",
+					p.from.layer.Path, p.path, resolved),
+			})
 		}
 	}
 	return "", false
@@ -569,12 +642,15 @@ func (ld *loading) scopeRoot(s *scopeDef, dir string) (string, bool) {
 // overrideFilenames applies {NAME}_OVERRIDE_CONFIG_FILENAMES to a walk's patterns: the listed names replace its
 // shared patterns, and its local patterns are removed.
 func (ld *loading) overrideFilenames(patterns []Pattern) ([]Pattern, bool) {
-	v := ld.binding(BindOverrideConfigFilenames)
-	if v == "" {
-		return patterns, true
+	names := strings.Split(ld.binding(BindOverrideConfigFilenames), ",")
+	if ld.binding(BindOverrideConfigFilenames) == "" {
+		if ld.settings.override == nil {
+			return patterns, true
+		}
+		names = ld.settings.override
 	}
 	var out []Pattern
-	for _, n := range strings.Split(v, ",") {
+	for _, n := range names {
 		if n = strings.TrimSpace(n); n == "" {
 			continue
 		}
@@ -593,9 +669,10 @@ func (ld *loading) overrideFilenames(patterns []Pattern) ([]Pattern, bool) {
 	return out, true
 }
 
-// walkDirs returns the directories a walk searches, root-most first.
-func (ld *loading) walkDirs(s *scopeDef) ([]string, bool) {
-	if ld.walked {
+// walkDirs returns the directories a walk searches, root-most first. The bootstrap walk honours only the option's
+// and the env var's ceilings; the main walk adds the bootstrap files' ceilings.
+func (ld *loading) walkDirs(s *scopeDef, bootstrap bool) ([]string, bool) {
+	if ld.walked && !bootstrap {
 		return ld.walk, true
 	}
 	c, h := ld.c, ld.c.host
@@ -621,6 +698,11 @@ func (ld *loading) walkDirs(s *scopeDef) ([]string, bool) {
 			ceilings[filepath.Clean(abs)] = true
 		}
 	}
+	if !bootstrap {
+		for _, p := range ld.settings.ceilings {
+			ceilings[filepath.Clean(p)] = true
+		}
+	}
 	home, homeErr := h.Home()
 	var dirs []string
 	for d := filepath.Clean(start); !ceilings[d]; {
@@ -635,6 +717,9 @@ func (ld *loading) walkDirs(s *scopeDef) ([]string, bool) {
 		d = parent
 	}
 	slices.Reverse(dirs)
+	if bootstrap {
+		return dirs, true
+	}
 
 	if c.dirs != nil {
 		if v := ld.binding(BindConfigDir); v != "" {
@@ -780,7 +865,7 @@ func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow
 
 // ignore records l as ignored, without a warning, if resolved is under an ignored path.
 func (ld *loading) ignore(l Layer, resolved string) bool {
-	p, ok := ld.isIgnored(resolved)
+	p, ok := ld.isIgnored(resolved, l.Trust)
 	if !ok {
 		return false
 	}
@@ -931,6 +1016,11 @@ func (ld *loading) log() {
 	}
 	emit := func(w Warning) {
 		logger.LogAttrs(ld.ctx, slog.LevelWarn, w.Message, slog.String("code", string(w.Code)), slog.String("path", w.Path))
+	}
+	for _, e := range ld.boot {
+		for _, w := range e.layer.Warnings {
+			emit(w)
+		}
 	}
 	for _, e := range ld.entries {
 		for _, w := range e.layer.Warnings {

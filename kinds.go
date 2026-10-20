@@ -65,10 +65,12 @@ func (k walkKind) discover(ld *loading, s *scopeDef) {
 	if !ok {
 		return
 	}
-	dirs, ok := ld.walkDirs(s)
+	dirs, ok := ld.walkDirs(s, false)
 	if !ok {
 		return
 	}
+	ld.walking = true
+	defer func() { ld.walking = false }()
 	for _, dir := range dirs {
 		root, ok := ld.root(dir)
 		if !ok {

@@ -1,6 +1,7 @@
 package cascadingconfig
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -95,6 +96,10 @@ type config struct {
 	ceilings []string // WithCeilingPaths
 	ignored  []string // WithIgnoredPaths
 
+	bootstrapKeys       map[BootstrapKey]bool
+	bootstrapLimits     map[ScopeName][]BootstrapKey
+	bootstrapTransforms []func(ctx context.Context, l Layer, t Tree) (Tree, error)
+
 	errs []error
 }
 
@@ -109,6 +114,7 @@ type scopeDef struct {
 	replacedByFile Binding // ReplacedByFile
 	disabledBy     Binding // DisabledBy
 	explicitFiles  bool    // ReplacedByConfigFiles
+	bootstrap      []Pattern
 }
 
 // newConfig returns the engine defaults for app name.
@@ -149,6 +155,7 @@ func (c *config) finish() error {
 		c.merge.rules = rs
 	}
 	c.finishBindings()
+	c.finishBootstrap()
 	if len(c.scopeOrder()) == 0 {
 		c.fail("New", "no scopes are selected, so nothing would be searched")
 	}

@@ -20,11 +20,16 @@ var (
 		WithEnvBinding(BindIgnoredConfigPaths, ""),
 		WithEnvBinding(BindOverrideConfigFilenames, ""),
 		WithEnvBinding(BindConfigFormats, ""),
+		WithBootstrapKeys(BootstrapEnv, BootstrapFormats, BootstrapCeilingPaths, BootstrapIgnoredConfigPaths,
+			BootstrapOverrideConfigFilenames),
 
+		// Bootstrap files are mise's .miserc.toml locations (config-locations.md 3.7), lowest precedence first.
 		WithScope(ScopeSystem, FixedDir("{system}", MiseGlobalPatterns()...),
-			Trust(TrustSystem), ReplacedByFile(BindSystemConfigFile)),
+			Trust(TrustSystem), ReplacedByFile(BindSystemConfigFile),
+			BootstrapFiles(Pattern{Template: "{name}rc.{ext}"})),
 		WithScope(ScopeUser, FixedDir("{user}", MiseGlobalPatterns()...),
-			Trust(TrustUser), ConfigRoot("~"), ReplacedByFile(BindGlobalConfigFile)),
+			Trust(TrustUser), ConfigRoot("~"), ReplacedByFile(BindGlobalConfigFile),
+			BootstrapFiles(Pattern{Template: "{name}rc.{ext}"}, Pattern{Template: "{name}rc.local.{ext}"})),
 
 		// mise's layers A to D within one project directory (config-locations.md 3.2), without .tool-versions.
 		WithScope(ScopeProject, Walk(
@@ -75,7 +80,11 @@ var (
 			Pattern{Template: ".{name}/conf.d/*/{name}.{env}.local.{ext}", Variant: VariantEnvLocal, Root: RootFileDir},
 			Pattern{Template: ".{name}/config.{env}.local.{ext}", Variant: VariantEnvLocal},
 			Pattern{Template: ".{name}.{env}.local.{ext}", Variant: VariantEnvLocal},
-		), ReplacedByConfigFiles()),
+		), ReplacedByConfigFiles(), BootstrapFiles(
+			Pattern{Template: ".config/{name}rc.{ext}", SkipHomeAndRoot: true},
+			Pattern{Template: ".{name}rc.{ext}"},
+			Pattern{Template: ".{name}rc.local.{ext}"},
+		)),
 
 		WithScope(ScopeOverride, FixedDir("{user}",
 			Pattern{Template: "config.override.{ext}"},
@@ -85,8 +94,10 @@ var (
 		WithScopes(ScopeSystem, ScopeUser, ScopeProject, ScopeOverride),
 	)
 
-	// MiseHardenedLayout is MiseLayout with hardened settings.
-	MiseHardenedLayout = MiseLayout.ExtendAs("MiseHardenedLayout")
+	// MiseHardenedLayout is MiseLayout with hardened settings: project bootstrap files may only set env and formats.
+	MiseHardenedLayout = MiseLayout.ExtendAs("MiseHardenedLayout",
+		WithBootstrapLimit(ScopeProject, BootstrapEnv, BootstrapFormats),
+	)
 
 	// CosmiconfigLayout is cosmiconfig's layout: JSON, then YAML; the first file in a slot; arrays appended. Its scopes
 	// arrive in M4d.
