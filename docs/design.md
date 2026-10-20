@@ -926,43 +926,85 @@ preset registers the `file` resolver (see [Local files](#local-files)).
 | `misehardened.Preset`  | `include`   | none, so local files only   | No                                        |
 | `cosmiconfig.Preset` | `$import`, deferred and possibly never supported (DL-145) | none, so local files only (as cosmiconfig) | Yes, with cycle detection (as cosmiconfig) |
 
+The include key is a layout setting (DL-178): `WithIncludeKey(key, nesting)`, where `nesting` is `IncludeFlat` (an
+included file can't include) or `IncludeNested` (with cycle detection), and `WithoutIncludeKey()` turns includes off. No
+built-in layout nests includes while `$import` is deferred, so `IncludeNested` is for custom layouts.
+
 **Rules for every include:**
 
-- **Placement:** the include key only works at the **top level** of a file, as in mise and cosmiconfig. It's removed
-  from the result, as `_unset` is. Elsewhere in a file, the key is ordinary data.
-- **Value:** a string or a list of references.
+- **Placement:** the include key only works at the **top level** of a file, as in mise and cosmiconfig. For a pattern
+  with a `Key`, that's the top of the keyed table, where `_unset` is read too. The key is removed from the result, as
+  `_unset` is. Elsewhere in a file, it's ordinary data.
+- **Value:** a string or a list of references. An empty list includes nothing. An empty string, a non-string element or
+  any other type is a `*ParseError` (DL-184).
 - **Rank:** an included file ranks directly below the file that includes it, and a later entry beats an earlier one.
   This is mise's rule, and it is also how cosmiconfig's `$import` resolves (own keys > last import > first import).
-- **Local paths** are relative to the including file. Absolute paths are allowed.
-- **Formats:** an included file loads with any registered decoder, whatever the format order. A format with no
-  registered decoder is an `*UnsupportedFormatError` (415).
-- **Merge behaviour:** `_unset`, `null` and per-key merge rules all work as in any other layer.
-- **Each file loads once per include chain.** A file included twice along one chain, as in a diamond, loads at its first
-  rank. The same file can still appear at another rank through a different chain, or be found directly as well; each
-  appearance is recorded in `Describe()`.
-- **No includes from embedded sources.** `Embedded` and `EmbeddedFS` sources, and `Values`/`EnvVars`, can't use the
-  include key, because there's no file location to resolve a relative reference against. The key is ordinary data there.
+- **Local paths** are relative to the including file's directory, for nested includes too. Absolute paths are allowed,
+  and a leading `~/` is the home directory (see [Local files](#local-files)).
+- **Formats:** an included file's format comes from the same rules as a searched file's: `WithFileFormat` rules, then
+  extensions ([Choosing a file's format](#choosing-a-files-format)). The format order doesn't apply, so any registered
+  decoder can load it. A file with no registered decoder is an `*UnsupportedFormatError` (415).
+- **Merge behaviour:** `_unset`, `null` and per-key merge rules all work as in any other layer. An included file ranks
+  below its includer, so the includer's `_unset` removes keys from it, which is how a file drops a key from its own base
+  (DL-187):
+
+  ```toml
+  # myapp.toml
+  include = ["base.toml"]
+  _unset = ["proxy"] # removes base.toml's proxy, and any lower layer's
+  ```
+
+- **Each file loads once** (DL-179), as any file reached twice does ([Filesystem hook](#filesystem-hook)): at its
+  highest position, with its other routes listed as `LayerDuplicate`, a reference listed twice included. Reaching a file
+  that is already an ancestor in its own chain, such as a file that includes itself, is a cycle: a `*CycleError` (508).
+- **Nesting:** under `IncludeFlat`, an include key in an included file is a `*ParseError` naming the file and the key,
+  as mise rejects it. Under `IncludeNested`, included files can include, with cycle detection.
+- **Where includes work** (DL-187): in files from `FixedDir`, `Walk` and `ExplicitFile` scopes, and in a custom scope's
+  `Source`s with a `Path`. In `EmbeddedFS` sources, value scopes (`Values`, `ValuesFunc`, `EnvVars`) and bootstrap
+  files, the key is ordinary data: there's no file location to resolve a relative reference against, and bootstrap files
+  have their own keys. Under `FirstMatch`, an included file never counts as the match.
+- **Metadata** (DL-184): an included layer takes `Scope`, `Variant`, `Env`, `Trust` and `ConfigRoot` from the root file
+  of its chain. Its `Path` is the absolute path as joined, before symlinks, like a searched file's; its `Format` comes
+  from its own name; its `Pattern` is empty; and `IncludedBy` is its direct includer's `Path`.
 - **Trust:** an included file inherits its includer's trust decision, as in mise
-  ([3.9](config-locations.md#39-includes)). It's still judged by its includer's scope policy
-  ([Per-scope policies](#per-scope-policies)).
-- **Errors:** a reference that can't be loaded is a load error naming the including file. Includes are never silently
-  skipped, because silently dropping config is worse than failing.
+  ([3.9](config-locations.md#39-includes)), and the trust store isn't asked about it. It's judged by its root file's
+  scope policy ([Per-scope policies](#per-scope-policies)).
+- **Steps for each layer** (DL-186): decode, take the keyed table, run the layer transforms, read and remove the include
+  key, then apply `_unset`. Includes are read after the transforms, so an app can expand variables in references.
+- **Errors:** a reference that can't be loaded is a load error. Includes are never silently skipped, because silently
+  dropping config is worse than failing, so an included file that a permission policy would ignore is a `*PolicyError`
+  (403) (DL-181). Where the error points (DL-185):
+  - **Errors about the reference** (missing 404, policy or confinement 403, unknown scheme 501, cycle 508): `Path` is
+    the including file, `Op` is `"include"`, and the message quotes the reference as written.
+  - **Errors inside the included file** (parse 400, too large 413, unreadable or not a regular file `*IOError`): `Path`
+    is the included file, and its `LayerFailed` entry shows `IncludedBy`.
+  - **An empty included file** is `LayerEmpty`, as any empty file is.
 
 ### Local files
 
-Local includes are handled by a built-in `file` resolver. It implements `IncludeResolver` just like the remote
-resolvers, and every preset registers it.
+Local includes are handled by the built-in `file` resolver (DL-182). It's part of the loader, not an ordinary
+`IncludeResolver`, because a local read needs the filesystem hook, dedup by file identity, symlink handling and the
+permission policy, which `Resolve` can't express. It's registered by default, even without a preset, and can't be
+replaced.
 
-- **References:** plain paths (`base.toml`, `../shared/base.toml`, `/etc/acme/base.toml`) and `file://` URLs both go to
-  this resolver. A relative path resolves against the including file's directory.
-- **Allow-lists:** it accepts the same matchers as the remote resolvers. They are matched against the absolute path
-  after symlinks are resolved.
-- **`Confine(roots...)`:** the resolved path must lie under one of the roots. A root can be a literal path or a
-  placeholder: `ConfigRoot` (the including file's config root), `UserDir` or `SystemDir`. `misehardened.Preset` sets
-  `Confine(ConfigRoot, UserDir, SystemDir)`.
+- **References** (DL-183): plain paths (`base.toml`, `../shared/base.toml`, `/etc/acme/base.toml`) and `file://` URLs
+  with an empty host or `localhost` both go to this resolver. A relative path resolves against the including file's
+  directory, and a leading `~/` against the home directory. A reference is remote only if it starts with `name::` (as
+  `git::` and `oci::` do) or with `scheme://`, where the scheme has two or more letters. Anything else is a path, so
+  `C:\cfg\base.toml` is a Windows path, not the scheme `c`.
+- **Allow-lists:** it accepts the same matchers as the remote resolvers. They are matched against the absolute slash
+  path after symlinks are resolved.
+- **`Confine(roots...)`** (DL-180): the resolved path must be one of the roots or lie below one, compared by whole path
+  segments after symlinks, so `/etc/acme` doesn't cover `/etc/acmex`. Roots use `FixedDir`'s syntax: absolute paths,
+  `~`, `{user}`, `{system}` and `{cwd}`, plus `{config_root}`, the including file's config root (the root file's, for a
+  nested include). Roots are resolved through symlinks too, so `/etc` on macOS matches `/private/etc`. A root that
+  doesn't exist matches nothing, and `{user}` with no home is dropped. `misehardened.Preset` sets
+  `Confine("{config_root}", "{user}", "{system}")`. Confinement applies to includes only, never to searched or explicit
+  files.
 - **Reads** go through the [filesystem hook](#filesystem-hook), so they get its permission policy.
-- **Turning it off:** `WithoutIncludeResolver("file")` turns off local includes, after which any local reference is a
-  load error.
+- **Turning it off** (DL-177): `WithoutIncludeResolver("file")` removes it, and with an include key still set that's an
+  `*OptionError` at `New` ([api.md](api.md#a-loader-without-a-preset)). To forbid local includes in some scopes, give
+  them a policy whose `AllowResolvers` leaves out `"file"`; a local reference there is a `*PolicyError` (403).
 
 ### Remote references
 
@@ -1026,20 +1068,22 @@ cascadingconfig.WithDefaultPolicy(
 	),
 	cascadingconfig.AllowFor("git",
 		cascadingconfig.Glob("git::https://github.com/acme/*"),
-		cascadingconfig.MatchFunc(func(ref cascadingconfig.IncludeRef) bool {
+		cascadingconfig.MatchRef(func(ref cascadingconfig.IncludeRef) bool {
 			return ref.From.Scope != cascadingconfig.ScopeProject // only user/system files may fetch
 		}),
 	),
 )
 ```
 
-- **Matchers:** `Prefix`, `Glob` and `Regexp` match the normalised reference string. `MatchFunc` gets the whole
-  `IncludeRef`, including the file that asked for it.
+- **Matchers** (DL-176): `Prefix`, `Glob`, `Regexp`, `Extension`, `FileName` and `MatchFunc` match the normalised
+  reference string, as they match a path in `WithFileFormat`. `MatchRef` gets the whole `IncludeRef`, including the file
+  that asked for it; it's for allow-lists only, and an `*OptionError` in `WithFileFormat`.
   - **`Glob`:** `*` matches within one `/`-separated segment, and `**` matches across segments. So
     `git::https://github.com/acme/*` matches `…/acme/config.git` but not `…/acme/team/config.git`, and
     `git::https://github.com/acme/**` matches both. `?` matches one character, and there are no other metacharacters.
   - **`Regexp`** is anchored at both ends: it must match the **whole** normalised string.
-  - **`Prefix`** is a plain string prefix.
+  - **`Prefix`** is a plain string prefix, so end it with `/` to match a directory: `Prefix("/etc/acme")` also matches
+    `/etc/acmex/base.toml`. It works in `WithFileFormat` too.
 
 **The normalised reference string** that matchers see:
 
@@ -1169,7 +1213,7 @@ misehardened.Preset.Extend(
 	// Project config may only include files inside its own project.
 	cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
 		cascadingconfig.InheritDefault(),
-		cascadingconfig.Confine(cascadingconfig.ConfigRoot),
+		cascadingconfig.Confine("{config_root}"),
 	),
 )
 ```
@@ -1177,10 +1221,20 @@ misehardened.Preset.Extend(
 **How policies combine:**
 
 - **The default policy** is set with `WithDefaultPolicy(...)`, which takes the same options as `WithScopePolicy`. It
-  applies to every scope that has no policy of its own.
+  applies to every scope that has no policy of its own. `WithDefaultPolicy` and `WithScopePolicy(scope)` are single
+  settings, so the last call wins.
 - **A scope policy replaces the default for that scope** as a whole, so a scope can be *more or less* trusted than the
   default. If policies were merged, a scope could only ever narrow the default. `InheritDefault()` starts from the
   default and changes only what follows.
+- **Each option replaces its own setting** (DL-188): `AllowResolvers` the usable set, `Allow` the global allow-list,
+  `AllowFor(s)` the list for `s`, `Confine` the roots, and `RequireTrust` and `FilePermissions` their checks. Within one
+  policy the last one wins, and `InheritDefault()` anywhere in the list means "start from the default". So
+  `InheritDefault(), Allow(x)` replaces the default's global list instead of adding to it.
+- **A fresh policy,** one without `InheritDefault()`, starts from nothing: no resolver is usable unless listed, and
+  there are no allow-lists, no confinement, no trust requirement and no permission check. A policy that lists no
+  resolvers forbids every include.
+- **Validation** (DL-189): a `WithScopePolicy` for a scope that is never declared, and an `AllowResolvers` or `AllowFor`
+  naming a scheme with no registered resolver, are `*OptionError`s, checked once all options are applied.
 - **Within one policy,** allow-lists combine as described in [Allow-lists](#allow-lists): a reference must match the
   global list and its scheme's list.
 - **Registered vs usable:** registering a resolver makes it *available*. Only policies that list it in `AllowResolvers`
@@ -1189,18 +1243,24 @@ misehardened.Preset.Extend(
   it. That policy must also give the resolver an allow-list and must require pinned references.
 - **Which scope judges an include:** the scope of the file that wrote it. Nested includes (`cosmiconfig.Preset`) are
   judged by the scope of the root file, so an include never gains trust by being reached through another file.
-- **Explicit config files** ([Explicit config files](#explicit-config-files)) are judged by the `project` policy.
+- **Explicit config files** ([Explicit config files](#explicit-config-files)) are judged by the policy of the scope
+  whose name they take: `project` in the mise layouts. With no scope marked `ReplacedByConfigFiles()`, the default
+  policy judges them (DL-190).
+- **Bootstrap files** get their scope's permission check and trust requirement. One that fails either is skipped with a
+  warning, so an untrusted repository's bootstrap file can't choose the env (DL-190).
 - **Only the app sets policies, in code.** Bootstrap files and env vars can't, as with
   [Choosing scopes](#choosing-scopes).
-- **`Describe()`** shows each scope's effective policy, and for every rejected reference, which scope's policy rejected
-  it and why.
+- **`Describe()`** shows each scope's effective policy (`ScopeInfo.Policy`). A rejected reference fails the load, and
+  the failed result's report lists it as a `LayerFailed` layer whose `Reason` names the scope whose policy rejected it
+  and the rule, for example "rejected by the project policy: outside the confinement roots" (DL-194).
 
 **Preset defaults:**
 
 | Preset              | Default policy (all scopes)                                                         |
 | ------------------- | ----------------------------------------------------------------------------------- |
+| No preset (engine default) | Every registered resolver, everything allowed, no confinement, no permission check (DL-189). |
 | `mise.Preset`        | Every registered resolver, everything allowed, no confinement, no permission check.  |
-| `misehardened.Preset`  | `file` only, `Confine(ConfigRoot, UserDir, SystemDir)`, the Unix permission check.   |
+| `misehardened.Preset`  | `file` only, `Confine("{config_root}", "{user}", "{system}")`, `FilePermissions(StrictModes)`. |
 | `cosmiconfig.Preset` | `file` only, no confinement, no permission check.                                   |
 
 ### Caching
@@ -1250,10 +1310,11 @@ var Preset = cascadingconfig.MiseHardenedLayout.Extend( /* decoders, notifier */
   [Per-scope policies](#per-scope-policies)).
 - **File permissions (Unix):** the [filesystem hook](#filesystem-hook) ignores config files and directories, with a
   warning, if they're writable by group or other, or owned by someone other than the current user or root. This is like
-  SSH's `StrictModes`. The warning names the file and the reason, for example "`/srv/app/myapp.toml` ignored: writable
-  by group". Ignored files appear in `Describe()`. Windows ACLs aren't checked yet.
-- **Local include confinement:** the `file` resolver's `Confine(ConfigRoot, UserDir, SystemDir)` option. A local include
-  that resolves elsewhere, after following symlinks, is a load error (see [Local files](#local-files)).
+  SSH's `StrictModes`, and the check is exported as `StrictModes`. The warning names the file and the reason, for
+  example "`/srv/app/myapp.toml` ignored: writable by group". Ignored files appear in `Describe()`. Windows ACLs aren't
+  checked yet.
+- **Local include confinement:** the `file` resolver's `Confine("{config_root}", "{user}", "{system}")` option. A local
+  include that resolves elsewhere, after following symlinks, is a load error (see [Local files](#local-files)).
 - **Scopes:** all four are on by default, and the app narrows them with `WithScopes(...)` (see
   [Choosing scopes](#choosing-scopes)).
 
@@ -1285,13 +1346,22 @@ the OS filesystem. An app or a test can supply its own with `WithFileSystem(fsys
   in `cctest.FS` and on Linux.
 - **Duplicates are detected by file identity** (`os.SameFile`, or the filesystem's equivalent), not by path string, so
   hard links and differently spelled paths count as one file.
-- **Permission policy:** `FilePermissions(policy)` is a function that gets the path, its `fs.FileInfo` (including the
-  owner, where the OS reports one) and the scope. For a symlink, it checks the **target and its containing directory**.
-  The owner is read through an `Owner() (uid int, ok bool)` method on the file info, so `cctest.FS` can fake it and
-  platforms without owners report `ok == false`. It returns *allow*, *ignore with a warning* or *error*. It runs for
-  **every** file, whether the search found it or it was included. It can be set per scope (see
-  [Per-scope policies](#per-scope-policies)). For example, an app can require `system` files to be owned by root and
-  `project` files to be owned by the user.
+- **Permission policy** (DL-191): `FilePermissions(f)` takes a function that gets a `FileCheck`: the path, its
+  `fs.FileInfo`, whether it's the containing directory, the scope, the current user's uid and the host's `GOOS`. It's
+  called for **every** file read, whether searched, explicit, included or a bootstrap file, and for its containing
+  directory; for a symlink, the target's directory. Higher ancestors aren't checked. The owner is read through an
+  `Owner() (uid int, ok bool)` method on the file info, so `cctest.FS` can fake it and platforms without owners report
+  `ok == false`. The function returns `PermissionAllow`, `PermissionIgnore` or `PermissionError`, with a reason:
+  - **Ignore** skips a searched file as `LayerIgnored`, with a `WarnFilePermissions` warning and the reason. A file
+    named directly, an include or an explicit file, is a `*PolicyError` (403) instead, because it's never silently
+    skipped (DL-181).
+  - **Error** is a `*PolicyError` (403).
+
+  It can be set per scope (see [Per-scope policies](#per-scope-policies)). For example, an app can require `system`
+  files to be owned by root and `project` files to be owned by the user.
+- **`StrictModes`** is the built-in check, as in SSH: it ignores a file or directory that is writable by group or other,
+  except a directory with the sticky bit, or that is owned by neither the current user nor root. A file whose owner
+  isn't known is allowed, and so is everything on Windows, where ACLs aren't checked yet.
 
 ## Trust store
 
@@ -1312,12 +1382,19 @@ cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
 )
 ```
 
-- **Untrusted files** are skipped with a warning, and listed in `Describe()` as untrusted. The loader never prompts the
-  user; asking for approval and recording it is the app's job, through its store.
+- **Untrusted files** are skipped with a `WarnUntrusted` warning, and listed in `Describe()` as `LayerUntrusted`. An
+  untrusted explicit file is a `*PolicyError` (403) instead, because a file named directly is never silently skipped
+  (DL-181). The loader never prompts the user; asking for approval and recording it is the app's job, through its store.
+- **Which files are checked** (DL-192): in a scope with `RequireTrust`, its searched, explicit and bootstrap files.
+  Included files take their includer's verdict, and the store isn't asked about them.
+- **When:** after the size and permission checks, and before decoding. An untrusted file is never decoded, so one that
+  doesn't parse doesn't fail the load.
+- **Store errors** fail the load, as a `*BaseError` (500) whose `Op` is `"trust store"`.
 - **No store is shipped.** We don't write files (see [Non-goals](#non-goals)), so a persistent store is the app's
   concern. A `TrustPaths(globs...)` store, equivalent to mise's `trusted_config_paths`, is provided because it needs no
-  writes. Its globs follow the same rules as the [`Glob` matcher](#allow-lists), applied to absolute paths after
-  resolving symlinks.
+  writes. Its entries follow the same rules as the [`Glob` matcher](#allow-lists), applied to absolute slash paths after
+  resolving symlinks, with `~` expanded. An entry without wildcards trusts that path and everything beneath it, as
+  `trusted_config_paths` trusts whole trees ([3.12](config-locations.md#312-trust)).
 - **The digest** is the lowercase hex SHA-256 of the file's raw bytes, before decoding or any byte-order-mark stripping.
   So an app can compute it with `sha256sum` and pre-populate its store.
 - **Defaults:** no preset requires trust. `mise.Preset` trusts every file, as D18 decided. `misehardened.Preset` relies
@@ -1508,13 +1585,21 @@ cascadingconfig.WithResultTransform(func(ctx context.Context, tree cascadingconf
 ```
 
 - **`WithLayerTransform`:**
-  - **When:** runs on **each layer** after it is decoded and before `_unset` and merging.
+  - **When:** runs on **each layer** after it is decoded and its keyed table taken, and before its include key is read
+    and `_unset` applied ([Includes](#includes)).
   - **What it gets:** the layer's metadata (path, scope, config root, format, env). That gives it each file's own config
     root, which a transform after merging couldn't know.
-  - **Coverage:** included layers are transformed too. Bootstrap files are not.
-- **`WithResultTransform`** runs once on the merged result. It is the counterpart of cosmiconfig's `transform` option.
+  - **Coverage** (DL-193): every layer that merges, including included layers, value scopes and defaults. Never
+    bootstrap files, which have `WithBootstrapTransform`, and never layers that are duplicates, ignored, untrusted,
+    empty or not chosen by a first-match search (DL-76).
+- **`WithResultTransform`** runs once on the merged result, before the `RequireConfig` checks and before `Decode` checks
+  for unknown keys. It is the counterpart of cosmiconfig's `transform` option. `OriginOf` describes the merge, not the
+  transform, so a key that a result transform adds has no origin.
 - **Order:** several transforms run in registration order.
-- **Errors:** an error is a load error. For a layer transform, the error names the file.
+- **Return values:** `nil` from a layer transform merges nothing, and the layer stays `LayerLoaded`. `nil` from a result
+  transform is an empty result. A returned tree must hold only canonical values, as a decoder's must.
+- **Errors:** an error, or a tree with a non-canonical value, is a `*TransformError` (422). For a layer transform, its
+  `Path` is the file; a result transform's has no `Path`.
 - **Purity:** transforms must be deterministic. They run again on every [reload](#hot-reload), and reload decides
   whether anything changed by comparing results.
 
@@ -1806,6 +1891,25 @@ There are no open questions.
 | 173 | Dependency budget                           | `scripts/check-deps.sh` builds throwaway consumers for each setup whose modules exist, and checks their counts; it runs in lefthook's pre-push. |
 | 174 | Conformance                                 | Each format's spec is the guiding principle, and deviations are deliberate and documented. Measuring conformance with yaml-test-suite, toml-test and JSONTestSuite is deferred to M12, the last milestone. |
 | 175 | YAML directives                             | A document of directives belongs to the next document; `%YAML 1.2` is accepted, 1.1 and later 1.x are parsed as 1.2 with a `yaml.WarnVersion` warning, and 2.x is a `*ParseError`; `%TAG` handles are expanded. goccy put each directive in a document of its own, which the one-document rule wrongly rejected. |
+| 176 | Matchers                                    | `MatchFunc` keeps its string signature and, in an allow-list, gets the normalised reference string; `MatchRef(func(IncludeRef) bool)` is for allow-lists only; a new `Prefix` works in both; every M4d matcher works in allow-lists; `Glob` gains `?` for one character other than `/`. |
+| 177 | Turning off local includes                  | `WithoutIncludeResolver("file")` with an include key is an `*OptionError` at `New`, as api.md's bare-loader rule says; a scope forbids local includes with a policy whose `AllowResolvers` leaves out `"file"`, which gives a 403. |
+| 178 | The include key and nesting                 | `WithIncludeKey(key, IncludeFlat \| IncludeNested)` and `WithoutIncludeKey()`; an empty key, or the unset key, is an `*OptionError`. The mise layouts use `"include"` with `IncludeFlat`. `CosmiconfigLayout` has no include key while `$import` is deferred (DL-145), so nesting and cycles are tested through a custom layout. |
+| 179 | Including a file twice                      | One rule for every file: it loads once, at its highest position, and its other routes are `LayerDuplicate` (DL-110). Reaching an ancestor of the same chain again is a `*CycleError` (508). This replaces "once per include chain" and "first rank". |
+| 180 | Confinement                                 | `Confine(roots ...string)` with `FixedDir`'s placeholders plus `{config_root}`; roots are resolved through symlinks, and a missing root matches nothing; "under" means the root or below it, by whole segments; it applies to includes only. |
+| 181 | Files named directly                        | An included or explicit file that a permission policy would ignore, or that is untrusted, is a `*PolicyError` (403), because a file named directly is never silently skipped. Searched files are skipped with a warning. |
+| 182 | `file` resolver and the M7/M8 split         | The `file` resolver is part of the loader, registered by default and not replaceable, the one built-in that isn't an ordinary implementation of its interface. M7 adds `IncludeRef`, `WithoutIncludeResolver`, and a 501 for every other scheme; `IncludeResolver`, `Fetched`, `WithIncludeResolver`, `RequirePinned`, reference normalisation, `WithMaxIncludeSize`, the cache and `WithoutRemoteIncludes` are settled in M8. |
+| 183 | Local references                            | Remote only with `name::` or a `scheme://` of two or more letters; `file://` with an empty host or `localhost` is local; anything else is a path; a leading `~/` is the home directory. |
+| 184 | Include values and metadata                 | An empty list includes nothing; an empty string, a non-string element or another type is a `*ParseError`. An included layer takes `Scope`, `Variant`, `Env`, `Trust` and `ConfigRoot` from its chain's root file; its `Path` is as joined, `Pattern` is empty, and `IncludedBy` is the direct includer. The key is read at the top of a keyed table. Formats follow `WithFileFormat` rules and extensions, ignoring the format order. |
+| 185 | Include errors                              | Errors about a reference have the including file as `Path` and `Op` `"include"`, and quote the reference; errors inside the included file have its own `Path`, and its `LayerFailed` entry shows `IncludedBy`. |
+| 186 | Steps for one layer                         | Decode, take the keyed table, run the layer transforms, read and remove the include key, then apply `_unset`. |
+| 187 | Where includes work                         | `FixedDir`, `Walk`, `ExplicitFile` and custom-scope files; ordinary data in `EmbeddedFS`, value scopes and bootstrap files; never a first-match result. The includer's `_unset` removes keys from its included files, which rank below it. |
+| 188 | Combining policy options                    | Each policy option replaces its own setting, and the last one wins; `InheritDefault()` anywhere starts from the default; a fresh policy allows no resolver and checks nothing; `WithDefaultPolicy` and `WithScopePolicy` are single settings. |
+| 189 | Policy defaults and validation              | The engine default allows every registered resolver; `MiseHardenedLayout` allows `file` only, confined to `{config_root}`, `{user}` and `{system}`, with `StrictModes`. An undeclared scope, or a scheme with no registered resolver, is an `*OptionError`. |
+| 190 | Bootstrap and explicit files under policies | Bootstrap files get their scope's permission check and trust requirement, and are skipped with a warning when they fail; explicit files are judged by the policy of the scope whose name they take, or the default policy. |
+| 191 | File permissions                            | `FilePermissions(func(FileCheck) (Permission, string))`, called for every file read and its containing directory; `StrictModes` is exported; *ignore* gives `LayerIgnored` and `WarnFilePermissions`, *error* a 403. `cctest.FS.Chown` sets an owner, and a file never chowned has none. |
+| 192 | Trust store details                         | `LayerUntrusted` and `WarnUntrusted`; a store error is a 500; searched, explicit and bootstrap files are checked, after size and permissions and before decoding; `TrustPaths` entries without wildcards trust whole trees, as mise's do. |
+| 193 | Transforms                                  | Layer transforms run on every layer that merges, value scopes and defaults included; `nil` merges nothing; returned trees must be canonical; the result transform runs before `RequireConfig` and the unknown-key check, and `OriginOf` describes the merge. |
+| 194 | Policies in the report                      | `ScopeInfo.Policy *PolicyInfo`; a rejected reference is a `LayerFailed` layer naming the policy's scope and the rule; `Report.String()` marks included layers "included by" and adds a `policies:` section. |
 
 ---
 

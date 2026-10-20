@@ -465,37 +465,76 @@ The largest milestone, done in four parts (DL-106).
 
 ## M7: Includes, policies and transforms
 
-**Scope:**
+**Scope:** local includes, per-scope policies, file permissions, the trust store and transforms, as decided in DL-176 to
+DL-194.
 
-- **The include key** and nesting rules for each preset.
-- **Include rank** (DL-12).
-- **The `file` resolver** with `Confine` (DL-23).
-- **Allow-lists** and matchers.
-- **Policies:** `WithDefaultPolicy` and `WithScopePolicy`, with replace-not-merge semantics (DL-24).
-- **Trust:** `RequireTrust` and `TrustPaths` (DL-28).
-- **The permission policy** (DL-20), with owners in `cctest.FS` (DL-108).
-- **Layer and result transforms** (DL-36).
+- **The include key** (DL-178): `WithIncludeKey(key, IncludeFlat | IncludeNested)` and `WithoutIncludeKey()`. The mise
+  layouts get `"include"`, flat. `CosmiconfigLayout` gets none, so nesting and cycles are tested through a custom
+  layout.
+- **Include rules:** rank (DL-12), loading once at the highest position (DL-179), values and metadata (DL-184), errors
+  (DL-185), the steps for one layer (DL-186) and where includes work (DL-187).
+- **The `file` resolver** (DL-23, DL-182, DL-183): built into the loader, with `Confine` (DL-180). Every other scheme is
+  a 501 until M8.
+- **Allow-lists and matchers** (DL-176): `Prefix`, `MatchRef`, and `?` in `Glob`.
+- **Policies** (DL-24, DL-188 to DL-190): `WithDefaultPolicy` and `WithScopePolicy`, with replace-not-merge semantics.
+  `RequirePinned` moves to M8 (DL-182).
+- **Files named directly** fail instead of being skipped (DL-181).
+- **The permission policy** (DL-20, DL-191), with `StrictModes` and owners in `cctest.FS` (DL-108).
+- **Trust** (DL-28, DL-192): `RequireTrust` and `TrustPaths`.
+- **Layer and result transforms** (DL-36, DL-193).
+- **The report** (DL-159, DL-194): each scope's effective policy.
 - **Not `$import`:** deferred from M4d, and possibly never supported (DL-145).
-- **Options** (DL-94): this milestone settles the include, policy, matcher and transform options, and adds the layouts'
-  include keys and `MiseHardenedLayout`'s policies. An include key with no `file` resolver becomes an `*OptionError`,
-  the bare-loader check moved from M3.
+- **Options** (DL-94): this milestone settles the include, policy, matcher, permission, trust and transform options, and
+  adds the layouts' include keys and `MiseHardenedLayout`'s policy. An include key with no `file` resolver becomes an
+  `*OptionError`, the bare-loader check moved from M3 (DL-177).
 
 **Acceptance tests:**
 
-- **Rank:** an included file ranks directly below its includer, and a later entry wins.
-- **Include behaviour** (DL-79): the key only works at the top level and is removed from the result; a diamond loads the
-  shared file once; an `EmbeddedFS` source's include key is plain data; an included file inherits its includer's trust.
-- **Nesting:** `MiseLayout` rejects nesting, and `CosmiconfigLayout` detects cycles (508).
-- **Confinement:** includes that resolve outside the confinement roots are a 403, symlinks included. This is an attack
-  suite.
-- **Policies:** a scope policy replaces the default, `InheritDefault` copies it, and an include is judged by its
-  includer's scope, through nested includes too.
-- **Permissions:** files writable by group or other are ignored with a warning in `MiseHardenedLayout` (Unix).
-- **Trust store:** untrusted files are skipped with a warning.
-- **Transforms:** they run in order, get the layer's config root, and a failure is a 422 naming the file.
+- **Rank:** an included file ranks directly below its includer, and a later entry wins; the includer's `_unset` removes
+  keys from it (DL-187).
+- **Include behaviour** (DL-79, DL-184, DL-187):
+  - the key only works at the top level, or the top of a keyed table, and is removed from the result
+  - an empty list includes nothing; an empty string, a non-string element or a number is a `*ParseError`
+  - an included layer's scope, variant, env, trust and config root come from its root file, and `IncludedBy` names its
+    direct includer
+  - an included file's format follows `WithFileFormat` rules and extensions, whatever the format order
+  - `EmbeddedFS`, value scopes and bootstrap files keep the key as plain data; an `ExplicitFile` includes
+  - under `FirstMatch`, an included file is never the match
+  - an included file inherits its includer's trust, and the store isn't asked
+- **Loading once** (DL-179): a reference listed twice, a file both found and included, and a diamond each load once, at
+  the highest position, with the other routes `LayerDuplicate`; a file that includes itself is a 508.
+- **Nesting** (DL-178): `MiseLayout` rejects an include key in an included file as a `*ParseError`; a custom layout with
+  `IncludeNested` nests, resolves relative references against each file's own directory, and detects cycles (508).
+- **References** (DL-183): `file://` and `~/` references are local; `C:\…` is a path; `git::…`, `oci::…` and `https://…`
+  are 501s until M8.
+- **Errors** (DL-185): missing 404, unknown scheme 501 and cycle 508 name the including file; a parse error, a 413 or an
+  unreadable target names the included file, with `IncludedBy` in the report.
+- **Confinement** (DL-180): includes that resolve outside the roots are a 403, symlinks included; roots are resolved
+  through symlinks; `/etc/acme` doesn't cover `/etc/acmex`; searched and explicit files aren't confined. This is an
+  attack suite.
+- **Policies** (DL-24, DL-188 to DL-190): a scope policy replaces the default; `InheritDefault` copies it, and a later
+  option replaces only its own setting; a fresh policy allows no resolver; an include is judged by its root file's
+  scope, through nested includes too; explicit files by their scope's policy; an undeclared scope or an unregistered
+  scheme is an `*OptionError`.
+- **Allow-lists** (DL-176): a reference must match the global list and its scheme's; `Prefix`, `Glob` with `?`, and
+  `MatchRef` seeing the includer's scope; `MatchRef` in `WithFileFormat` is an `*OptionError`.
+- **Turning off local includes** (DL-177): `WithoutIncludeResolver("file")` with an include key is an `*OptionError`; a
+  policy without `"file"` makes local references 403s.
+- **Permissions** (DL-191): `MiseHardenedLayout` ignores files and directories writable by group or other, or owned by
+  someone else, with `WarnFilePermissions` (Unix rules, through `cctest.FS` and on a real filesystem); a sticky
+  directory and an unknown owner are allowed; `cctest.Host{GOOS: "windows"}` allows everything; *error* is a 403;
+  bootstrap files are checked too.
+- **Files named directly** (DL-181): an included or explicit file that would be ignored, or is untrusted, is a 403.
+- **Trust store** (DL-192): untrusted files are skipped with `WarnUntrusted` as `LayerUntrusted`, and never decoded;
+  untrusted bootstrap files are skipped; the digest is the SHA-256 of the raw bytes; a store error is a 500;
+  `TrustPaths` takes globs and whole trees.
+- **Transforms** (DL-36, DL-193): they run in order, get the layer's config root, see the tree before the include key is
+  read, and cover value scopes and defaults; `nil` merges nothing; a failure or a non-canonical tree is a 422 naming the
+  file; the result transform runs before `RequireConfig`.
 - **Transforms and concurrency** (DL-76, moved from M5 by DL-159): modifying a transform's input doesn't change the
-  report or later loads, and a transform is never called on an ignored or untrusted layer.
-- **The report** gains each scope's effective policy (DL-159).
+  report or later loads, and a transform is never called on an ignored, untrusted or duplicate layer.
+- **The report** (DL-194): each scope's effective policy, in `Describe()`, its JSON and its text, and a rejected
+  reference as a `LayerFailed` layer naming the policy's scope.
 
 ## M8: Remote resolvers
 
@@ -507,6 +546,8 @@ The largest milestone, done in four parts (DL-106).
 - **The `ociresolver` module.**
 - **Caching** (DL-19).
 - **Traversal protection** (DL-33).
+- **From M7** (DL-182): `IncludeResolver`, `Fetched`, `WithIncludeResolver`, `RequirePinned` (with how a custom resolver
+  reports a pin), reference normalisation and `WithMaxIncludeSize`.
 - **Options** (DL-94): this milestone settles the resolver and cache options, and adds `WithoutRemoteIncludes` to
   `MiseHardenedLayout`.
 
