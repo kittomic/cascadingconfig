@@ -37,6 +37,9 @@ func Decoder(opts ...Option) cascadingconfig.Decoder {
 
 const defaultMaxAliasValues = 10_000
 
+// WarnVersion warns that a %YAML directive named a version other than 1.2, which was parsed as 1.2.
+const WarnVersion cascadingconfig.WarningCode = "yaml-version"
+
 // Option configures the YAML decoder.
 type Option interface {
 	apply(c *config)
