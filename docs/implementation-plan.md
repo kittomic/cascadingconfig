@@ -446,6 +446,8 @@ The largest milestone, done in four parts (DL-106).
 - **Merge keys** (DL-167): a single merge, a list where earlier entries win, the table's own keys winning, and a merge
   of a scalar as a `*ParseError`.
 - **Aliases** (DL-168): an alias bomb hits the cap, `WithMaxAliasValues` moves it, and a self-alias is a `*ParseError`.
+- **Directives** (DL-164, DL-175): `%YAML 1.2` is accepted, 1.1 warns, 2.0 is a `*ParseError`; `%TAG` handles that
+  expand to core tags are accepted, and others, a redefined `!!` included, are `*ParseError`s.
 - **Dialects** (DL-50 to DL-53):
   - several YAML documents in one file are a `*ParseError`
   - duplicate keys are `*ParseError`s in TOML and YAML

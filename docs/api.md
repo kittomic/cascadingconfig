@@ -549,6 +549,9 @@ type Option interface{ /* sealed */ }
 
 func WithLegacyNumbers() Option         // YAML 1.1 integers: 017 as octal, 0b11, and _ separators
 func WithMaxAliasValues(n int) Option   // the alias cap; 10,000 by default
+
+// WarnVersion warns that a %YAML directive named a version other than 1.2, which was parsed as 1.2 (DL-175).
+const WarnVersion cascadingconfig.WarningCode = "yaml-version"
 ```
 
 - **YAML media types:** `application/yaml`, `application/x-yaml`, `text/yaml` and `text/x-yaml`.
