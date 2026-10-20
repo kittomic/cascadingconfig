@@ -276,7 +276,7 @@ The largest milestone, done in four parts (DL-106).
 **Scope:**
 
 - **Patterns:** variants, config roots, globs and `conf.d` fragments.
-- **Scope kinds:** `Walk`, `ExplicitFile` and `Embedded` (DL-25).
+- **Scope kinds:** `Walk` and `ExplicitFile`, with `Pattern.Key` in place of `Embedded` (DL-25, DL-120).
 - **The directory walk** and ceilings (DL-5).
 - **Environment selection** and platform envs (DL-30), and **safe environment names** (DL-32).
 - **`MiseLayout`'s scopes and patterns.**

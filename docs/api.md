@@ -375,6 +375,37 @@ func MapEnv(f func(name, value string) (Path, any, bool)) EnvVarsOption
 // WarnReservedKey, WarnEnvVarSkipped, WarnEnvVarClash, WarnNoHome
 ```
 
+#### Settled in M4b
+
+```go
+// Patterns (DL-117 to DL-120)
+type Pattern struct {
+	Template string
+	Variant  Variant
+	Root     RootMode
+	Key      string
+}
+
+type RootMode int // RootSearchDir (the default), RootFileDir
+
+// Scope kinds and scope options (DL-122, DL-125, DL-126)
+func Walk(patterns ...Pattern) ScopeKind
+func ExplicitFile(paths ...string) ScopeKind
+func ConfigRoot(dir string) ScopeOption
+func ReplacedByFile(b Binding) ScopeOption
+func DisabledBy(b Binding) ScopeOption
+func ReplacedByConfigFiles() ScopeOption
+
+// The walk and ignored paths (DL-122, DL-127)
+type WalkStop int // StopAtHome (the default), StopAtRoot
+
+func WithStartDir(dir string) Option
+func WithWalkStop(s WalkStop) Option
+func WithCeilingPaths(paths ...string) Option
+func WithIgnoredPaths(paths ...string) Option
+```
+
+- **`Embedded` is gone,** replaced by `Pattern.Key` (DL-120).
 - **Sealed kinds.** `Option`, `ScopeKind`, `ScopeOption`, `EnvVarsOption`, `PolicyOption`, `Matcher` and `WatchOption`
   are interfaces with unexported methods. The last three exist as types now, so the compiler already rejects them in the
   wrong place, and get their options in later milestones.
