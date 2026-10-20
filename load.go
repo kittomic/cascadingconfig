@@ -17,16 +17,33 @@ import (
 
 // Load discovers, reads, decodes and merges every selected scope, and returns the result. Every problem found is
 // returned, joined.
+//
+// A failed load still returns a non-nil *Result, whose report shows what was found and what broke, and whose Tree is
+// nil.
 func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	c := l.cfg
-	ld := &loading{ctx: ctx, c: c, roots: map[string]Root{}, dirs: map[string][]fs.DirEntry{}}
+	ld := &loading{
+		ctx: ctx, c: c, roots: map[string]Root{}, dirs: map[string][]fs.DirEntry{}, skipped: map[ScopeName]string{},
+	}
 	ld.settings.mergeSearchPlaces = true
 	defer ld.closeRoots()
+	res, err := ld.run()
+	ld.log()
+	if err != nil {
+		res = &Result{err: err}
+	}
+	res.cfg, res.report = c, ld.report()
+	return res, err
+}
+
+// run runs the load's stages: settings, then discovery and reading, then merging, then the requirements. A stage
+// reports every problem it finds, and a failed stage stops the load.
+func (ld *loading) run() (*Result, error) {
+	c, ctx := ld.c, ld.ctx
 	if err := ld.formatOrder(); err != nil {
 		return nil, err
 	}
 	if err := ld.readBootstrap(); err != nil {
-		ld.log()
 		return nil, err
 	}
 	if err := ld.selectEnvs(); err != nil {
@@ -43,6 +60,11 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	placed := false
 	scopes := c.scopes
 	if explicit != nil && c.configFilesOnly {
+		for _, s := range scopes {
+			if c.selected[s.name] {
+				ld.skipped[s.name] = "replaced by explicit files"
+			}
+		}
 		scopes = nil
 	}
 	for _, s := range scopes {
@@ -52,11 +74,14 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 		ld.order = ld.orderFor(s)
 		switch {
 		case s.explicitFiles && explicit != nil:
+			ld.skipped[s.name] = "replaced by explicit files"
 			ld.loadExplicit(explicit, s.name, TrustProject, s)
 			placed = true
 		case !c.selected[s.name]:
 		case s.disabledBy != "" && ld.binding(s.disabledBy) != "":
+			ld.skipped[s.name] = "disabled by " + c.vars[s.disabledBy]
 		case s.replacedByFile != "" && ld.binding(s.replacedByFile) != "":
+			ld.skipped[s.name] = "replaced by the file " + c.vars[s.replacedByFile] + " names"
 			ld.loadExplicit([]string{ld.binding(s.replacedByFile)}, s.name, s.trust, s)
 		default:
 			s.kind.discover(ld, s)
@@ -70,7 +95,6 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	}
 	ld.dedup()
 	layers, err := ld.decode()
-	ld.log()
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +102,17 @@ func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := ld.checkRequirements(); err != nil {
+		return nil, err
+	}
 	res.found = ld.found()
 	res.warnings = ld.warnings
 	for _, e := range ld.boot {
 		res.bootstrap = append(res.bootstrap, e.layer)
+	}
+	res.envVars = make([]map[string]string, len(layers))
+	for i, l := range layers {
+		res.envVars[i] = l.vars
 	}
 	return res, nil
 }
@@ -130,7 +161,13 @@ type loading struct {
 	baseOrder      []Decoder // {NAME}_CONFIG_FORMATS, or the app's or the preset's order
 	formatsFromEnv bool
 	boot           []*entry // the bootstrap files, lowest precedence first
+	booting        bool     // bootstrap files are being searched, so no probes are recorded
 	settings       bootSettings
+
+	selectedEnvs []string             // the selected environments, lowest precedence first, for the report
+	platformEnvs []string             // the platform environments in use, lowest precedence first
+	skipped      map[ScopeName]string // why a selected scope wasn't searched
+	probes       []Probe              // with WithProbes
 }
 
 // entry is one layer the load considered, or a problem that fails it.
@@ -141,8 +178,12 @@ type entry struct {
 	info  fs.FileInfo // a file's identity in the loader's FileSystem, for dedup; nil for EmbeddedFS
 	key   Path        // the table inside the file that holds the config, if the pattern has a Key
 	err   error
+	vars  map[string]string // an EnvVars layer's variable for each key path
 
-	dropped bool // the pattern's key wasn't in the file, so it counts as not found
+	dropped  bool // the pattern's key wasn't in the file, so it counts as not found
+	file     bool // read from the loader's FileSystem, not an fs.FS
+	value    bool // a value scope's tree, not a file
+	explicit bool // an explicit config file
 }
 
 func (ld *loading) addError(err error) {
@@ -154,6 +195,35 @@ func (ld *loading) skip(l Layer, status LayerStatus, code WarningCode, reason st
 	l.Status, l.Reason = status, reason
 	l.Warnings = append(l.Warnings, Warning{Code: code, Path: l.Path, Message: l.Path + ": " + reason})
 	ld.entries = append(ld.entries, &entry{layer: l})
+}
+
+// failLayer records a layer that breaks the load, with a reason built from err's fields, never its message, which
+// could quote the file.
+func (ld *loading) failLayer(l Layer, err error) {
+	l.Status, l.Reason = LayerFailed, failReason(err)
+	ld.entries = append(ld.entries, &entry{layer: l, err: err})
+}
+
+// failReason describes err for a failed layer's Reason.
+func failReason(err error) string {
+	var pe *ParseError
+	switch {
+	case errors.As(err, &pe):
+		if pe.Line > 0 {
+			return fmt.Sprintf("parse error at line %d, column %d", pe.Line, pe.Column)
+		}
+		return "parse error"
+	case errors.Is(err, ErrTooLarge):
+		return "the file is over the size limit"
+	case errors.Is(err, ErrNotFound):
+		return "the file doesn't exist"
+	case errors.Is(err, ErrUnsupportedFormat):
+		return "no decoder for its format"
+	case errors.Is(err, ErrIO):
+		return "the file can't be read"
+	default:
+		return fmt.Sprintf("failed with code %d", CodeOf(err))
+	}
 }
 
 func (ld *loading) closeRoots() {
@@ -323,12 +393,15 @@ func (ld *loading) search(root Root, dir, configRoot string, patterns []Pattern,
 			subs = ld.matchDirs(root, dir, subs, expand(seg, ld.c.name, x.env, ""))
 		}
 		last := segs[len(segs)-1]
+		found := false
 		for _, sub := range subs {
 			entries := ld.readDir(root, dir, sub)
 			if entries == nil {
 				continue
 			}
-			for _, l := range ld.candidates(last, x.env, entries, dir, sub) {
+			candidates := ld.candidates(last, x.env, entries, dir, sub)
+			found = found || len(candidates) > 0
+			for _, l := range candidates {
 				l.Scope, l.Trust = s.name, s.trust
 				l.Variant, l.Env, l.Pattern = x.p.Variant, x.env, x.p.Template
 				l.ConfigRoot = configRoot
@@ -349,6 +422,9 @@ func (ld *loading) search(root Root, dir, configRoot string, patterns []Pattern,
 				}
 				ld.read(root, path.Join(sub, name), typeOf(entries, name), l, follow, key)
 			}
+		}
+		if !found && ld.c.probes && !ld.booting {
+			ld.probes = append(ld.probes, Probe{Scope: s.name, Dir: dir, Pattern: strings.ReplaceAll(x.p.Template, "{env}", x.env)})
 		}
 	}
 }
@@ -589,7 +665,7 @@ func (ld *loading) selectEnvs() error {
 		}
 	}
 	if selected == nil && ld.settings.env != nil {
-		selected, ld.envSource = ld.settings.env, "bootstrap"
+		selected, ld.envSource = ld.settings.env, ld.settings.envFrom
 	}
 	var envs []string
 	for i, e := range selected {
@@ -600,9 +676,11 @@ func (ld *loading) selectEnvs() error {
 	for _, p := range platformEnvs(c.host.GOOS(), c.host.GOARCH()) {
 		if !slices.Contains(envs, p) {
 			ld.envs = append(ld.envs, p)
+			ld.platformEnvs = append(ld.platformEnvs, p)
 		}
 	}
 	ld.envs = append(ld.envs, envs...)
+	ld.selectedEnvs = envs
 	return nil
 }
 
@@ -818,23 +896,23 @@ func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLeve
 		if err != nil {
 			base.Err = err
 			if errors.Is(err, fs.ErrNotExist) {
-				ld.addError(&NotFoundError{BaseError: base})
+				ld.failLayer(l, &NotFoundError{BaseError: base})
 			} else {
-				ld.addError(&IOError{BaseError: base})
+				ld.failLayer(l, &IOError{BaseError: base})
 			}
 			continue
 		}
 		format, ok := c.fileFormat(filepath.ToSlash(abs))
 		if !ok {
 			base.Err = fmt.Errorf("no format rule or registered decoder's extension matches %s", abs)
-			ld.addError(&UnsupportedFormatError{BaseError: base})
+			ld.failLayer(l, &UnsupportedFormatError{BaseError: base})
 			continue
 		}
 		l.Format = format
 		root, err := c.fsys.OpenRoot(filepath.Dir(resolved))
 		if err != nil {
 			base.Err = err
-			ld.addError(&IOError{BaseError: base})
+			ld.failLayer(l, &IOError{BaseError: base})
 			continue
 		}
 		info, err := root.Stat(filepath.Base(resolved))
@@ -845,26 +923,26 @@ func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLeve
 			base.Err = fmt.Errorf("it is %s, not a regular file", describeMode(info.Mode()))
 		case info.Size() > c.maxFileSize:
 			_ = root.Close()
-			ld.addError(tooLarge(l, info.Size(), c.maxFileSize))
+			ld.failLayer(l, tooLarge(l, info.Size(), c.maxFileSize))
 			continue
 		}
 		if base.Err != nil {
 			_ = root.Close()
-			ld.addError(&IOError{BaseError: base})
+			ld.failLayer(l, &IOError{BaseError: base})
 			continue
 		}
 		data, err := readLimited(root, filepath.Base(resolved), c.maxFileSize)
 		_ = root.Close()
 		if err != nil {
 			base.Err = err
-			ld.addError(&IOError{BaseError: base})
+			ld.failLayer(l, &IOError{BaseError: base})
 			continue
 		}
 		if int64(len(data)) > c.maxFileSize {
-			ld.addError(tooLarge(l, int64(len(data)), c.maxFileSize))
+			ld.failLayer(l, tooLarge(l, int64(len(data)), c.maxFileSize))
 			continue
 		}
-		ld.entries = append(ld.entries, &entry{layer: l, data: data, info: info})
+		ld.entries = append(ld.entries, &entry{layer: l, data: data, info: info, file: true, explicit: true})
 	}
 }
 
@@ -908,7 +986,7 @@ func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow
 		return
 	}
 	if info.Size() > c.maxFileSize {
-		ld.addError(tooLarge(l, info.Size(), c.maxFileSize))
+		ld.failLayer(l, tooLarge(l, info.Size(), c.maxFileSize))
 		return
 	}
 	data, err := readLimited(r, name, c.maxFileSize)
@@ -917,10 +995,10 @@ func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow
 		return
 	}
 	if int64(len(data)) > c.maxFileSize {
-		ld.addError(tooLarge(l, int64(len(data)), c.maxFileSize))
+		ld.failLayer(l, tooLarge(l, int64(len(data)), c.maxFileSize))
 		return
 	}
-	e := &entry{layer: l, data: data, key: key}
+	e := &entry{layer: l, data: data, key: key, file: follow}
 	if follow {
 		e.info = info
 	}
@@ -972,26 +1050,27 @@ func describeMode(m fs.FileMode) string {
 	}
 }
 
-// dedup keeps one layer for each file reached more than once, at its highest position, with the scope and trust of
-// its most trusted route.
+// dedup loads each file reached more than once at its highest position, with the scope and trust of its most trusted
+// route. Each lower route stays in the report as LayerDuplicate.
 func (ld *loading) dedup() {
-	var kept []*entry
-	for _, e := range ld.entries {
-		if e.info != nil {
-			for i, prev := range kept {
-				if prev.info == nil || !ld.c.fsys.SameFile(prev.info, e.info) {
-					continue
-				}
-				if prev.layer.Trust > e.layer.Trust {
-					e.layer.Scope, e.layer.Trust = prev.layer.Scope, prev.layer.Trust
-				}
-				kept = slices.Delete(kept, i, i+1)
-				break
-			}
+	for i, e := range ld.entries {
+		if e.info == nil {
+			continue
 		}
-		kept = append(kept, e)
+		for _, prev := range ld.entries[:i] {
+			if prev.info == nil || !ld.c.fsys.SameFile(prev.info, e.info) {
+				continue
+			}
+			via := e.layer.Scope
+			if prev.layer.Trust > e.layer.Trust {
+				e.layer.Scope, e.layer.Trust = prev.layer.Scope, prev.layer.Trust
+			}
+			prev.layer.Status = LayerDuplicate
+			prev.layer.Reason = fmt.Sprintf("loaded at a higher position through the %s scope", via)
+			prev.info = nil
+			break
+		}
 	}
-	ld.entries = kept
 }
 
 // decode decodes every loaded file, and returns the layers to merge, or every problem found. With first-match
@@ -1013,18 +1092,25 @@ func (ld *loading) decode() ([]mergeLayer, error) {
 			continue
 		}
 		if ok {
-			layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree})
+			layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree, vars: e.vars})
 		}
 	}
 	return layers, errors.Join(errs...)
 }
 
 // decodeFirst chooses the highest-precedence non-empty file. A problem above it fails the load; the files below it
-// are ignored without being decoded, so a broken one doesn't matter.
+// are ignored without being decoded, so a broken one doesn't matter. Value layers aren't files, so they always merge.
 func (ld *loading) decodeFirst() ([]mergeLayer, error) {
 	var chosen *entry
+	var layers []mergeLayer // highest precedence first
 	for i := len(ld.entries) - 1; i >= 0; i-- {
 		e := ld.entries[i]
+		if e.value {
+			if e.layer.Status == LayerLoaded {
+				layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree, vars: e.vars})
+			}
+			continue
+		}
 		if chosen != nil {
 			if e.err != nil {
 				e.err, e.dropped = nil, true
@@ -1043,12 +1129,11 @@ func (ld *loading) decodeFirst() ([]mergeLayer, error) {
 		}
 		if ok {
 			chosen = e
+			layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree})
 		}
 	}
-	if chosen == nil {
-		return nil, nil
-	}
-	return []mergeLayer{{layer: chosen.layer, tree: chosen.tree}}, nil
+	slices.Reverse(layers)
+	return layers, nil
 }
 
 // decodeEntry decodes one loaded entry, and reports whether it has config to merge. Empty files, and files whose
@@ -1066,6 +1151,7 @@ func (ld *loading) decodeEntry(e *entry) (bool, error) {
 		if errors.As(err, &pe) && pe.Scope == "" {
 			pe.Scope = string(e.layer.Scope)
 		}
+		e.layer.Status, e.layer.Reason = LayerFailed, failReason(err)
 		return false, err
 	}
 	e.layer.Warnings = append(e.layer.Warnings, doc.Warnings...)
@@ -1077,10 +1163,12 @@ func (ld *loading) decodeEntry(e *entry) (bool, error) {
 	if e.key != nil {
 		t, ok, err := subtree(doc.Tree, e.key)
 		if err != nil {
-			return false, &ParseError{
+			pe := &ParseError{
 				BaseError: BaseError{Op: "decode", Path: e.layer.Path, Scope: string(e.layer.Scope), Err: err},
 				Format:    e.layer.Format,
 			}
+			e.layer.Status, e.layer.Reason = LayerFailed, failReason(pe)
+			return false, pe
 		}
 		if !ok {
 			e.dropped = true
@@ -1117,7 +1205,7 @@ func subtree(t Tree, key Path) (Tree, bool, error) {
 func (ld *loading) found() []Layer {
 	var out []Layer
 	for _, e := range ld.entries {
-		if e.err == nil && !e.dropped {
+		if e.err == nil && !e.dropped && e.layer.Status != LayerDuplicate {
 			out = append(out, e.layer)
 		}
 	}
@@ -1157,7 +1245,7 @@ func (ld *loading) addValues(s *scopeDef, t Tree) {
 			Message: fmt.Sprintf("the scope %q can't remove keys, so its %s keys were ignored", s.name, key),
 		})
 	}
-	ld.entries = append(ld.entries, &entry{layer: l, tree: t})
+	ld.entries = append(ld.entries, &entry{layer: l, tree: t, value: true})
 }
 
 // dropKey removes key from every table in v, and reports whether there was one.
@@ -1210,6 +1298,11 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 	slices.SortFunc(vars, func(a, b variable) int { return strings.Compare(a.name, b.name) })
 
 	t := Tree{}
+	type setBy struct {
+		key  Path
+		name string
+	}
+	var sets []setBy // the variable behind each key, without those a later variable replaced
 	l := Layer{Scope: s.name, Trust: s.trust, Status: LayerLoaded}
 	warn := func(code WarningCode, format string, args ...any) {
 		l.Warnings = append(l.Warnings, Warning{Code: code, Message: fmt.Sprintf(format, args...)})
@@ -1244,11 +1337,17 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 		if setPath(t, key, value) {
 			warn(WarnEnvVarClash, "%s clashes with an earlier variable at %s; the later name wins", v.name, key)
 		}
+		sets = slices.DeleteFunc(sets, func(b setBy) bool { return hasPrefix(b.key, key) || hasPrefix(key, b.key) })
+		sets = append(sets, setBy{slices.Clone(key), v.name})
 	}
 	if unset := ld.c.merge.unsetKey; unset != "" && dropKey(t, unset) {
 		warn(WarnReservedKey, "the scope %q can't remove keys, so its %s keys were ignored", s.name, unset)
 	}
-	ld.entries = append(ld.entries, &entry{layer: l, tree: t})
+	by := make(map[string]string, len(sets))
+	for _, b := range sets {
+		by[b.key.String()] = b.name
+	}
+	ld.entries = append(ld.entries, &entry{layer: l, tree: t, value: true, vars: by})
 }
 
 // setPath sets the value at key in t, replacing anything in the way, and reports whether it replaced something.

@@ -40,10 +40,10 @@ type Document struct {
 
 // Warning is a non-fatal problem. Warnings go to the logger and the report.
 type Warning struct {
-	Code    WarningCode // what kind of problem
-	Path    string      // the file; DecodeDocument fills it in when a decoder leaves it empty
-	Key     Path        // where in the file, if known
-	Message string
+	Code    WarningCode `json:"code"`           // what kind of problem
+	Path    string      `json:"path,omitempty"` // the file; DecodeDocument fills it in when a decoder leaves it empty
+	Key     Path        `json:"key,omitempty"`  // where in the file, if known
+	Message string      `json:"message"`
 }
 
 // WarningCode identifies a kind of warning.
@@ -85,6 +85,9 @@ const (
 
 	// WarnBootstrapKeyDropped reports a bootstrap key, or an entry of one, dropped because of a scope's limits.
 	WarnBootstrapKeyDropped WarningCode = "bootstrap-key-dropped"
+
+	// WarnUnknownKey reports a key that no field consumed when decoding. Path is the file that set it.
+	WarnUnknownKey WarningCode = "unknown-key"
 )
 
 // DecodeDocument runs d on data, with the rules every format shares:

@@ -370,37 +370,50 @@ The largest milestone, done in four parts (DL-106).
 **Scope:**
 
 - **Decoding:** `Load[T]` and `DecodeAt`, with koanf-compatible decoding: the `koanf` tag, mapstructure v2 and the same
-  hooks (§ [Decoding](api.md#decoding)).
-- **Unknown keys:** a warning by default, or an error in strict mode.
-- **`RequireConfig`** at every level, globally and per scope ([api.md](api.md#requiring-config)).
-- **The date hook:** RFC 3339 strings into `time.Time`.
-- **Error aggregation:** every error from one load is returned together.
-- **Reporting:** `Report`, `OriginOf` and `KoanfProvider`.
+  three hooks, which also parse RFC 3339 dates (§ [Decoding](api.md#decoding), DL-148).
+- **Unknown keys:** a warning by default, an error in strict mode, or silence (DL-151).
+- **Defaults:** `WithDefaults` and the `defaults` scope (DL-72, DL-153).
+- **`RequireConfig`** at every level, globally and per scope ([api.md](api.md#requiring-config), DL-157).
+- **Error aggregation:** every error from one stage of a load is returned together (DL-155).
+- **Reporting:** `Report`, `Describe()`, `OriginOf` with `EnvVar`, and `KoanfProvider` (DL-152, DL-158, DL-160).
+- **First-match fix:** value layers always merge (DL-154).
+- **Options** (DL-94): this milestone settles the decoding, defaults, requirement and report options
+  ([api.md](api.md#settled-in-m5)). Policies in the report wait for M7, and remote layers for M8 (DL-159).
 
 **Acceptance tests:**
 
 - **koanf parity:** the same structs and trees decode identically with koanf and with cascadingconfig, including day
-  durations, `TextUnmarshaler` and weak typing. These tests live in a test-only module, `internal/compat`, so koanf
-  never appears in the core `go.mod`.
+  durations, `TextUnmarshaler`, weak typing and RFC 3339 dates. These tests live in a test-only module,
+  `internal/compat`, so koanf never appears in the core `go.mod`. koanf loads through `KoanfProvider`, which tests it
+  too.
 - **Null and `_unset`** leave Go-side defaults untouched. With `ZeroFields: true`, a null clears them.
-- **Defaults** (DL-72):
+- **Defaults** (DL-72, DL-153):
   - `WithDefaults(v)` is applied on every load, for `Load[T]`, `res.Decode` and `KoanfProvider`
   - only non-zero fields become defaults, and durations, times and `TextMarshaler` types convert to canonical forms
   - a higher `null` or `_unset` clears a default
   - `OriginOf` reports "set by defaults"
   - `RequireConfig(RequireFile)` isn't satisfied by defaults alone
-- **Decode errors** name the key and the file that set it.
+  - the scope survives a later `WithScopes`, and invalid values are `*OptionError`s naming the field
+- **Decode errors** (DL-150): one per key, naming the key and the file that set it, never the value.
+- **Unknown keys** (DL-151): warned and recorded with their file; one `*DecodeError` each in strict mode; silent with
+  `UnknownKeysIgnore`.
+- **Custom decoder configs** (DL-149): the app's hooks replace ours, `DecodeHook()` composes, and a `Metadata` is an
+  `*OptionError`.
 - **No values:** a golden `Report.String()` and JSON contain no config values. Secret values put in fixtures must never
-  appear in the output.
+  appear in the output, nor in decode errors or a failed layer's reason.
 - **Several broken files** produce one joined error listing all of them.
-- **Failed loads** return a non-nil `*Result` whose report shows what broke, with a nil `Tree()` (DL-75).
-- **Concurrency** (DL-76): parallel `Load`s under `-race`; modifying `Tree()`'s result or a transform's input doesn't
-  change the report or later loads; a transform is never called on an ignored or untrusted layer.
-- **`RequireConfig`** (DL-54): `RequireAny` is satisfied by flags or a defaults scope; `RequireFile` is not; a
-  whitespace-only file fails `RequireNonEmpty`; with scopes, each listed scope must qualify; several requirements all
-  apply.
+- **Failed loads** return a non-nil `*Result` whose report shows what broke, as `LayerFailed`, with a nil `Tree()`
+  (DL-75, DL-156).
+- **Concurrency** (DL-76): parallel `Load`s and decodes under `-race`; modifying `Tree()`'s result doesn't change the
+  report, later decodes or later loads. The transform checks wait for M7 (DL-159).
+- **`RequireConfig`** (DL-54, DL-157): `RequireAny` is satisfied by flags or the defaults scope, but not by an empty
+  value scope; `RequireFile` is not; a whitespace-only file fails `RequireNonEmpty`; with scopes, each listed scope must
+  qualify; explicit files count for the scope they replace; several requirements all apply.
 - **Dates:** an RFC 3339 string decodes into `time.Time` and into `string`. A date-only string into `time.Time` is a
-  `*DecodeError`. The koanf parity tests cover everything except dates, which are a documented difference (DL-48).
+  `*DecodeError`.
+- **First match** (DL-154): a `Values` scope above the chosen file still merges, and defaults sit below it.
+- **The report** (DL-158): a golden text and JSON report for a mise project, with bootstrap files, duplicates, probes
+  and bindings.
 
 ## M6: Format modules
 
@@ -462,6 +475,9 @@ first release is decided at the start of this milestone.
 - **Permissions:** files writable by group or other are ignored with a warning in `MiseHardenedLayout` (Unix).
 - **Trust store:** untrusted files are skipped with a warning.
 - **Transforms:** they run in order, get the layer's config root, and a failure is a 422 naming the file.
+- **Transforms and concurrency** (DL-76, moved from M5 by DL-159): modifying a transform's input doesn't change the
+  report or later loads, and a transform is never called on an ignored or untrusted layer.
+- **The report** gains each scope's effective policy (DL-159).
 
 ## M8: Remote resolvers
 

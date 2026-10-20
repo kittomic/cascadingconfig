@@ -10,7 +10,8 @@ import (
 )
 
 // WithScopes replaces the selected scopes with exactly names. Their precedence stays as defined, whatever order they're
-// listed in. An undefined scope, a scope listed twice, or no scopes at all is an *OptionError.
+// listed in. The defaults scope stays as it was, so it needn't be listed. An undefined scope, a scope listed twice, or
+// no scopes at all is an *OptionError.
 func WithScopes(names ...ScopeName) Option {
 	names = append([]ScopeName(nil), names...)
 	return optionFunc(func(c *config) {
@@ -27,6 +28,11 @@ func WithScopes(names ...ScopeName) Option {
 				c.fail("WithScopes", "the scope %q is listed twice", n)
 			default:
 				selected[n] = true
+			}
+		}
+		if s := c.scope(ScopeDefaults); s != nil && c.selected[ScopeDefaults] {
+			if _, ok := s.kind.(defaultsKind); ok {
+				selected[ScopeDefaults] = true
 			}
 		}
 		c.selected = selected

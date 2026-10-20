@@ -2,6 +2,7 @@ package cascadingconfig
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -278,10 +279,29 @@ func (e *UnsupportedFormatError) Is(target error) bool {
 // ErrUnsupportedFormat is the sentinel for *UnsupportedFormatError.
 var ErrUnsupportedFormat = errors.New("cascadingconfig: unsupported format")
 
-// DecodeError reports a failure to decode the merged tree into a struct: a type mismatch, or unknown keys in strict
-// mode.
+// DecodeError reports a failure to decode one key of the merged tree: a type mismatch, or an unknown key in strict
+// mode. Path is the file that set the key. The message never quotes the value; the underlying error may.
 type DecodeError struct {
 	BaseError
+
+	Key     Path // the key that failed
+	Unknown bool // the key matches no field, under UnknownKeysError
+
+	detail string // what went wrong, without the value
+	source string // the file, variable or scope that set the key
+}
+
+// Error returns "cascadingconfig: decode: <key>: <what went wrong>, set by <source>", which never quotes the value. An
+// error built elsewhere, without those details, is formatted as a BaseError.
+func (e *DecodeError) Error() string {
+	if e.detail == "" {
+		return e.BaseError.Error()
+	}
+	msg := fmt.Sprintf("cascadingconfig: %s: %s: %s", e.Op, e.Key, e.detail)
+	if e.source != "" {
+		msg += ", set by " + e.source
+	}
+	return msg
 }
 
 // Code returns CodeUnprocessable.

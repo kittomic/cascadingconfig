@@ -481,6 +481,61 @@ func WithConfigFilesOnly() Option
   [Per-key merge rules](design.md#per-key-merge-rules), [Environment variables](design.md#environment-variables) and
   [Value overrides](design.md#value-overrides-env-vars-and-flags).
 
+#### Settled in M5
+
+```go
+// Decoding (DL-148 to DL-151)
+func Load[T any](ctx context.Context, l *Loader) (T, error)
+func (r *Result) Decode(v any) error
+func DecodeAt[P PathSpec](r *Result, path P, v any) error
+func DecodeHook() mapstructure.DecodeHookFunc // koanf's three hooks, composed
+
+func WithTag(tag string) Option
+func WithDecoderConfig(dc *mapstructure.DecoderConfig) Option
+func WithFlatPaths() Option
+
+type UnknownKeys int // UnknownKeysWarn (the default), UnknownKeysError, UnknownKeysIgnore
+
+func WithUnknownKeys(u UnknownKeys) Option
+
+// Defaults (DL-153)
+const ScopeDefaults ScopeName = "defaults"
+
+func WithDefaults(v any) Option
+
+// Requirements (DL-157)
+type Require uint
+
+const RequireAny Require = 0
+const (
+	RequireFile Require = 1 << iota
+	RequireNonEmpty
+)
+
+func RequireConfig(level Require, scopes ...ScopeName) Option
+
+// Reports (DL-158, DL-160)
+func (r *Result) Describe() *Report
+func WithProbes() Option
+func (l *Loader) KoanfProvider() *KoanfProvider
+
+type KoanfProvider struct{ /* … */ }
+
+func (p *KoanfProvider) Read() (map[string]any, error)
+func (p *KoanfProvider) ReadBytes() ([]byte, error)
+
+// Added to existing types
+//   Origin.EnvVar (DL-152)
+//   DecodeError.Key, DecodeError.Unknown (DL-150, DL-151)
+//   LayerFailed, LayerDuplicate (DL-156, DL-158); WarnUnknownKey (DL-151)
+//   String and MarshalText on Variant, TrustLevel, LayerStatus and OriginKind; MarshalText and UnmarshalText on Path
+```
+
+- **An empty tag, a nil `DecoderConfig`, or one with `Metadata`,** is an `*OptionError`, as is an unknown `UnknownKeys`
+  value or `Require` flag.
+- **`Load[T]`** decodes into a fresh `T`, which can be any type mapstructure decodes into, such as a struct, a pointer
+  to one, or a map.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
@@ -562,31 +617,48 @@ func main() {
 | --------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Decoder library | `github.com/go-viper/mapstructure/v2` (v2.4.0)                               | The same library.                                    |
 | Struct tag      | `koanf`; `UnmarshalConf.Tag` overrides it                                    | `koanf` by default; `WithTag("config")` overrides it. |
-| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order, plus a fourth: RFC 3339 strings into `time.Time`. koanf's hooks are unexported, so we reimplement them with the same behaviour. |
-| Dates           | go-toml hands TOML date-times through as `time.Time`                          | **Different:** every date-time is an RFC 3339 string in the tree ([design.md](design.md#format-dialects)). The fourth hook parses it into a `time.Time` field, and a `string` field gets the text. Through `KoanfProvider`, koanf's own decoding sees strings, so it needs a string-to-time hook of its own. |
+| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order (DL-148). koanf's hooks are unexported, so we reimplement them with the same behaviour. `DecodeHook()` returns them composed. |
+| Dates           | go-toml hands TOML date-times through as `time.Time`                          | Every date-time is an RFC 3339 string in the tree ([design.md](design.md#format-dialects)). The `TextUnmarshaler` hook already parses it into a `time.Time` field, because `time.Time` implements `UnmarshalText`, and a `string` field gets the text. A date-only or local date-time string into `time.Time` is a `*DecodeError`. Through `KoanfProvider`, koanf's own decoding sees the same strings and decodes them the same way. |
 | Weak typing     | `WeaklyTypedInput: true`                                                     | The same, so env-var strings such as `"8080"` decode into `int`. |
-| Custom decoder  | `UnmarshalConf.DecoderConfig` replaces the defaults                          | `WithDecoderConfig(*mapstructure.DecoderConfig)`, with the same semantics. We set `Result`, and `TagName` falls back to `koanf` if empty. |
+| Custom decoder  | `UnmarshalConf.DecoderConfig` replaces the defaults                          | `WithDecoderConfig(*mapstructure.DecoderConfig)`, with the same semantics (DL-149): the app's config, hooks included, replaces ours, so an app that wants day durations composes `DecodeHook()` into its own. The config is copied when the option is applied. We set `Result`, and `TagName` falls back to `koanf` if empty. A `Metadata` in it is an `*OptionError`, because concurrent decodes would all write to it; unknown keys are in the report and the error instead. |
 | Flat paths      | `UnmarshalConf.FlatPaths`                                                    | `WithFlatPaths()`.                                   |
 | Key delimiter   | `.` by default                                                               | `.`, as in [merge-rule paths](design.md#per-key-merge-rules). |
 
-**Using koanf directly:** `loader.KoanfProvider()` returns a value whose `Read()` gives the merged tree. Its
-`ReadBytes()` returns an error, because the tree has no single byte form. It satisfies `koanf.Provider` by method set
-alone, so cascadingconfig doesn't import koanf. An app can then run `k.Load(loader.KoanfProvider(), nil)`, use our
+**Using koanf directly:** `loader.KoanfProvider()` returns a value whose `Read()` runs a load and gives the merged tree
+(DL-160). It loads with `context.Background()`, as koanf's own providers have no context, and returns any load error.
+Its `ReadBytes()` returns an error, because the tree has no single byte form. It satisfies `koanf.Provider` by method
+set alone, so cascadingconfig doesn't import koanf. An app can then run `k.Load(loader.KoanfProvider(), nil)`, use our
 discovery and merging, and keep its koanf decoding code.
 
-**Unknown keys** are keys in the tree that no struct field consumes:
+**`DecodeAt`** (DL-160) decodes the subtree at a path. A path that isn't in the tree is not an error, and `v` is left
+untouched, as in koanf. A path string that doesn't parse, or a `v` that isn't a non-nil pointer, is a programming error:
+a `*BaseError` with code 400. On a failed result, `Decode` and `DecodeAt` return the load's error again.
+
+**Unknown keys** are keys in the tree that no struct field consumes (DL-151):
 
 - **Default: ignore, with a warning.** Each unknown key is logged through the [logger](design.md#warnings-and-logging),
   with the file that set it, for example "`sever.port` (set by `./myapp.toml`) matches no field". It is also recorded in
-  the report.
-- **Strict mode:** `WithUnknownKeys(cascadingconfig.UnknownKeysError)` makes them a `*DecodeError`, listing every
-  unknown key with its origin.
-- **How they're found:** through mapstructure's `Metadata.Unused`. If the app supplies its own `DecoderConfig` with
-  `Metadata`, both are filled. If the app sets `ErrorUnused` itself, mapstructure's error is wrapped in a
-  `*DecodeError`.
+  the report, as a `WarnUnknownKey` warning.
+- **Strict mode:** `WithUnknownKeys(cascadingconfig.UnknownKeysError)` makes each unknown key a `*DecodeError` with
+  `Unknown` set, naming the key and its origin. They're returned joined.
+- **Silent:** `WithUnknownKeys(cascadingconfig.UnknownKeysIgnore)` neither logs nor records them, for apps that decode
+  one tree into several partial structs.
+- **Recorded on the result.** Unknown keys are found when decoding, after the load, so the `Result` records those of
+  every decode made through it, once each, under a lock. `Describe()` returns a snapshot. `Load[T]` decodes once.
+- **Inside arrays,** a key is named as mapstructure names it, for example `servers[0].hots`, and attributed to that
+  element's layer.
+- **A table no field consumes** is listed as each of its leaf keys, such as `sever.port`, because each may come from a
+  different file. mapstructure itself reports only the table.
+- **How they're found:** through mapstructure's `Metadata.Unused`. If the app sets `ErrorUnused` itself, mapstructure's
+  error is wrapped in a `*DecodeError`.
 
-**Decode errors carry provenance.** For example: "`server.port`: expected int, got string `"80a"`, set by
-`~/work/app/myapp.local.toml`".
+**Decode errors carry provenance, never values** (DL-150). Each key that fails is its own `*DecodeError`, with `Key` set
+to the key, `Path` to the file that set it and `Scope` to its scope, and several are joined. For example:
+"`cascadingconfig: decode: server.port: expected int, got a string, set by ~/work/app/myapp.local.toml`". The value is
+left out, because config often holds secrets and errors end up in logs. Mapstructure's own error, which does quote it,
+is still reachable through `Unwrap`. The file named is the value's own layer: an array element's layer for an element,
+the latest layer for a table several layers merged into, `defaults` for a default, and the variable (`Origin.EnvVar`)
+for a key from `EnvVars`.
 
 **`null` and defaults set in Go code.** Decoding keeps koanf's mapstructure setting, `ZeroFields: false`:
 
@@ -653,6 +725,19 @@ cascadingconfig.WithDefaults(Config{
 - **Traceable:** `Describe()` lists the defaults scope, and `OriginOf` reports "set by defaults".
 - **Trust:** `TrustSystem`, because the values come from the app's own code. They aren't a file, so
   `RequireConfig(RequireFile)` doesn't count them.
+- **The scope** (DL-153) is `ScopeDefaults` (`"defaults"`), of kind `Defaults` in the report:
+  - **Always the lowest, and always selected,** so a later `WithScopes` can't silently drop it. This is the one
+    exception to "a custom scope needs `WithScopes`". `WithoutScopes(ScopeDefaults)` still removes it.
+  - **A name clash** with a scope the app defines is the usual "already defined" `*OptionError`.
+  - **A second `WithDefaults`** replaces the first.
+  - **The struct tag** is `WithTag`'s, or `WithDecoderConfig`'s `TagName`, read after every option is applied, so the
+    order of options doesn't matter.
+  - **Zero values:** a nil pointer is left out, but a non-nil pointer to a zero value is included. That is how an app
+    sets an explicit zero default.
+  - **Invalid values** are `*OptionError`s naming the field: a nil value, a value that isn't a struct, a pointer to one
+    or a map with string keys, a map with other keys, a func, chan or complex value, and a `uint64` beyond the `int64`
+    range.
+  - **All-zero defaults** give an empty layer, which counts as nothing found for `RequireConfig`.
 - **Pre-filling still works** with `res.Decode(&cfg)`, for apps that prefer it. It isn't available to `Load[T]` or
   `Watch[T]`, which always decode into a fresh value, so `WithDefaults` is the documented route.
 - **One mechanism.** There's no `SetDefaults()` method or `Defaulter` interface.
@@ -791,7 +876,7 @@ func Errors(err error) []error
 | `*ConflictError`          | 409  | `ErrConflict`          | More than one file in one slot with `ConflictFail`.                         |
 | `*TooLargeError`          | 413  | `ErrTooLarge`          | A remote include is over the size limit.                                    |
 | `*UnsupportedFormatError` | 415  | `ErrUnsupportedFormat` | No decoder for an extension or `Content-Type`.                              |
-| `*DecodeError`            | 422  | `ErrDecode`            | Decoding into a struct failed: type mismatch, or unknown keys in strict mode. |
+| `*DecodeError`            | 422  | `ErrDecode`            | Decoding into a struct failed: a type mismatch, or an unknown key in strict mode. One per key, with `Key` and `Unknown` set, and the file that set it in `Path`. |
 | `*MergeError`             | 422  | `ErrMerge`             | A merge rule met the wrong type, or a `MergeFunc` returned an error.        |
 | `*TransformError`         | 422  | `ErrTransform`         | A transform hook returned an error.                                         |
 | `*FetchError`             | 502 / 504 | `ErrFetch`        | A remote include couldn't be fetched (504 for a timeout).                   |
@@ -808,14 +893,23 @@ func Errors(err error) []error
   `*BaseError`, code 500, whose `Op` names the callback and whose `Unwrap` returns the app's error. Transform errors
   keep their own type, `*TransformError`.
 
-**A failed load still returns a result.** `loader.Load` returns a non-nil `*Result` alongside the error. Its report
-shows what was found, what loaded and what broke, which is what a diagnostic command needs. Its `Tree()` is `nil`, so
-half-merged config can't be used by mistake. `Load[T]` returns the zero `T` and the error; use `loader.Load` when the
-report is needed.
+**A failed load still returns a result** (DL-156). `loader.Load` returns a non-nil `*Result` alongside the error. Its
+report shows what was found, what loaded and what broke, which is what a diagnostic command needs. Its `Tree()` is
+`nil`, so half-merged config can't be used by mistake. `Load[T]` returns the zero `T` and the error; use `loader.Load`
+when the report is needed.
 
-**Several errors in one load:**
+- **A file that broke** is listed as `LayerFailed`. Its `Reason` is built from the error's fields, such as "parse error
+  at line 3, column 7", never from the parser's message, which can quote the file's contents.
+- **Decoding a failed result** with `Decode` or `DecodeAt` returns the load's error again.
 
-- **All of them are returned,** joined with `errors.Join`, so one run reports every broken file, not just the first.
+**Several errors in one load** (DL-155):
+
+- **A load runs in stages:** settings (the format order, bootstrap files and environments), then discovery and reading
+  every file, then merging, then the `RequireConfig` checks.
+- **Each stage reports every error it finds,** joined with `errors.Join`, so one run reports every broken file, not just
+  the first.
+- **A failed stage stops the load.** Merging only the layers that did decode would report misleading merge errors, and a
+  requirement can't be judged without the files.
 - **Inspecting them:** `errors.Is` and `errors.As` already search joined errors. `CodeOf` returns the first code it
   finds, and `cascadingconfig.Errors(err)` returns the individual errors.
 
@@ -863,8 +957,18 @@ cascadingconfig.RequireConfig(cascadingconfig.RequireFile|cascadingconfig.Requir
 	cascadingconfig.ScopeSystem),
 ```
 
-- **Errors:** each unmet requirement is a `*NotFoundError` (404) that names the requirement. Several are joined, like
-  other load errors. An unknown scope is an `*OptionError` at `New`.
+- **What counts** (DL-157):
+  - **Empty value layers don't count at all.** A value scope with no keys, such as an `EnvVars` scope that matched no
+    variable or all-zero defaults, counts as nothing found. Otherwise `RequireAny` would pass whenever such a scope is
+    selected.
+  - **Empty files** count for `RequireAny` and `RequireFile`, but not with `RequireNonEmpty`. `{}` isn't empty.
+  - **Skipped layers don't count:** ignored, unreadable, failed and duplicate ones, files a first-match search didn't
+    choose, and bootstrap files.
+  - **Explicit files** count for the scope they replace, through `ReplacedByConfigFiles` or `ReplacedByFile`. Under
+    `WithConfigFilesOnly`, they count for every scope a requirement lists.
+- **Errors:** each unmet requirement is a `*NotFoundError` (404) that names the requirement, with `Op` `RequireConfig`.
+  Several are joined, like other load errors. An unknown scope, or one that isn't selected, is an `*OptionError` at
+  `New`.
 
 ## Describe
 
@@ -881,7 +985,15 @@ cascadingconfig.RequireConfig(cascadingconfig.RequireFile|cascadingconfig.Requir
 - **Per-key lookup:** `cascadingconfig.OriginOf(res, "server.port")` returns the layer that set the value, or the layers
   for `Append`/`Prepend`, plus any `_unset` or null history.
 - **Context:** the report also lists the selected and unselected scopes, the active environments, the format order, each
-  scope's effective policy, and the env-var bindings.
+  scope's effective policy (from M7, DL-159), the bootstrap files and the env-var bindings.
+- **Duplicates** (DL-158): a file reached by two routes is listed at the position it loaded from, and the other route is
+  a `LayerDuplicate` entry whose `Reason` names the route that was kept.
+- **Unknown keys** found by decodes through the result are in `Warnings`, as `WarnUnknownKey` (DL-151).
+- **JSON** uses `snake_case` field names, and enums encode as strings (`"loaded"`, `"project"`, `"env_local"`) through
+  `MarshalText`. A `Path` encodes as its dotted string. Empty fields are left out.
+- **Text:** `String()` prints a header (preset, formats, environments), then the scopes, then the bootstrap files and
+  layers, one line each, grouped by scope and lowest first, as `mise config ls` does, then the bindings and the
+  warnings. A layer with no path, such as a value scope's, is named after its scope.
 
 ## Core types
 
@@ -982,9 +1094,9 @@ type Layer struct {
 	ConfigRoot string
 	Pattern    string      // the pattern that matched, e.g. ".config/{name}/config.{ext}"
 	Trust      TrustLevel
-	Remote     *Remote     // set for remote includes: scheme, normalised reference, fetched identity
+	Remote     *Remote     // set for remote includes: scheme, normalised reference, fetched identity (M8, DL-159)
 	IncludedBy string      // Path of the including layer, if any
-	Status     LayerStatus // LayerLoaded, LayerEmpty, LayerIgnored, LayerUnreadable, LayerUntrusted, …
+	Status     LayerStatus // LayerLoaded, LayerEmpty, LayerIgnored, LayerUnreadable, LayerFailed, LayerDuplicate, …
 	Reason     string      // why the layer was skipped, if it was
 	Warnings   []Warning
 }
@@ -1005,19 +1117,51 @@ func DecodeAt[P PathSpec](r *Result, path P, v any) error
 func OriginOf[P PathSpec](r *Result, path P) (Origin, bool) // "OriginOf" because the type is called Origin
 
 type Report struct {
-	Preset   string
-	Scopes   []ScopeInfo   // selected and unselected, with kind, trust and effective policy
-	Envs     EnvInfo       // selected and platform environments, with where each came from
-	Formats  []string      // effective format order
-	Layers   []Layer       // loaded and skipped, lowest precedence first
-	Probes   []Probe       // locations searched where nothing was found, only with WithProbes
-	Bindings []BindingInfo // env-var name, what it controls, whether it is set
-	Warnings []Warning
+	Preset    string        // the name of the preset given to NewWithPreset, or ""
+	Scopes    []ScopeInfo   // selected and unselected, lowest precedence first
+	Envs      EnvInfo       // selected and platform environments, with where they came from
+	Formats   []string      // effective format order
+	Bootstrap []Layer       // the bootstrap files read, lowest precedence first
+	Layers    []Layer       // loaded and skipped, lowest precedence first
+	Probes    []Probe       // locations searched where nothing was found, only with WithProbes
+	Bindings  []BindingInfo // every declared binding
+	Warnings  []Warning     // warnings that belong to no layer, and unknown keys
 }
+
+type ScopeInfo struct {
+	Name     ScopeName
+	Kind     string // "FixedDir", "Walk", "ExplicitFile", "EmbeddedFS", "Values", "ValuesFunc", "EnvVars", "Defaults", "Scope"
+	Trust    TrustLevel
+	Selected bool
+	Skipped  string // why a selected scope wasn't searched, such as "disabled by MYAPP_X" or "replaced by explicit files"
+	// M7 adds the effective policy (DL-159).
+}
+
+type EnvInfo struct {
+	Selected []string // lowest precedence first
+	Source   string   // "WithEnvs", the variable's name, or the bootstrap file's path; "" when none are selected
+	Platform []string // lowest precedence first
+}
+
+type Probe struct {
+	Scope   ScopeName
+	Dir     string
+	Pattern string // the pattern searched, with {env} filled in
+}
+
+type BindingInfo struct {
+	Binding Binding
+	Var     string // the variable's name, such as MYAPP_ENV
+	Set     bool   // never the value
+}
+
+func (r *Report) String() string
+func (r *Report) MarshalJSON() ([]byte, error)
 
 type Origin struct {
 	Layer    Layer        // the latest layer to set, merge into, null or unset the value
 	Kind     OriginKind   // what that layer did
+	EnvVar   string       // the variable that set the value, for keys from EnvVars (DL-152)
 	Elements []Layer      // OriginAppended and OriginPrepended only: each element's layer, in order
 	History  []OriginStep // the earlier steps, oldest first
 }
@@ -1040,6 +1184,8 @@ type OriginKind int
   - **History restarts** when an enclosing table is replaced, set to null or unset. That event is in the table's own
     history, not repeated on every key below it.
   - **A no-op unset,** of a key that wasn't there, leaves no step.
+  - **`EnvVar`** (DL-152) names the variable that set the value, for keys from an `EnvVars` scope, including through
+    `MapEnv`. A scope is still one layer.
 
 - **No config values in the report.** `Report.String()`, its JSON, `Origin` and the `String()` of a hot-reload `Diff`
   contain paths, keys and layer metadata, never values, because config often holds secrets. Values are available only
