@@ -1,0 +1,2 @@
+system /opt/system.toml shared - /opt loaded
+user /opt/global.toml shared - /home/me loaded

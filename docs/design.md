@@ -63,6 +63,10 @@ Environments select the `env` and `env-local` [variants](#scope-terminology): fi
 2. `{NAME}_ENV`, a comma list
 3. `env = [...]` in a bootstrap file
 
+The first source that is set wins. A name selected twice keeps only its later position (DL-121). An unsafe name from
+`{NAME}_ENV` is an `*OptionError` at `Load` whose `Op` is the variable's name, and so is a built filename longer than
+255 bytes or one that leaves its directory.
+
 **Platform environments** are always active (see [Deviations from mise](#deviations-from-mise)):
 
 - **Names:** `unix` (where it applies), then `{os}`, then `{os}-{arch}`, such as `linux-x64` or `macos-arm64`. The names
@@ -233,10 +237,18 @@ mise.Preset.Extend(
   `{system}`, and may use `{name}`. Each `Pattern`'s `Template` is a relative file path that may use `{name}` and
   `{ext}`, and may include subdirectories. Patterns are listed lowest precedence first. A relative directory, a template
   that leaves its directory, or an unknown placeholder is an `*OptionError`. Its default trust is `TrustProject`.
-- **Kinds:** a custom scope is built from one of the existing kinds: `FixedDir`, `Walk` (with a stop marker, such as a
-  workspace root), `ExplicitFile`, `Embedded` (a key inside a manifest file, such as `package.json#{name}`; no preset
-  uses it), or `EmbeddedFS` / any `fs.FS`. Fully custom discovery implements the `Scope` interface, just as resolvers
+- **Kinds:** a custom scope is built from one of the existing kinds: `FixedDir`, `Walk`, `ExplicitFile`, or `EmbeddedFS`
+  / any `fs.FS`. A key inside a manifest file, such as `package.json#{name}`, is a pattern with a `Key` (see
+  [Patterns](#patterns)); no preset uses one. Fully custom discovery implements the `Scope` interface, just as resolvers
   implement `IncludeResolver`.
+- **`Walk(patterns...)`** (DL-122) searches the start directory and each parent, as described in
+  [Directory walk](#directory-walk), applying them root-most first. Its default trust is `TrustProject`.
+- **`ExplicitFile(paths...)`** (DL-126) loads the files as given, like [explicit config files](#explicit-config-files).
+  Its default trust is `TrustProject`.
+- **Scope options for bindings** (DL-125): `ReplacedByFile(b)` makes the scope load exactly the file that binding `b`
+  names, when it is set, as an explicit file. `DisabledBy(b)` skips the scope when `b` is set. `ReplacedByConfigFiles()`
+  marks the scope that explicit config files replace. `ConfigRoot(dir)` sets the config root of the scope's
+  `RootSearchDir` patterns, for example `~`.
 - **Defaults:** `WithDefaults(v)` is a ready-made defaults scope, built from a Go value and placed below every other
   scope ([api.md](api.md#defaults)).
 - **Placement** (DL-100): set with `Before(scope)` or `After(scope)`. Precedence follows the preset's order with the
@@ -291,6 +303,37 @@ the app can set its own with `WithLogger(l)`. Examples:
 
 Each warning is also recorded on the layer it concerns, so `Describe()` and tests can see it without capturing logs.
 
+## Patterns
+
+A scope kind lists `Pattern`s, lowest precedence first (DL-117):
+
+```go
+type Pattern struct {
+	Template string   // {name}, {env}, {ext}, and * inside a path segment
+	Variant  Variant  // VariantShared (the default), VariantEnv, VariantLocal, VariantEnvLocal
+	Root     RootMode // RootSearchDir (the default) or RootFileDir
+	Key      string   // optional: a dotted key inside the file whose table is the config
+}
+```
+
+- **Variants:** a template has `{env}` exactly when its variant is `VariantEnv` or `VariantEnvLocal`; anything else is
+  an `*OptionError`.
+- **Order within one directory:** patterns are grouped by variant: shared, then env once per environment (platform
+  environments first, then the selected ones in order), then local, then env-local in the same environment order. Within
+  a group they keep their listed order. A layout reproduces mise's layers A–D by listing them in mise's order.
+- **Globs** (DL-118): `*` is the only glob character, and it matches within one path segment. In the file name it
+  matches a non-empty name with no dots, so `conf.d/*.{ext}` never takes `10-node.dev.toml` as a shared file and
+  `conf.d/*.{env}.{ext}` reads its environment from the dot. In a directory segment it matches any directory whose name
+  doesn't start with a dot. Matches apply in alphabetical order, and each stem is its own slot. Other glob characters
+  are literal, and `**` is an `*OptionError`.
+- **Config roots** (DL-119): `RootSearchDir` is the directory being searched, as mise uses even for
+  `.config/{name}/config.toml`. `RootFileDir` is the file's own directory, as for `.config/{name}/{name}.toml` and each
+  `conf.d/*/` folder. The scope option `ConfigRoot(dir)` replaces the search directory as the root, as `MiseLayout`'s
+  user scope does with `~`. Every layer records its `ConfigRoot`, `Pattern`, `Variant` and `Env`.
+- **Keys inside a file** (DL-120): `Key` is a dotted path that may use `{name}`, such as `{name}` for `package.json` or
+  `tool.{name}` for `pyproject.toml`. The table at that key is the file's config. A missing key counts as the file not
+  being found; a value that isn't a table is a `*ParseError` naming the file and the key.
+
 ## Directory walk
 
 `mise.Preset` walks the `project` scope upwards from the start dir:
@@ -307,6 +350,34 @@ it for the main search is a deliberate deviation, because real mise walks the ma
 `WithWalkStop(Root)` restores mise's exact behaviour.
 
 The `user` scope (`~/.config/{name}`) is a separate scope and is not affected by the walk limit.
+
+**Options** (DL-122): `WithStartDir(dir)` sets where the walk starts; by default it is the current directory at each
+load, and a relative value resolves against it. `WithWalkStop(StopAtHome)` is the rule above and the default;
+`WithWalkStop(StopAtRoot)` always walks to `/`. `WithCeilingPaths(paths...)` adds exclusive ceilings, together with
+`{NAME}_CEILING_PATHS`: a ceiling is never searched, and nor is anything above it. The constants aren't `Home` and
+`Root`, because `Root` is already the filesystem's root type.
+
+**A moved user directory** (DL-128): when `{NAME}_CONFIG_DIR` moves the user directory, files under the default
+`~/.config/{name}` that the walk finds are dropped, as mise does, so the old directory doesn't keep loading as project
+config of `~`. They aren't listed among the layers at all.
+
+## `MiseLayout`'s scopes
+
+`MiseLayout` defines four scopes, lowest precedence first, and selects them all (DL-124). Every pattern uses `{ext}`
+where mise has `.toml`.
+
+| Scope      | Kind                  | Patterns                                                                                     | Options                                   |
+| ---------- | --------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `system`   | `FixedDir("{system}")` | `MiseGlobalPatterns()`: mise's global layout ([3.4](config-locations.md#34-global-directory)) | `Trust(TrustSystem)`, `ReplacedByFile(BindSystemConfigFile)` |
+| `user`     | `FixedDir("{user}")`   | the same                                                                                     | `Trust(TrustUser)`, `ConfigRoot("~")`, `ReplacedByFile(BindGlobalConfigFile)` |
+| `project`  | `Walk`                 | layers A–D ([3.2](config-locations.md#32-filenames-within-one-project-directory)), without `.tool-versions` | `ReplacedByConfigFiles()`                 |
+| `override` | `FixedDir("{user}")`   | `config.override.{ext}`, then `config.{env}.override.{ext}`                                  | `Trust(TrustUser)`, `ConfigRoot("~")`, `DisabledBy(BindGlobalConfigFile)` |
+
+- **Dotted `conf.d` fragments:** each `conf.d/*.{env}.{ext}` env pattern, and its env-local counterpart, comes just
+  before the folder fragments of the same `conf.d`, mirroring the shared order of files before folders.
+- **Config roots:** `{name}.{ext}` directly in `.config/{name}/`, and every `conf.d/*/` folder fragment, use
+  `RootFileDir`, as in [3.10](config-locations.md#310-config-root). Everything else uses the search directory, or `~`
+  for the user and override scopes.
 
 ## Bootstrap file
 
@@ -1135,11 +1206,17 @@ with every character outside `[A-Z0-9]` replaced by `_`.
 | `{NAME}_OVERRIDE_CONFIG_FILENAMES` | Replaces Layer A's names and removes Layer C, as in mise             | comma list           |
 | `{NAME}_CONFIG_FORMATS`           | Format precedence ([File format precedence](#file-format-precedence)) | comma list         |
 
-- **List separators:** a "path list" uses the OS separator (`:`, or `;` on Windows). A "comma list" uses `,`, with
-  surrounding spaces trimmed.
+- **List separators:** a "path list" uses the OS separator (`:`, or `;` on Windows), from the host, so a fake Windows
+  host uses `;`. Empty entries are dropped. A "comma list" uses `,`, with surrounding spaces trimmed (DL-123).
+- **Combined with options:** `{NAME}_CEILING_PATHS` and `{NAME}_IGNORED_CONFIG_PATHS` add to `WithCeilingPaths` and
+  `WithIgnoredPaths`, because both only add ceilings or ignored paths. Every other binding is overridden by its option.
 - **Empty values** count as unset.
 - **Relative paths** are resolved against the current directory, and a leading `~` is expanded.
-- **Ignored paths** match a file, or every file below a directory, after resolving symlinks. They aren't globs.
+- **Ignored paths** match a file, or every file below a directory, after resolving symlinks. They aren't globs. A
+  matching candidate is listed as `LayerIgnored` with a reason, but no warning, because the user asked for it. Explicit
+  files are never ignored (DL-127).
+- **Override filenames** replace the shared patterns of every `Walk` scope with the listed names, in order, and remove
+  its local patterns; env and env-local patterns stay (DL-125).
 - **Override filenames** are full names, and may use `{ext}`. For example, `custom.{ext}` matches `custom.toml` and
   `custom.yaml`.
 - **Single-file variables** (`{NAME}_GLOBAL_CONFIG_FILE`, `{NAME}_SYSTEM_CONFIG_FILE`) behave like
@@ -1172,7 +1249,12 @@ cascadingconfig.WithConfigFiles(flagValues...) // usually fed from a --config fl
 or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
 
 - **What it replaces (`mise.Preset`):** the project scope only. The directory walk is skipped, but the system, user and
-  override scopes still apply.
+  override scopes still apply. Generally, the files replace the scope marked `ReplacedByConfigFiles()`, at its position,
+  even when it isn't selected, and take `TrustProject` and that scope's name. With no marked scope, they go above every
+  scope (DL-126). An explicit file's config root is its scope's `ConfigRoot`, if it has one, and otherwise the file's
+  own directory.
+- **Errors:** a missing file is a `*NotFoundError` (404), an unregistered format an `*UnsupportedFormatError` (415), and
+  a file that can't be read, or a directory, an `*IOError`.
 - **What it replaces (`cosmiconfig.Preset`):** everything. This matches cosmiconfig's `load(path)`, which reads only
   that file.
 - **No variants:** the files are loaded as given. `.local` and `.{env}` siblings aren't added.
@@ -1529,6 +1611,20 @@ There are no open questions.
 | 114 | The file-reading check                      | A selected file-reading scope with an empty format order is an `*OptionError`. |
 | 115 | Options settled in M4a                      | `WithFileSystem`, `MountFS`, `WithMaxFileSize` and `WithLogger`; a nil filesystem or logger, or a size of zero or less, is an `*OptionError`; warnings are logged at Warn level with their code and file. |
 | 116 | Golden tests in M4a                         | They cover `FixedDir` scopes; the worked example moves to M4b. |
+| 117 | Pattern fields                              | `Template`, `Variant`, `Root` and `Key`; `{env}` exactly for the env variants; patterns grouped by variant within a directory (see [Patterns](#patterns)). |
+| 118 | Globs                                       | `*` within one segment: no dots in a file name, no leading dot in a directory name; alphabetical; one slot per stem. |
+| 119 | Config roots                                | `RootSearchDir` and `RootFileDir`, and the `ConfigRoot(dir)` scope option; layers record root, pattern, variant and env. |
+| 120 | Keys inside files                           | `Pattern.Key` replaces the `Embedded` kind; a missing key means not found, a non-table value is a `*ParseError`. |
+| 121 | Choosing environments                       | `WithEnvs`, then `{NAME}_ENV`; a repeated name keeps its later position; platform envs below; unsafe names and filenames are `*OptionError`s at `Load` (see [Environments](#environments)). |
+| 122 | The walk                                    | `Walk(patterns...)`, `WithStartDir`, `WithWalkStop` (`StopAtHome` or `StopAtRoot`) and `WithCeilingPaths`; root markers come with M4d (see [Directory walk](#directory-walk)). |
+| 123 | Path lists                                  | The host's list separator; empty entries dropped; relative entries against the current directory; `~` expanded. |
+| 124 | `MiseLayout`'s scopes                       | system, user, project and override, as listed in [`MiseLayout`'s scopes](#miselayouts-scopes). |
+| 125 | Bindings that replace or disable scopes     | `ReplacedByFile(b)` and `DisabledBy(b)`; override filenames replace a walk's shared patterns and remove its local ones. |
+| 126 | Explicit files                              | The `ExplicitFile(paths...)` kind, and `ReplacedByConfigFiles()` marking the scope they replace; errors 404, 415 and `*IOError` (see [Explicit config files](#explicit-config-files)). |
+| 127 | Ignored paths                               | `WithIgnoredPaths` with the env var; matches are `LayerIgnored` without a warning; explicit files are never ignored. |
+| 128 | A moved user directory                      | The walk drops files under the default user directory when `{NAME}_CONFIG_DIR` moves it, as mise does. |
+| 129 | Golden tests in M4b                         | The worked example, a full directory with layers A–D, the user and override scopes, and walks from inside and outside `~`. |
+| 130 | Sharing mise's global patterns              | `MiseGlobalPatterns()` returns them, a fresh copy each call, for the system and user scopes and for apps' own scopes, such as a mounted config directory. A package can't hold them, because `Pattern` lives in the core. |
 
 ---
 

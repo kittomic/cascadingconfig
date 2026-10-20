@@ -2,7 +2,9 @@ package cascadingconfig
 
 import (
 	"errors"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/kittomic/cascadingconfig/internal/tree"
 )
@@ -67,13 +69,20 @@ func WithScope(name ScopeName, kind ScopeKind, opts ...ScopeOption) Option {
 		kind.check(c)
 		invalid := len(c.errs) > before
 
-		spec := scopeSpec{def: &scopeDef{name: name, kind: kind, trust: kind.defaultTrust(), invalid: invalid}}
+		spec := scopeSpec{c: c, def: &scopeDef{name: name, kind: kind, trust: kind.defaultTrust(), invalid: invalid}}
 		for _, o := range opts {
 			if o == nil {
 				c.fail("WithScope", "the scope %q has a nil option", name)
 				continue
 			}
 			o.applyScopeOption(&spec)
+		}
+		if spec.def.explicitFiles {
+			for _, other := range c.scopes {
+				if other.explicitFiles {
+					c.fail("ReplacedByConfigFiles", "both %q and %q are marked; only one scope can be", other.name, name)
+				}
+			}
 		}
 		at, err := c.placement(spec)
 		if err != nil {
@@ -86,6 +95,7 @@ func WithScope(name ScopeName, kind ScopeKind, opts ...ScopeOption) Option {
 
 // scopeSpec is a scope being defined: its definition, and where it goes.
 type scopeSpec struct {
+	c             *config
 	def           *scopeDef
 	before, after []ScopeName
 }
@@ -123,6 +133,50 @@ func Before(scope ScopeName) ScopeOption {
 // After places a scope directly above scope, which must already be defined.
 func After(scope ScopeName) ScopeOption {
 	return scopeOptionFunc(func(s *scopeSpec) { s.after = append(s.after, scope) })
+}
+
+// ConfigRoot sets the config root of the scope's RootSearchDir patterns, such as ~. It may start with ~.
+func ConfigRoot(dir string) ScopeOption {
+	return scopeOptionFunc(func(s *scopeSpec) {
+		if dir == "" || !isHomePath(dir) && !filepath.IsAbs(dir) {
+			s.c.fail("ConfigRoot", "the config root %q must be absolute or start with ~", dir)
+			return
+		}
+		s.def.configRoot = dir
+	})
+}
+
+// ReplacedByFile makes the scope load exactly the file that binding b names, when it is set, as an explicit file.
+func ReplacedByFile(b Binding) ScopeOption {
+	return scopeOptionFunc(func(s *scopeSpec) {
+		if b == "" {
+			s.c.fail("ReplacedByFile", "an empty binding key")
+			return
+		}
+		s.def.replacedByFile = b
+	})
+}
+
+// DisabledBy skips the scope when binding b is set.
+func DisabledBy(b Binding) ScopeOption {
+	return scopeOptionFunc(func(s *scopeSpec) {
+		if b == "" {
+			s.c.fail("DisabledBy", "an empty binding key")
+			return
+		}
+		s.def.disabledBy = b
+	})
+}
+
+// ReplacedByConfigFiles marks the scope that explicit config files replace, from WithConfigFiles or
+// {NAME}_CONFIG_FILE. They load at its position, even when it isn't selected.
+func ReplacedByConfigFiles() ScopeOption {
+	return scopeOptionFunc(func(s *scopeSpec) { s.def.explicitFiles = true })
+}
+
+// isHomePath reports whether p starts with ~, as ~ or ~/….
+func isHomePath(p string) bool {
+	return p == "~" || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`)
 }
 
 // Trust sets a scope's trust level, overriding its kind's default.

@@ -1,0 +1,7 @@
+s /d/b.json shared - /d loaded
+s /d/a.json shared - /d loaded
+s /d/a.dev.json env dev /d loaded
+s /d/a.ci.json env ci /d loaded
+s /d/a.local.json local - /d loaded
+s /d/a.dev.local.json env-local dev /d loaded
+s /d/a.ci.local.json env-local ci /d loaded

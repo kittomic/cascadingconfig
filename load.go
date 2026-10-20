@@ -7,8 +7,10 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -17,18 +19,41 @@ import (
 // returned, joined.
 func (l *Loader) Load(ctx context.Context) (*Result, error) {
 	c := l.cfg
-	ld := &loading{ctx: ctx, c: c, roots: map[string]Root{}}
+	ld := &loading{ctx: ctx, c: c, roots: map[string]Root{}, dirs: map[string][]fs.DirEntry{}}
 	defer ld.closeRoots()
 	for _, f := range c.order {
 		ld.order = append(ld.order, c.decoder(f))
 	}
+	if err := ld.selectEnvs(); err != nil {
+		return nil, err
+	}
+	ld.ignoredPaths()
 
-	for _, name := range c.scopeOrder() {
+	explicit := c.configFiles
+	if explicit == nil {
+		if v := ld.binding(BindConfigFile); v != "" {
+			explicit = ld.pathList(v)
+		}
+	}
+	placed := false
+	for _, s := range c.scopes {
 		if err := ctx.Err(); err != nil {
 			return nil, contextError(err)
 		}
-		s := c.scope(name)
-		s.kind.discover(ld, s)
+		switch {
+		case s.explicitFiles && explicit != nil:
+			ld.loadExplicit(explicit, s.name, TrustProject, s)
+			placed = true
+		case !c.selected[s.name]:
+		case s.disabledBy != "" && ld.binding(s.disabledBy) != "":
+		case s.replacedByFile != "" && ld.binding(s.replacedByFile) != "":
+			ld.loadExplicit([]string{ld.binding(s.replacedByFile)}, s.name, s.trust, s)
+		default:
+			s.kind.discover(ld, s)
+		}
+	}
+	if explicit != nil && !placed {
+		ld.loadExplicit(explicit, "", TrustProject, nil)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, contextError(err)
@@ -63,6 +88,14 @@ type loading struct {
 	entries  []*entry  // lowest precedence first
 	warnings []Warning // warnings that belong to no layer
 	roots    map[string]Root
+	dirs     map[string][]fs.DirEntry // directory listings, by root and path
+
+	envs      []string // the environments, lowest precedence first
+	envSource string   // where the selected environments came from, for errors
+	ignored   []string // ignored paths, with symlinks resolved
+	dropUnder string   // the default user directory, when {NAME}_CONFIG_DIR moved it
+	walk      []string // the walk's directories, once worked out
+	walked    bool
 }
 
 // entry is one layer the load considered, or a problem that fails it.
@@ -71,7 +104,10 @@ type entry struct {
 	data  []byte      // a file's contents
 	tree  Tree        // a value scope's tree
 	info  fs.FileInfo // a file's identity in the loader's FileSystem, for dedup; nil for EmbeddedFS
+	key   Path        // the table inside the file that holds the config, if the pattern has a Key
 	err   error
+
+	dropped bool // the pattern's key wasn't in the file, so it counts as not found
 }
 
 func (ld *loading) addError(err error) {
@@ -132,7 +168,7 @@ func (ld *loading) resolveDir(tpl string, s *scopeDef) (string, bool) {
 			return "", false
 		}
 		base = dir
-	case tpl == "~" || strings.HasPrefix(tpl, "~/") || strings.HasPrefix(tpl, `~\`):
+	case isHomePath(tpl):
 		home, err := c.host.Home()
 		if err != nil {
 			ld.noHome(s, err)
@@ -140,7 +176,7 @@ func (ld *loading) resolveDir(tpl string, s *scopeDef) (string, bool) {
 		}
 		base, rest = home, tpl[1:]
 	}
-	return filepath.Clean(base + filepath.FromSlash(expand(rest, c.name, ""))), true
+	return filepath.Clean(base + filepath.FromSlash(expand(rest, c.name, "", ""))), true
 }
 
 // platformDir returns a platform directory: the binding's value when it is declared and set, or else def's.
@@ -162,7 +198,7 @@ func (ld *loading) platformDir(b Binding, def func() (string, error), s *scopeDe
 // hostPath resolves a path from an env var: ~ is expanded, and a relative path is relative to the current directory.
 func (ld *loading) hostPath(p string, s *scopeDef) (string, bool) {
 	h := ld.c.host
-	if p == "~" || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
+	if isHomePath(p) {
 		home, err := h.Home()
 		if err != nil {
 			ld.noHome(s, err)
@@ -175,48 +211,165 @@ func (ld *loading) hostPath(p string, s *scopeDef) (string, bool) {
 	}
 	cwd, err := h.Cwd()
 	if err != nil {
-		ld.addError(&IOError{BaseError: BaseError{Op: "load", Path: p, Scope: string(s.name), Err: err}})
+		ld.addError(&IOError{BaseError: BaseError{Op: "load", Path: p, Scope: scopeName(s), Err: err}})
 		return "", false
 	}
 	return filepath.Join(cwd, p), true
 }
 
-func (ld *loading) noHome(s *scopeDef, err error) {
-	ld.warnings = append(ld.warnings, Warning{
-		Code: WarnNoHome, Message: fmt.Sprintf("the scope %q was skipped: %v", s.name, err),
-	})
+func scopeName(s *scopeDef) string {
+	if s == nil {
+		return ""
+	}
+	return string(s.name)
 }
 
-// search finds each pattern's files in root, lowest precedence first. dir is root's path, or empty for an fs.FS, whose
-// layers are named by their slash path. follow says whether symlinks can be followed through the loader's FileSystem.
-func (ld *loading) search(root Root, dir string, patterns []Pattern, s *scopeDef, follow bool) {
-	for _, p := range patterns {
-		sub := path.Dir(p.Template)
-		if sub != "." {
-			sub = expand(sub, ld.c.name, "")
-		}
-		entries, err := root.ReadDir(sub)
-		if err != nil {
-			if !errors.Is(err, fs.ErrNotExist) {
-				ld.warnings = append(ld.warnings, Warning{
-					Code: WarnUnreadable, Path: ld.join(dir, sub), Message: fmt.Sprintf("%s can't be searched: %v", ld.join(dir, sub), err),
-				})
+func (ld *loading) noHome(s *scopeDef, err error) {
+	msg := fmt.Sprintf("a path with ~ was skipped: %v", err)
+	if s != nil {
+		msg = fmt.Sprintf("the scope %q was skipped: %v", s.name, err)
+	}
+	ld.warnings = append(ld.warnings, Warning{Code: WarnNoHome, Message: msg})
+}
+
+// expansion is one pattern for one environment, or for none.
+type expansion struct {
+	p   Pattern
+	env string
+}
+
+// expansions orders a scope's patterns for one directory: shared, then env once per environment, then local, then
+// env-local, keeping the listed order within each group.
+func (ld *loading) expansions(patterns []Pattern) []expansion {
+	var out []expansion
+	group := func(v Variant, env string) {
+		for _, p := range patterns {
+			if p.Variant == v {
+				out = append(out, expansion{p, env})
 			}
-			continue
-		}
-		types := map[string]fs.FileMode{}
-		for _, e := range entries {
-			types[e.Name()] = e.Type()
-		}
-		for _, l := range ld.candidates(p.Template, types, dir, sub) {
-			l.Scope, l.Trust = s.name, s.trust
-			if l.Status != LayerLoaded {
-				ld.entries = append(ld.entries, &entry{layer: l})
-				continue
-			}
-			ld.read(root, path.Join(sub, path.Base(filepath.ToSlash(l.Path))), types[path.Base(filepath.ToSlash(l.Path))], l, follow)
 		}
 	}
+	group(VariantShared, "")
+	for _, env := range ld.envs {
+		group(VariantEnv, env)
+	}
+	group(VariantLocal, "")
+	for _, env := range ld.envs {
+		group(VariantEnvLocal, env)
+	}
+	return out
+}
+
+// search finds each pattern's files in root, in pattern order. dir is root's path, or empty for an fs.FS, whose layers
+// are named by their slash path. configRoot is the root of RootSearchDir patterns. follow says whether symlinks can be
+// followed through the loader's FileSystem.
+func (ld *loading) search(root Root, dir, configRoot string, patterns []Pattern, s *scopeDef, follow bool) {
+	for _, x := range ld.expansions(patterns) {
+		segs := strings.Split(x.p.Template, "/")
+		subs := []string{"."}
+		for _, seg := range segs[:len(segs)-1] {
+			subs = ld.matchDirs(root, dir, subs, expand(seg, ld.c.name, x.env, ""))
+		}
+		last := segs[len(segs)-1]
+		for _, sub := range subs {
+			entries := ld.readDir(root, dir, sub)
+			if entries == nil {
+				continue
+			}
+			for _, l := range ld.candidates(last, x.env, entries, dir, sub) {
+				l.Scope, l.Trust = s.name, s.trust
+				l.Variant, l.Env, l.Pattern = x.p.Variant, x.env, x.p.Template
+				l.ConfigRoot = configRoot
+				if x.p.Root == RootFileDir {
+					l.ConfigRoot = filepath.Dir(l.Path)
+				}
+				if ld.dropUnder != "" && within(l.Path, ld.dropUnder) {
+					continue
+				}
+				if l.Status != LayerLoaded {
+					ld.entries = append(ld.entries, &entry{layer: l})
+					continue
+				}
+				name := path.Base(filepath.ToSlash(l.Path))
+				var key Path
+				if x.p.Key != "" {
+					key, _ = parsePath(expand(x.p.Key, ld.c.name, "", ""))
+				}
+				ld.read(root, path.Join(sub, name), typeOf(entries, name), l, follow, key)
+			}
+		}
+	}
+}
+
+func typeOf(entries []fs.DirEntry, name string) fs.FileMode {
+	for _, e := range entries {
+		if e.Name() == name {
+			return e.Type()
+		}
+	}
+	return 0
+}
+
+// readDir lists sub, a slash path in root, once per load. A missing directory gives nil; any other failure is a
+// warning.
+func (ld *loading) readDir(root Root, dir, sub string) []fs.DirEntry {
+	key := dir + "\x00" + sub
+	if entries, ok := ld.dirs[key]; ok {
+		return entries
+	}
+	entries, err := root.ReadDir(sub)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			where := ld.join(dir, sub)
+			ld.warnings = append(ld.warnings, Warning{
+				Code: WarnUnreadable, Path: where, Message: fmt.Sprintf("%s can't be searched: %v", where, err),
+			})
+		}
+		entries = nil
+	}
+	if entries == nil {
+		entries = []fs.DirEntry{}
+	}
+	ld.dirs[key] = entries
+	if len(entries) == 0 {
+		return nil
+	}
+	return entries
+}
+
+// matchDirs extends each of subs by one directory segment, which may hold a * glob.
+func (ld *loading) matchDirs(root Root, dir string, subs []string, seg string) []string {
+	if !strings.Contains(seg, "*") {
+		out := make([]string, len(subs))
+		for i, sub := range subs {
+			out[i] = path.Join(sub, seg)
+		}
+		return out
+	}
+	re := globPattern(seg, false)
+	var out []string
+	for _, sub := range subs {
+		for _, e := range ld.readDir(root, dir, sub) {
+			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && re.MatchString(e.Name()) {
+				out = append(out, path.Join(sub, e.Name()))
+			}
+		}
+	}
+	return out
+}
+
+// globPattern turns a path segment with * into a regexp. In a file name, * matches a non-empty name with no dots; in a
+// directory, any non-empty name.
+func globPattern(seg string, file bool) *regexp.Regexp {
+	star := ".+"
+	if file {
+		star = "[^.]+"
+	}
+	parts := strings.Split(seg, "*")
+	for i, p := range parts {
+		parts[i] = regexp.QuoteMeta(p)
+	}
+	return regexp.MustCompile("^" + strings.Join(parts, "("+star+")") + "$")
 }
 
 func (ld *loading) join(dir, slashPath string) string {
@@ -226,39 +379,73 @@ func (ld *loading) join(dir, slashPath string) string {
 	return filepath.Join(dir, filepath.FromSlash(slashPath))
 }
 
-// candidates returns the files that match a template among a directory's entries, lowest precedence first. With
-// {ext}, the files form a slot ordered by orderSlot.
-func (ld *loading) candidates(tpl string, types map[string]fs.FileMode, dir, sub string) []Layer {
+// candidates returns the files in one directory that match a file-name template, lowest precedence first. With
+// {ext}, the files with the same stem form a slot ordered by orderSlot; slots apply in alphabetical order.
+func (ld *loading) candidates(last, env string, entries []fs.DirEntry, dir, sub string) []Layer {
 	name := ld.c.name
-	if !slices.Contains(placeholders(tpl), "{ext}") {
-		file := path.Base(expand(tpl, name, ""))
-		if _, ok := types[file]; !ok {
-			return nil
-		}
-		format, ok := ld.formatOf(file)
-		if !ok {
-			return nil
-		}
-		return []Layer{{Path: ld.join(dir, path.Join(sub, file)), Format: format}}
+	type match struct {
+		file, format string
 	}
-	var slot []Layer
-	for _, d := range ld.order {
-		for _, ext := range d.Extensions() {
-			file := path.Base(expand(tpl, name, ext))
-			if _, ok := types[file]; ok {
-				slot = append(slot, Layer{Path: ld.join(dir, path.Join(sub, file)), Format: d.Format()})
+	slots := map[string][]match{}
+	add := func(e, format string) {
+		if env != "" && len(e) > 255 {
+			ld.envNameError(env, fmt.Errorf("the file name %q is longer than 255 bytes", e))
+			return
+		}
+		if !strings.Contains(e, "*") {
+			if hasEntry(entries, e) {
+				slots[""] = append(slots[""], match{e, format})
+			}
+			return
+		}
+		re := globPattern(e, true)
+		for _, en := range entries {
+			if m := re.FindStringSubmatch(en.Name()); m != nil {
+				stem := strings.Join(m[1:], "\x00")
+				slots[stem] = append(slots[stem], match{en.Name(), format})
 			}
 		}
 	}
-	if len(slot) == 0 {
-		return nil
+	if !slices.Contains(placeholders(last), "{ext}") {
+		e := expand(last, name, env, "")
+		if strings.Contains(e, "*") {
+			re := globPattern(e, true)
+			for _, en := range entries {
+				if re.MatchString(en.Name()) {
+					if format, ok := ld.formatOf(en.Name()); ok {
+						slots[en.Name()] = append(slots[en.Name()], match{en.Name(), format})
+					}
+				}
+			}
+		} else if format, ok := ld.formatOf(e); ok {
+			add(e, format)
+		}
+	} else {
+		for _, d := range ld.order {
+			for _, ext := range d.Extensions() {
+				add(expand(last, name, env, ext), d.Format())
+			}
+		}
 	}
-	ordered, err := orderSlot(slot, ld.order, ld.c.conflict)
-	if err != nil {
-		ld.addError(err)
-		return nil
+
+	var out []Layer
+	for _, stem := range slices.Sorted(maps.Keys(slots)) {
+		var slot []Layer
+		for _, m := range slots[stem] {
+			slot = append(slot, Layer{Path: ld.join(dir, path.Join(sub, m.file)), Format: m.format})
+		}
+		ordered, err := orderSlot(slot, ld.order, ld.c.conflict)
+		if err != nil {
+			ld.addError(err)
+			continue
+		}
+		out = append(out, ordered...)
 	}
-	return ordered
+	return out
+}
+
+func hasEntry(entries []fs.DirEntry, name string) bool {
+	return slices.ContainsFunc(entries, func(e fs.DirEntry) bool { return e.Name() == name })
 }
 
 // formatOf returns the searched format whose decoder claims file's extension.
@@ -272,15 +459,283 @@ func (ld *loading) formatOf(file string) (string, bool) {
 	return "", false
 }
 
+// within reports whether p is dir or below it.
+func within(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && (rel == "." || filepath.IsLocal(rel))
+}
+
+// envNameError reports an environment name that gives an invalid file name, once per name.
+func (ld *loading) envNameError(env string, err error) {
+	op := ld.envSource
+	if op == "" {
+		op = "load"
+	}
+	for _, e := range ld.entries {
+		var oe *OptionError
+		if errors.As(e.err, &oe) && oe.Op == op && strings.Contains(oe.Error(), fmt.Sprintf("%q", env)) {
+			return
+		}
+	}
+	ld.addError(&OptionError{BaseError: BaseError{Op: op, Err: fmt.Errorf("the environment %q: %w", env, err)}})
+}
+
+// binding returns the value of a declared binding's variable, or "" when it isn't declared or set.
+func (ld *loading) binding(b Binding) string {
+	v, ok := ld.c.vars[b]
+	if !ok {
+		return ""
+	}
+	val, _ := ld.c.host.LookupEnv(v)
+	return val
+}
+
+// pathList splits a path-list value with the host's separator, dropping empty entries.
+func (ld *loading) pathList(v string) []string {
+	sep := ":"
+	if ld.c.host.GOOS() == "windows" {
+		sep = ";"
+	}
+	return dropEmpty(strings.Split(v, sep))
+}
+
+// selectEnvs works out the environments: platform ones first, then the selected ones, from WithEnvs or {NAME}_ENV.
+func (ld *loading) selectEnvs() error {
+	c := ld.c
+	selected := c.envs
+	ld.envSource = "WithEnvs"
+	if selected == nil {
+		ld.envSource = c.vars[BindEnv]
+		for _, e := range strings.Split(ld.binding(BindEnv), ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				if err := checkName(e); err != nil {
+					return &OptionError{BaseError: BaseError{Op: ld.envSource, Err: fmt.Errorf("invalid environment name %q: %w", e, err)}}
+				}
+				selected = append(selected, e)
+			}
+		}
+	}
+	var envs []string
+	for i, e := range selected {
+		if !slices.Contains(selected[i+1:], e) {
+			envs = append(envs, e)
+		}
+	}
+	for _, p := range platformEnvs(c.host.GOOS(), c.host.GOARCH()) {
+		if !slices.Contains(envs, p) {
+			ld.envs = append(ld.envs, p)
+		}
+	}
+	ld.envs = append(ld.envs, envs...)
+	return nil
+}
+
+// ignoredPaths resolves WithIgnoredPaths and {NAME}_IGNORED_CONFIG_PATHS.
+func (ld *loading) ignoredPaths() {
+	paths := slices.Clone(ld.c.ignored)
+	if v := ld.binding(BindIgnoredConfigPaths); v != "" {
+		paths = append(paths, ld.pathList(v)...)
+	}
+	for _, p := range paths {
+		abs, ok := ld.hostPath(p, nil)
+		if !ok {
+			continue
+		}
+		if resolved, err := ld.c.fsys.EvalSymlinks(abs); err == nil {
+			abs = resolved
+		}
+		ld.ignored = append(ld.ignored, abs)
+	}
+}
+
+// isIgnored reports whether a file, whose resolved path is resolved, is under an ignored path.
+func (ld *loading) isIgnored(resolved string) (string, bool) {
+	for _, p := range ld.ignored {
+		if within(resolved, p) {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// scopeRoot returns the config root for a scope's RootSearchDir patterns in dir.
+func (ld *loading) scopeRoot(s *scopeDef, dir string) (string, bool) {
+	if s.configRoot == "" {
+		return dir, true
+	}
+	return ld.hostPath(s.configRoot, s)
+}
+
+// overrideFilenames applies {NAME}_OVERRIDE_CONFIG_FILENAMES to a walk's patterns: the listed names replace its
+// shared patterns, and its local patterns are removed.
+func (ld *loading) overrideFilenames(patterns []Pattern) ([]Pattern, bool) {
+	v := ld.binding(BindOverrideConfigFilenames)
+	if v == "" {
+		return patterns, true
+	}
+	var out []Pattern
+	for _, n := range strings.Split(v, ",") {
+		if n = strings.TrimSpace(n); n == "" {
+			continue
+		}
+		p := Pattern{Template: n}
+		if err := checkPattern(p); err != nil {
+			ld.addError(&OptionError{BaseError: BaseError{Op: ld.c.vars[BindOverrideConfigFilenames], Err: err}})
+			return nil, false
+		}
+		out = append(out, p)
+	}
+	for _, p := range patterns {
+		if p.Variant == VariantEnv || p.Variant == VariantEnvLocal {
+			out = append(out, p)
+		}
+	}
+	return out, true
+}
+
+// walkDirs returns the directories a walk searches, root-most first.
+func (ld *loading) walkDirs(s *scopeDef) ([]string, bool) {
+	if ld.walked {
+		return ld.walk, true
+	}
+	c, h := ld.c, ld.c.host
+	cwd, err := h.Cwd()
+	if err != nil {
+		ld.addError(&IOError{BaseError: BaseError{Op: "load", Scope: string(s.name), Err: err}})
+		return nil, false
+	}
+	start := cwd
+	if c.startDir != "" {
+		var ok bool
+		if start, ok = ld.hostPath(c.startDir, s); !ok {
+			return nil, false
+		}
+	}
+	ceilings := map[string]bool{}
+	list := slices.Clone(c.ceilings)
+	if v := ld.binding(BindCeilingPaths); v != "" {
+		list = append(list, ld.pathList(v)...)
+	}
+	for _, p := range list {
+		if abs, ok := ld.hostPath(p, s); ok {
+			ceilings[filepath.Clean(abs)] = true
+		}
+	}
+	home, homeErr := h.Home()
+	var dirs []string
+	for d := filepath.Clean(start); !ceilings[d]; {
+		dirs = append(dirs, d)
+		if c.walkStop == StopAtHome && homeErr == nil && d == filepath.Clean(home) {
+			break
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+	slices.Reverse(dirs)
+
+	if c.dirs != nil {
+		if v := ld.binding(BindConfigDir); v != "" {
+			def, err1 := c.dirs.userDir(h, c.name)
+			moved, ok := ld.hostPath(v, s)
+			if err1 == nil && ok && filepath.Clean(def) != filepath.Clean(moved) {
+				ld.dropUnder = filepath.Clean(def)
+			}
+		}
+	}
+	ld.walk, ld.walked = dirs, true
+	return dirs, true
+}
+
+// loadExplicit loads files as given, at the current position: no variants, any registered decoder, and errors for
+// files that are missing, unreadable or of an unknown format. Explicit files are never ignored.
+func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLevel, s *scopeDef) {
+	c := ld.c
+	for _, p := range paths {
+		abs, ok := ld.hostPath(p, s)
+		if !ok {
+			continue
+		}
+		l := Layer{Path: abs, Scope: scope, Trust: trust, Status: LayerLoaded, ConfigRoot: filepath.Dir(abs)}
+		if s != nil && s.configRoot != "" {
+			if root, ok := ld.hostPath(s.configRoot, s); ok {
+				l.ConfigRoot = root
+			}
+		}
+		base := BaseError{Op: "load", Path: abs, Scope: string(scope)}
+		resolved, err := c.fsys.EvalSymlinks(abs)
+		if err != nil {
+			base.Err = err
+			if errors.Is(err, fs.ErrNotExist) {
+				ld.addError(&NotFoundError{BaseError: base})
+			} else {
+				ld.addError(&IOError{BaseError: base})
+			}
+			continue
+		}
+		format, ok := c.formatFor(strings.TrimPrefix(filepath.Ext(abs), "."))
+		if !ok {
+			base.Err = fmt.Errorf("no registered decoder handles the extension %q", filepath.Ext(abs))
+			ld.addError(&UnsupportedFormatError{BaseError: base})
+			continue
+		}
+		l.Format = format
+		root, err := c.fsys.OpenRoot(filepath.Dir(resolved))
+		if err != nil {
+			base.Err = err
+			ld.addError(&IOError{BaseError: base})
+			continue
+		}
+		info, err := root.Stat(filepath.Base(resolved))
+		switch {
+		case err != nil:
+			base.Err = err
+		case !info.Mode().IsRegular():
+			base.Err = fmt.Errorf("it is %s, not a regular file", describeMode(info.Mode()))
+		case info.Size() > c.maxFileSize:
+			_ = root.Close()
+			ld.addError(tooLarge(l, info.Size(), c.maxFileSize))
+			continue
+		}
+		if base.Err != nil {
+			_ = root.Close()
+			ld.addError(&IOError{BaseError: base})
+			continue
+		}
+		data, err := readLimited(root, filepath.Base(resolved), c.maxFileSize)
+		_ = root.Close()
+		if err != nil {
+			base.Err = err
+			ld.addError(&IOError{BaseError: base})
+			continue
+		}
+		if int64(len(data)) > c.maxFileSize {
+			ld.addError(tooLarge(l, int64(len(data)), c.maxFileSize))
+			continue
+		}
+		ld.entries = append(ld.entries, &entry{layer: l, data: data, info: info})
+	}
+}
+
 // read reads one candidate, named by its slash path in root, whose directory entry has type typ.
-func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow bool) {
+func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow bool, key Path) {
 	c := ld.c
 	r := root
+	if follow && len(ld.ignored) > 0 && typ&fs.ModeSymlink == 0 {
+		if resolved, err := c.fsys.EvalSymlinks(l.Path); err == nil && ld.ignore(l, resolved) {
+			return
+		}
+	}
 	switch {
 	case typ&fs.ModeSymlink != 0 && follow:
 		target, err := c.fsys.EvalSymlinks(l.Path)
 		if err != nil {
 			ld.skip(l, LayerIgnored, WarnBrokenSymlink, fmt.Sprintf("the symlink is broken: %v", err))
+			return
+		}
+		if ld.ignore(l, target) {
 			return
 		}
 		tr, ok := ld.root(filepath.Dir(target))
@@ -316,11 +771,23 @@ func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow
 		ld.addError(tooLarge(l, int64(len(data)), c.maxFileSize))
 		return
 	}
-	e := &entry{layer: l, data: data}
+	e := &entry{layer: l, data: data, key: key}
 	if follow {
 		e.info = info
 	}
 	ld.entries = append(ld.entries, e)
+}
+
+// ignore records l as ignored, without a warning, if resolved is under an ignored path.
+func (ld *loading) ignore(l Layer, resolved string) bool {
+	p, ok := ld.isIgnored(resolved)
+	if !ok {
+		return false
+	}
+	l.Status = LayerIgnored
+	l.Reason = fmt.Sprintf("it is under the ignored path %s", p)
+	ld.entries = append(ld.entries, &entry{layer: l})
+	return true
 }
 
 func readLimited(r Root, name string, limit int64) ([]byte, error) {
@@ -406,16 +873,50 @@ func (ld *loading) decode() ([]mergeLayer, error) {
 				continue
 			}
 			e.tree = doc.Tree
+			if e.key != nil {
+				t, ok, err := subtree(doc.Tree, e.key)
+				if err != nil {
+					errs = append(errs, &ParseError{
+						BaseError: BaseError{Op: "decode", Path: e.layer.Path, Scope: string(e.layer.Scope), Err: err},
+						Format:    e.layer.Format,
+					})
+					continue
+				}
+				if !ok {
+					e.dropped = true
+					continue
+				}
+				e.tree = t
+			}
 		}
 		layers = append(layers, mergeLayer{layer: e.layer, tree: e.tree})
 	}
 	return layers, errors.Join(errs...)
 }
 
+// subtree returns the table at key in t, false if there's nothing there, or an error if the value isn't a table.
+func subtree(t Tree, key Path) (Tree, bool, error) {
+	var v any = t
+	for i, k := range key {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, false, fmt.Errorf("the key %s isn't a table", key[:i])
+		}
+		if v, ok = m[k]; !ok {
+			return nil, false, nil
+		}
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, false, fmt.Errorf("the key %s holds %s, not a table", key, describeType(v))
+	}
+	return m, true, nil
+}
+
 func (ld *loading) found() []Layer {
 	var out []Layer
 	for _, e := range ld.entries {
-		if e.err == nil {
+		if e.err == nil && !e.dropped {
 			out = append(out, e.layer)
 		}
 	}

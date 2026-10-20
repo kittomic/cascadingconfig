@@ -1,0 +1,3 @@
+project /home/me/myapp.json shared - /home/me loaded
+project /home/me/work/myapp.json shared - /home/me/work loaded
+project /home/me/work/app/myapp.json shared - /home/me/work/app loaded

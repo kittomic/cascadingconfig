@@ -137,7 +137,7 @@ func TestDedupTakesMostTrustedRoute(t *testing.T) {
 	fsys := memfs.New(map[string]string{"/shared/config.json": `{"a": "shared"}`, "/mid/config.json": `{"a": "mid"}`})
 	fsys.Symlink("/shared/config.json", "/link/config.json")
 	res := mustLoad(t, fsys,
-		WithScope("low", FixedDir("/shared", Pattern{"config.json"}), Trust(TrustSystem)),
+		WithScope("low", FixedDir("/shared", Pattern{Template: "config.json"}), Trust(TrustSystem)),
 		fixed("mid", "/mid", "config.json"),
 		fixed("high", "/link", "config.json"),
 		WithScopes("low", "mid", "high"),

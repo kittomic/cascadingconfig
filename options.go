@@ -90,6 +90,11 @@ type config struct {
 	logger      *slog.Logger // nil means slog.Default(), looked up at each load
 	dirs        PlatformDirs // nil when not set
 
+	startDir string // WithStartDir; empty means the current directory
+	walkStop WalkStop
+	ceilings []string // WithCeilingPaths
+	ignored  []string // WithIgnoredPaths
+
 	errs []error
 }
 
@@ -99,6 +104,11 @@ type scopeDef struct {
 	kind    ScopeKind
 	trust   TrustLevel
 	invalid bool // its kind reported a mistake, so later checks leave it alone
+
+	configRoot     string  // ConfigRoot; empty means the searched directory
+	replacedByFile Binding // ReplacedByFile
+	disabledBy     Binding // DisabledBy
+	explicitFiles  bool    // ReplacedByConfigFiles
 }
 
 // newConfig returns the engine defaults for app name.
