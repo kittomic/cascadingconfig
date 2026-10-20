@@ -21,41 +21,10 @@ var (
 		WithEnvBinding(BindOverrideConfigFilenames, ""),
 		WithEnvBinding(BindConfigFormats, ""),
 
-		// mise's global-directory layout (config-locations.md 3.4), for both the system and the user directory.
-		WithScope(ScopeSystem, FixedDir("{system}",
-			Pattern{Template: "conf.d/*.{ext}"},
-			Pattern{Template: "conf.d/*/{name}.{ext}", Root: RootFileDir},
-			Pattern{Template: "config.{ext}"},
-			Pattern{Template: "{name}.{ext}"},
-			Pattern{Template: "conf.d/*.{env}.{ext}", Variant: VariantEnv},
-			Pattern{Template: "conf.d/*/{name}.{env}.{ext}", Variant: VariantEnv, Root: RootFileDir},
-			Pattern{Template: "config.{env}.{ext}", Variant: VariantEnv},
-			Pattern{Template: "{name}.{env}.{ext}", Variant: VariantEnv},
-			Pattern{Template: "conf.d/*/{name}.local.{ext}", Variant: VariantLocal, Root: RootFileDir},
-			Pattern{Template: "config.local.{ext}", Variant: VariantLocal},
-			Pattern{Template: "{name}.local.{ext}", Variant: VariantLocal},
-			Pattern{Template: "conf.d/*.{env}.local.{ext}", Variant: VariantEnvLocal},
-			Pattern{Template: "conf.d/*/{name}.{env}.local.{ext}", Variant: VariantEnvLocal, Root: RootFileDir},
-			Pattern{Template: "config.{env}.local.{ext}", Variant: VariantEnvLocal},
-			Pattern{Template: "{name}.{env}.local.{ext}", Variant: VariantEnvLocal},
-		), Trust(TrustSystem), ReplacedByFile(BindSystemConfigFile)),
-		WithScope(ScopeUser, FixedDir("{user}",
-			Pattern{Template: "conf.d/*.{ext}"},
-			Pattern{Template: "conf.d/*/{name}.{ext}", Root: RootFileDir},
-			Pattern{Template: "config.{ext}"},
-			Pattern{Template: "{name}.{ext}"},
-			Pattern{Template: "conf.d/*.{env}.{ext}", Variant: VariantEnv},
-			Pattern{Template: "conf.d/*/{name}.{env}.{ext}", Variant: VariantEnv, Root: RootFileDir},
-			Pattern{Template: "config.{env}.{ext}", Variant: VariantEnv},
-			Pattern{Template: "{name}.{env}.{ext}", Variant: VariantEnv},
-			Pattern{Template: "conf.d/*/{name}.local.{ext}", Variant: VariantLocal, Root: RootFileDir},
-			Pattern{Template: "config.local.{ext}", Variant: VariantLocal},
-			Pattern{Template: "{name}.local.{ext}", Variant: VariantLocal},
-			Pattern{Template: "conf.d/*.{env}.local.{ext}", Variant: VariantEnvLocal},
-			Pattern{Template: "conf.d/*/{name}.{env}.local.{ext}", Variant: VariantEnvLocal, Root: RootFileDir},
-			Pattern{Template: "config.{env}.local.{ext}", Variant: VariantEnvLocal},
-			Pattern{Template: "{name}.{env}.local.{ext}", Variant: VariantEnvLocal},
-		), Trust(TrustUser), ConfigRoot("~"), ReplacedByFile(BindGlobalConfigFile)),
+		WithScope(ScopeSystem, FixedDir("{system}", MiseGlobalPatterns()...),
+			Trust(TrustSystem), ReplacedByFile(BindSystemConfigFile)),
+		WithScope(ScopeUser, FixedDir("{user}", MiseGlobalPatterns()...),
+			Trust(TrustUser), ConfigRoot("~"), ReplacedByFile(BindGlobalConfigFile)),
 
 		// mise's layers A to D within one project directory (config-locations.md 3.2), without .tool-versions.
 		WithScope(ScopeProject, Walk(
@@ -135,5 +104,21 @@ var (
 // MiseLayout's system and user scopes use them. Apps can use them for their own scopes, such as a mounted config
 // directory. Each call returns a fresh copy.
 func MiseGlobalPatterns() []Pattern {
-	return nil // stub
+	return []Pattern{
+		{Template: "conf.d/*.{ext}"},
+		{Template: "conf.d/*/{name}.{ext}", Root: RootFileDir},
+		{Template: "config.{ext}"},
+		{Template: "{name}.{ext}"},
+		{Template: "conf.d/*.{env}.{ext}", Variant: VariantEnv},
+		{Template: "conf.d/*/{name}.{env}.{ext}", Variant: VariantEnv, Root: RootFileDir},
+		{Template: "config.{env}.{ext}", Variant: VariantEnv},
+		{Template: "{name}.{env}.{ext}", Variant: VariantEnv},
+		{Template: "conf.d/*/{name}.local.{ext}", Variant: VariantLocal, Root: RootFileDir},
+		{Template: "config.local.{ext}", Variant: VariantLocal},
+		{Template: "{name}.local.{ext}", Variant: VariantLocal},
+		{Template: "conf.d/*.{env}.local.{ext}", Variant: VariantEnvLocal},
+		{Template: "conf.d/*/{name}.{env}.local.{ext}", Variant: VariantEnvLocal, Root: RootFileDir},
+		{Template: "config.{env}.local.{ext}", Variant: VariantEnvLocal},
+		{Template: "{name}.{env}.local.{ext}", Variant: VariantEnvLocal},
+	}
 }
