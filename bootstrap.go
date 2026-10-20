@@ -46,6 +46,13 @@ const (
 	BootstrapCeilingPaths            BootstrapKey = "ceiling_paths"
 	BootstrapIgnoredConfigPaths      BootstrapKey = "ignored_config_paths"
 	BootstrapOverrideConfigFilenames BootstrapKey = "override_config_filenames"
+
+	// BootstrapSearchPlaces is cosmiconfig's searchPlaces: file names, which may use {name}, added to every walk's
+	// patterns at the highest precedence.
+	BootstrapSearchPlaces BootstrapKey = "searchPlaces"
+	// BootstrapMergeSearchPlaces is cosmiconfig's mergeSearchPlaces: true by default; false makes searchPlaces replace
+	// the walk's patterns.
+	BootstrapMergeSearchPlaces BootstrapKey = "mergeSearchPlaces"
 )
 
 var bootstrapKeys = []BootstrapKey{

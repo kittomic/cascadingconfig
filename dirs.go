@@ -38,6 +38,11 @@ func (xdgDirs) systemDir(h host, name string) string {
 	return filepath.Join("/etc", name)
 }
 
+// EnvPathsDirs puts the user directory where cosmiconfig's env-paths does: $XDG_CONFIG_HOME/{name}, else
+// ~/.config/{name}, on Linux; ~/Library/Preferences/{name} on macOS; %APPDATA%\{name}\Config on Windows. It has no
+// system directory. Never reassign it.
+var EnvPathsDirs PlatformDirs = xdgDirs{} // stub
+
 // WithPlatformDirs sets where the user and system directories are. {NAME}_CONFIG_DIR and {NAME}_SYSTEM_CONFIG_DIR,
 // when declared, override them.
 func WithPlatformDirs(d PlatformDirs) Option {

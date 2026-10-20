@@ -9,6 +9,11 @@ const (
 	StopAtHome WalkStop = iota
 	// StopAtRoot always walks to /, as mise does.
 	StopAtRoot
+	// StopAtStart searches the start directory only, as cosmiconfig's "none" strategy does.
+	StopAtStart
+	// StopAtMarker walks up to and including the first directory that contains an entry WithRootMarker names, or to
+	// /, as cosmiconfig's "project" strategy does.
+	StopAtMarker
 )
 
 // WithStartDir sets where walks start. By default it is the current directory at each load; a relative dir resolves
