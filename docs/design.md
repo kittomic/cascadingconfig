@@ -957,6 +957,8 @@ built-in layout nests includes while `$import` is deferred, so `IncludeNested` i
 - **Each file loads once** (DL-179), as any file reached twice does ([Filesystem hook](#filesystem-hook)): at its
   highest position, with its other routes listed as `LayerDuplicate`, a reference listed twice included. Reaching a file
   that is already an ancestor in its own chain, such as a file that includes itself, is a cycle: a `*CycleError` (508).
+  A remote file is identified by its normalised reference, before it's fetched, so a reference listed twice is fetched
+  once, and different references to the same content are separate layers (DL-203).
 - **Nesting:** under `IncludeFlat`, an include key in an included file is a `*ParseError` naming the file and the key,
   as mise rejects it. Under `IncludeNested`, included files can include, with cycle detection.
 - **Where includes work** (DL-187): in files from `FixedDir`, `Walk` and `ExplicitFile` scopes, and in a custom scope's
@@ -965,7 +967,9 @@ built-in layout nests includes while `$import` is deferred, so `IncludeNested` i
   have their own keys. Under `FirstMatch`, an included file never counts as the match.
 - **Metadata** (DL-184): an included layer takes `Scope`, `Variant`, `Env`, `Trust` and `ConfigRoot` from the root file
   of its chain. Its `Path` is the absolute path as joined, before symlinks, like a searched file's; its `Format` comes
-  from its own name; its `Pattern` is empty; and `IncludedBy` is its direct includer's `Path`.
+  from its own name; its `Pattern` is empty; and `IncludedBy` is its direct includer's `Path`. A remote layer's `Path`
+  is the reference as written (the joined reference, for a relative one inside a remote file), and `Layer.Remote` holds
+  its scheme, normalised reference, fetched identity, whether it's pinned, and whether it came from the cache (DL-203).
 - **Trust:** an included file inherits its includer's trust decision, as in mise
   ([3.9](config-locations.md#39-includes)), and the trust store isn't asked about it. It's judged by its root file's
   scope policy ([Per-scope policies](#per-scope-policies)).
@@ -1013,12 +1017,34 @@ replaced.
 | Scheme          | Form                                   | Example                                                               |
 | --------------- | -------------------------------------- | --------------------------------------------------------------------- |
 | `http`, `https` | A URL, optionally with `#sha256=<hex>`  | `https://config.example.com/myapp/base.toml#sha256=9f86d0…`           |
-| `git`           | `git::<repo-url>//<path>?ref=<ref>`    | `git::https://github.com/acme/config.git//myapp/base.toml?ref=v1.4.0` |
+| `git`           | `git::<repo-url>//<path>[?ref=<ref>]`  | `git::https://github.com/acme/config.git//myapp/base.toml?ref=v1.4.0` |
 | `oci`           | `oci::<image-ref>[//<path>]`            | `oci::ghcr.io/acme/myapp-config:1.4.0`                                |
 
-- **Format:** the file format comes from the path's extension. For `http(s)` with no extension, it comes from
-  `Content-Type`.
-- **`oci` path:** it defaults to `{name}.toml` at the artifact root.
+**Three forms** (DL-197). The loader reads a reference's form from its text, not from the resolver, so a custom resolver
+gets the same parsing and checks as a built-in one written the same way:
+
+- **URL form,** `scheme://…`: `http`, `https`, and any custom scheme written as a URL.
+- **Image form,** `oci::<registry>/<repository>[:<tag>][@<digest>][//<path>]`:
+  - **The registry must be explicit:** it contains a `.` or a `:`, or is `localhost`. There's no implicit `docker.io`,
+    so an allow-list sees where the fetch goes.
+  - **Grammar:** repository, tag and digest follow the OCI distribution spec, and only `sha256` digests are accepted.
+  - **Defaults:** with neither tag nor digest, the tag is `latest`; with both, the digest is fetched. The path defaults
+    to `{name}.toml` at the artifact root, `{name}` being the app's name.
+- **Getter form,** any other `name::…`: `name::<url>//<path>[?ref=<ref>]`, as `git::` uses.
+  - **The URL** is any `scheme://` URL, and the resolver decides which transports it allows. So `ext::` and local paths
+    never reach a resolver.
+  - **The path** is required.
+  - **`ref`** is optional, and without it the default branch is fetched. Any other query parameter, such as go-getter's
+    `sshkey` or `depth`, is a `*ReferenceError`.
+  - **A ref** follows git's ref-name rules: it isn't empty, doesn't start with `-`, and contains no `..`, `@{`,
+    whitespace, control characters or any of `~^:?*[\`.
+- **`http::…`,** the getter form with a URL scheme, is a `*ReferenceError`.
+
+**Format** (DL-198): a remote file's format is chosen as a local file's is: `WithFileFormat` rules, matched against the
+normalised reference, then the extension of the reference's file path (the URL path, or the inner path). Only when
+neither gives one does it come from the media type the resolver reports, such as http's `Content-Type`, matched against
+the decoders' media types. Finding none is a 415. For the getter and image forms, an inner path with no known format is
+a 415 before anything is fetched.
 
 **Pinned references** name content that can't change. A policy with `RequirePinned()` accepts only these:
 
@@ -1028,9 +1054,18 @@ replaced.
 | `oci`           | The image reference has a digest: `@sha256:<64 hex>`.                                                    |
 | `http`, `https` | The URL has an integrity fragment, `#sha256=<64 hex>`. The downloaded bytes are hashed and must match, or the fetch is a `*PolicyError`. The fragment is never sent to the server. |
 
+- **The loader decides** (DL-201). Pins follow from the form, so resolvers need no interface for them: a URL-form
+  integrity fragment, a getter-form ref of 40 or 64 hex digits, or an image-form digest. Any custom URL-form scheme can
+  be pinned with an integrity fragment.
+- **Integrity fragments are the loader's job:** it strips the fragment before calling the resolver, so the fragment is
+  never sent, and checks the SHA-256 of the content itself, so no resolver can skip the check. A mismatch is a
+  `*PolicyError`.
+- **`RequirePinned()`** is checked before anything is fetched. An unpinned reference is a `*PolicyError`.
+
 ### Resolver hooks
 
-Remote fetching is done by resolvers. The three built-in resolvers are ordinary implementations of the same interface:
+Remote fetching is done by resolvers. The built-in remote resolvers, `httpresolver`, `gitresolver` and `ociresolver`,
+are ordinary implementations of the same interface:
 
 ```go
 type IncludeResolver interface {
@@ -1043,18 +1078,41 @@ type IncludeResolver interface {
 type IncludeRef struct {
 	Raw      string // as written in the config file
 	Scheme   string // "https", "git", "oci", …
-	Location string // URL, repo URL or image ref, normalised
+	Ref      string // the normalised reference string that matchers see
+	Location string // the URL without its fragment, the repo URL, or registry/repository; normalised
 	Path     string // path inside a repo or artifact, if any
-	Version  string // git ref, tag or digest, if any
+	Version  string // git ref; oci tag, digest or tag@digest; sha256:<hex> from an integrity fragment
 	From     Layer  // the including file: path, scope, variant
+	MaxSize  int64  // the size limit the loader enforces
+
+	// Check normalises another reference, such as a redirect target, and runs the scheme and allow-list checks this
+	// reference passed, under the same policy.
+	Check func(ref string) error
 }
 
 type Fetched struct {
-	Content  []byte
-	Format   string // extension, e.g. "toml"
-	Identity string // canonical identity, e.g. commit SHA or digest
+	Content   []byte
+	MediaType string // the media type the transport reports, if any, e.g. Content-Type
+	Identity  string // canonical identity, e.g. commit id or digest; shown in reports
 }
 ```
+
+- **Registering** (DL-196): `WithIncludeResolver(r)` maps each of `r.Schemes()` to `r`, and the last registration of a
+  scheme wins. Schemes are lowercased. These are `*OptionError`s: a nil resolver, an empty `Schemes()`, an invalid
+  scheme (a letter, then letters, digits, `+`, `-` or `.`, two characters or more), and `file`, which can't be replaced.
+  `WithoutIncludeResolver(scheme)` removes one scheme, even from a resolver that handles others.
+- **Size** (DL-198): `MaxSize` is `WithMaxIncludeSize(n)`, 1 MiB by default. A resolver should stop reading past it and
+  return a `*TooLargeError`. The loader checks the content's length anyway, so it's a 413 either way.
+- **`Check`** (DL-198) returns a `*ReferenceError` or a `*PolicyError`. The http resolver calls it for every redirect.
+- **Identity** (DL-198): an empty `Identity` becomes `sha256:<hex>` of the content. One longer than 256 bytes, or with
+  control characters, is a `*FetchError`, because it's shown in reports.
+- **Errors** (DL-199): an error carrying a cascadingconfig code keeps its type, so a resolver can return
+  `*NotFoundError`, `*TooLargeError`, `*PolicyError`, `*ReferenceError` or `*FetchError`. The load's own cancellation
+  stays a 499 or 504 `*BaseError`. Any other error becomes a `*FetchError`: 504 for a timeout, 502 otherwise. Errors
+  point at the including file, with `Op` `"include"`, as for local includes (DL-185).
+- **Timeouts** (DL-199): each fetch gets the load's context with a deadline, 30 seconds by default, set with
+  `WithIncludeTimeout(d)`. Running out is a 504 `*FetchError`.
+- **One at a time** (DL-199): references are fetched one after another, in walk order, which keeps loads deterministic.
 
 The app can add a resolver for a new scheme or replace a built-in one with `WithIncludeResolver(r)`, and can remove one
 with `WithoutIncludeResolver("git")`.
@@ -1077,9 +1135,10 @@ cascadingconfig.WithDefaultPolicy(
 )
 ```
 
-- **Matchers** (DL-176): `Prefix`, `Glob`, `Regexp`, `Extension`, `FileName` and `MatchFunc` match the normalised
-  reference string, as they match a path in `WithFileFormat`. `MatchRef` gets the whole `IncludeRef`, including the file
-  that asked for it; it's for allow-lists only, and an `*OptionError` in `WithFileFormat`.
+- **Matchers** (DL-176): `Prefix`, `Glob`, `Regexp` and `MatchFunc` match the normalised reference string, as they match
+  a path in `WithFileFormat`. `Extension` and `FileName` look at the last segment of the reference's file path, the URL
+  path or the inner path, ignoring the query and the ref (DL-202). `MatchRef` gets the whole `IncludeRef`, including the
+  file that asked for it; it's for allow-lists only, and an `*OptionError` in `WithFileFormat`.
   - **`Glob`:** `*` matches within one `/`-separated segment, and `**` matches across segments. So
     `git::https://github.com/acme/*` matches `…/acme/config.git` but not `…/acme/team/config.git`, and
     `git::https://github.com/acme/**` matches both. `?` matches one character, and there are no other metacharacters.
@@ -1091,9 +1150,9 @@ cascadingconfig.WithDefaultPolicy(
 
 | Scheme          | Form                                                    | Example                                                                 |
 | --------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `http`, `https` | `scheme://host[:port]/path`. The host is lowercased, the default port and dot segments are removed, and the integrity fragment is dropped. | `https://config.acme.internal/myapp/base.toml` |
-| `git`           | `git::<repo-url>//<path>?ref=<ref>`, with the repo URL normalised like an http URL and the inner path cleaned. | `git::https://github.com/acme/config.git//myapp/base.toml?ref=v1.4.0` |
-| `oci`           | `oci::<registry>/<repository>[:<tag>][@<digest>]//<path>`. The registry is lowercased, and the inner path is always present (`{name}.toml` by default). | `oci::ghcr.io/acme/myapp-config:1.4.0//myapp.toml` |
+| `http`, `https` | `scheme://host[:port]/path[?query]`, normalised as in [Traversal protection](#traversal-protection), with the integrity fragment dropped. | `https://config.acme.internal/myapp/base.toml` |
+| `git`           | `git::<repo-url>//<path>[?ref=<ref>]`, with the repo URL normalised like an http URL, the inner path cleaned, and no `?ref=` when no ref is given. | `git::https://github.com/acme/config.git//myapp/base.toml?ref=v1.4.0` |
+| `oci`           | `oci::<registry>/<repository>[:<tag>][@<digest>]//<path>`. The registry is lowercased, the tag is `latest` when there's neither tag nor digest, and the inner path is always present (`{name}.toml` by default). | `oci::ghcr.io/acme/myapp-config:1.4.0//myapp.toml` |
 | `file`          | The absolute path, after resolving symlinks.            | `/etc/acme/base.toml`                                                   |
 
 - **Matching:** a reference must match **at least one** entry on each allow-list that applies to it, the global one and
@@ -1101,7 +1160,12 @@ cascadingconfig.WithDefaultPolicy(
 - **No allow-list configured:** every reference is allowed in `mise.Preset`, as in mise. `misehardened.Preset` has no
   remotes at all, and requires an allow-list if an app turns them back on.
 - **No match is a load error** naming the including file, never a silent skip.
-- **Redirects:** the `http(s)` resolver checks the allow-list again for each redirect target.
+- **Redirects:** the `http(s)` resolver checks each redirect target with `IncludeRef.Check`, against the same
+  allow-lists.
+- **No address filtering** (DL-202): a reference to an internal address, such as `http://169.254.169.254/…`, is allowed
+  unless an allow-list leaves it out. The allow-list is the control.
+- **References are shown unredacted** (DL-202), in reports, errors and logs. Credentials belong in resolver options
+  (`httpresolver.WithClient`, and the git and OCI resolvers' credential options), never in a reference.
 - **`Describe()`** shows each remote layer's raw reference and its fetched identity.
 
 ### Traversal protection
@@ -1115,23 +1179,34 @@ per-scheme rules for the **built-in** resolvers.
 These checks also cover resolvers that apps write themselves:
 
 1. **Before matching:** the reference is normalised and validated **before** it is matched against allow-lists, so a
-   reference can't pass an allow-list in one form and be fetched in another:
-   - **URLs:** parsed, dot segments resolved (RFC 3986 §5.2.4), and the host lowercased and IDNA-normalised, with any
-     trailing dot and default port removed.
-   - **URLs rejected outright:** a URL with userinfo is rejected, because `https://config.acme.internal@evil.example/`
-     would otherwise match a `Prefix` on the internal host. So is a URL with a percent-encoded `.`, `/` or `\` in its
-     path (`%2e`, `%2f`, `%5c`).
+   reference can't pass an allow-list in one form and be fetched in another (DL-200):
+   - **URLs:** parsed, with the scheme and host lowercased, a trailing dot and the default port (80 for `http`, 443 for
+     `https`, 22 for `ssh`) removed, dot segments resolved (RFC 3986 §5.2.4), an empty path made `/`, escapes of
+     unreserved characters decoded, and other escapes uppercased. A bad port is a `*ReferenceError`.
+   - **Hosts must be ASCII:** a host with any other character is a `*ReferenceError`, so write it in its `xn--` form.
+     This keeps IDNA's dependency out of the core, and rules out lookalike hosts.
+   - **Userinfo is rejected,** because `https://config.acme.internal@evil.example/` would otherwise match a `Prefix` on
+     the internal host. The one exception is a user name without a password in an `ssh` URL, which
+     `git::ssh://git@github.com/…` needs; it stays in the normalised string. The scp form
+     (`git@github.com:acme/config.git`) isn't accepted.
+   - **Also rejected:** a percent-encoded `.`, `/` or `\` in the path (`%2e`, `%2f` or `%5c`, in either case), a raw
+     `\`, NUL and control characters, and any fragment other than an integrity fragment.
+   - **The query** is kept in the normalised string, so an allow-list can see it.
    - **Inner paths** (the `//<path>` of `git::` and `oci::`) are cleaned with `path.Clean` and must then satisfy
      `fs.ValidPath`, which rules out a leading `/` and `..` segments. They must not contain `\`, NUL or control
-     characters, and the extension must be one with a registered decoder.
-2. **After fetching:** the `Fetched` result is checked. `Format` must match the validated path's extension (or, for
-   `http(s)` URLs with no extension, an allowed `Content-Type`). `Content` must be within the size limit, 1 MiB by
-   default and configurable.
-3. **Relative references inside a remote file** resolve against that file's **remote origin**: the same repo and ref,
-   the same artifact, or the same URL origin. They never resolve against the local filesystem, and they are checked
-   again from step 1. This only matters for presets that allow nesting, because `mise.Preset` doesn't.
-4. **Cache paths** are built from a hash of the fetched identity, never from any part of the URL, repo or path. Cache
-   files are written through `os.Root` on the cache dir, by atomic rename.
+     characters, and must have a known format.
+2. **After fetching:** the `Fetched` result is checked. `Content` must be within `MaxSize`, an integrity fragment must
+   match its SHA-256, and its format is chosen as described in [Remote references](#remote-references) (DL-198).
+3. **Relative references inside a remote file** (DL-204) resolve against that file's **remote origin**, relative to its
+   directory: against its URL (RFC 3986 §5.2), or in the same repo and ref, or in the same artifact.
+   - **Never local:** climbing above the repo or artifact root, `~/` and `file://` are `*ReferenceError`s, so a remote
+     file can never reach the local filesystem.
+   - **Absolute remote references** are allowed, and judged by the root file's policy.
+   - **Rechecked:** the joined reference is checked again from step 1.
+   - **Nesting only:** this only matters for layouts with `IncludeNested`, because the mise layouts don't nest.
+4. **Cache paths** are built from hashes, never from any part of the URL, repo or path: content is stored under its own
+   SHA-256, and its index entry under the SHA-256 of the normalised reference (DL-206). Cache files are written through
+   `os.Root` on the cache dir, by atomic rename.
 
 #### `git`
 
@@ -1177,8 +1252,14 @@ These checks also cover resolvers that apps write themselves:
 
 #### `http` / `https`
 
-- **Redirects:** each hop is normalised and matched against the allow-list again (see [Allow-lists](#allow-lists)).
-  There are at most 5 hops, and a redirect from `https` to `http` is rejected.
+- **Options** (DL-208): `httpresolver.New(opts...)` handles `http` and `https`. Its one option, `WithClient(c)`,
+  supplies the `*http.Client`. The resolver copies it and installs its own redirect check, which runs before the
+  client's own, so the app's client isn't changed. Auth headers go in the client's transport.
+- **Redirects:** at most 5 hops, and a redirect from `https` to `http` is a `*PolicyError`. Each hop goes through
+  `IncludeRef.Check`, which normalises it and matches it against the allow-lists again. The final URL is what's fetched.
+- **Responses** (DL-208): only a 200 is content. A 404 or 410 is a `*NotFoundError`, and any other status a 502
+  `*FetchError`. A `Content-Length` over `MaxSize` is a 413 before the body is read. `MediaType` is the `Content-Type`
+  header, and `Identity` is `sha256:<hex>` of the body.
 - **No local schemes:** `file://` URLs never reach this resolver. They go to the `file` resolver, with its own
   confinement.
 - **Exact bytes:** the response body is the content, and no decompression beyond `Content-Encoding` is applied. A `.tar`
@@ -1274,19 +1355,36 @@ Remote files are cached under `{user cache dir}/{name}/includes`:
 | [Pinned](#remote-references) (full git commit id, OCI digest, https integrity fragment) | Cached forever; never fetched again. |
 | Unpinned (branch, tag, plain URL)                          | Fetched again once the TTL (default 1 hour) has passed. |
 
-**How entries are found:**
+**How entries are stored** (DL-206):
 
-- **Content** is stored under its fetched identity: the commit id for git, the blob digest for OCI, and the SHA-256 of
-  the bytes for http(s).
-- **An index** maps each reference to its identity. It's keyed by the SHA-256 of the normalised reference string, so no
-  part of a URL or path ever becomes part of a file name. That's what lets a fetch that fails fall back to a stale copy,
-  and lets the TTL be checked before fetching.
-- **Rechecked on use:** cached content goes through every policy check again on each load: allow-lists, pinning, the
-  size limit and the trust store.
-- **Fetch failures:** if a fetch fails and a cached copy exists, it is used and a warning is logged. With no cached
-  copy, the load fails.
-- **Options:** `WithIncludeCache(dir, ttl)` sets the cache dir and TTL, and `WithoutIncludeCache()` turns caching off.
-- **User cache dir:** `$XDG_CACHE_HOME` on Linux, else Go's `os.UserCacheDir()`.
+- **Content** is stored under the SHA-256 of the content itself, for every scheme. A commit id can't be the key, because
+  two files in one commit share it. The fetched identity (the commit id, the OCI manifest digest, or the SHA-256 of http
+  content) is report metadata.
+- **An index** maps each reference to its entry: the identity, the content's SHA-256, the media type, when it was
+  fetched, and whether it's pinned. It's keyed by the SHA-256 of the normalised reference string, so no part of a URL or
+  path ever becomes part of a file name. The index is what lets the TTL be checked before fetching, and a failed fetch
+  fall back to a stale copy.
+- **The real filesystem:** the cache uses the OS filesystem through `os.Root`, never the
+  [filesystem hook](#filesystem-hook), which is read-only. Directories are created 0700 and files 0600, and every file
+  is written by atomic rename.
+- **A cache that can't be used,** because it can't be opened, read or written, is skipped with a `WarnIncludeCache`
+  warning, and the load fetches. Content that doesn't match its recorded SHA-256 counts as missing.
+- **No eviction yet:** each file is at most the include size limit. Pruning is a [future idea](future-ideas.md).
+
+**Freshness** (DL-207):
+
+- **The TTL** runs from the last successful fetch, by the loader's clock. Pinned entries are never fetched again. A TTL
+  of 0 always fetches, so the cache is then only a fallback.
+- **Fetch failures:** only a `*FetchError` (a network or server failure, or a timeout) falls back to a cached copy,
+  which is used with a `WarnStaleInclude` warning on the layer. A 404, a policy rejection or a bad reference fails the
+  load, because they mean the config has changed. With no cached copy, the `*FetchError` fails the load.
+- **Rechecked on use:** allow-lists and pinning are checked before the lookup, as for any reference, and cached content
+  is checked again for the size limit, the integrity fragment and the format. Included files never consult the trust
+  store (DL-184), cached or not.
+- **Options:** `WithIncludeCache(dir, ttl)` sets the cache dir (`""` keeps the default) and the TTL. A relative dir or a
+  negative TTL is an `*OptionError`. `WithoutIncludeCache()` turns caching off, and with it the stale fallback.
+- **User cache dir:** from the host: `$XDG_CACHE_HOME` on Linux, else the host's equivalent of Go's `os.UserCacheDir()`.
+  Tests set `WithIncludeCache(t.TempDir(), ttl)` or `WithoutIncludeCache()`.
 
 ### `misehardened.Preset`
 
@@ -1304,12 +1402,14 @@ var Preset = cascadingconfig.MiseHardenedLayout.Extend( /* decoders, notifier */
 `misehardened.Preset` is `cascadingconfig.MiseHardenedLayout` with TOML, YAML and fsnotify added. The layout itself is
 `MiseLayout` with the changes below.
 
-- **Remotes off:** no remote resolvers are registered. A remote reference is a **load error**, not a silent skip, so a
-  config that depends on a remote base fails loudly.
+- **Remotes off:** no remote resolvers are registered. A remote reference is a **load error** (a 501), not a silent
+  skip, so a config that depends on a remote base fails loudly.
 - **Turning remotes back on:** an app can register a resolver again, but only per scope, through a policy that names it,
   gives it an allow-list, and requires [pinned references](#remote-references): a full git commit id, an OCI digest, or
   an https integrity fragment, as in mise's paranoid mode. Unpinned references are a load error (see
-  [Per-scope policies](#per-scope-policies)).
+  [Per-scope policies](#per-scope-policies)). `WithoutRemoteIncludes()` enforces this (DL-205): it removes every remote
+  resolver registered before it, and marks the loader hardened, so a policy that allows a remote scheme without an
+  allow-list (global or `AllowFor`) and `RequirePinned()` is an `*OptionError` at `New`.
 - **File permissions (Unix):** the [filesystem hook](#filesystem-hook) ignores config files and directories, with a
   warning, if they're writable by group or other, or owned by someone other than the current user or root. This is like
   SSH's `StrictModes`, and the check is exported as `StrictModes`. The warning names the file and the reason, for
@@ -1913,6 +2013,21 @@ There are no open questions.
 | 192 | Trust store details                         | `LayerUntrusted` and `WarnUntrusted`; a store error is a 500; searched, explicit and bootstrap files are checked, after size and permissions and before decoding; `TrustPaths` entries without wildcards trust whole trees, as mise's do. |
 | 193 | Transforms                                  | Layer transforms run on every layer that merges, value scopes and defaults included; `nil` merges nothing; returned trees must be canonical; the result transform runs before `RequireConfig` and the unknown-key check, and `OriginOf` describes the merge. |
 | 194 | Policies in the report                      | `ScopeInfo.Policy *PolicyInfo`; a rejected reference is a `LayerFailed` layer naming the policy's scope and the rule; `Report.String()` marks included layers "included by" and adds a `policies:` section. |
+| 195 | The M8 split                                | M8 becomes M8a (the loader's remote includes, normalisation, pins, the cache, `cctest.Clock` and `httpresolver`), M8b (`gitresolver`) and M8c (`ociresolver`), each with its own gap list, review and PR. Each part's parsers get fuzz tests from the start. |
+| 196 | Registering resolvers                       | `WithIncludeResolver(r)` maps each of its schemes to `r`, and the last registration wins; a nil resolver, no schemes, an invalid scheme or `file` is an `*OptionError`; `WithoutIncludeResolver` removes one scheme. |
+| 197 | Reference forms                             | The form, not the resolver, decides the parsing: `scheme://` is a URL; `oci::` an image reference, with an explicit registry and `latest` by default; any other `name::` the getter form, with a required path and an optional ref that follows git's ref-name rules. |
+| 198 | `IncludeRef` and `Fetched`                  | `IncludeRef` gains `Ref`, `MaxSize` and `Check`; `Fetched` is `{Content, MediaType, Identity}`, and the loader picks the format from the reference's path first, then the media type; an empty identity is the content's SHA-256. `WithMaxIncludeSize` is 1 MiB by default. |
+| 199 | Resolver errors and timeouts                | Errors with a cascadingconfig code keep their type, and others become a `*FetchError` (504 for a timeout); `WithIncludeTimeout(d)`, 30 seconds by default, bounds each fetch; fetches run one at a time, in walk order. |
+| 200 | URL normalisation                           | Hosts must be ASCII, so IDNA adds no dependency; scheme and host are lowercased, a trailing dot and the default port removed, dot segments resolved and escapes normalised; encoded `.`, `/` and `\`, a raw `\`, control characters and userinfo are rejected, except an ssh user name; the query is kept. |
+| 201 | Pins                                        | The loader decides pins from the form: an integrity fragment, a full git commit id, or an OCI digest. It strips and verifies the integrity fragment itself, and checks `RequirePinned()` before fetching. |
+| 202 | What allow-lists see                        | `Extension` and `FileName` see the reference's file path, and the other matchers the whole normalised string. There's no address filtering, and references are shown unredacted, so credentials belong in resolver options. |
+| 203 | Remote layers                               | A remote file is identified by its normalised reference, so a reference listed twice is fetched once; `Layer.Remote` holds its scheme, normalised reference, identity, pin and cache state; `WarnStaleInclude` marks a stale copy. |
+| 204 | Relative references in remote files         | They resolve against the file's remote origin; climbing out, `~/` and `file://` are `*ReferenceError`s. Built in M8a, for layouts with `IncludeNested`. |
+| 205 | Hardened remotes and the layouts            | `WithoutRemoteIncludes()` removes the remote resolvers registered before it, and makes a policy that allows a remote scheme without an allow-list and `RequirePinned()` an `*OptionError`. No layout registers a remote resolver, because they import the core; `mise.Preset` does, in M10. `PolicyInfo.RequirePinned` shows the pin rule. |
+| 206 | Cache storage                               | Content is stored under its own SHA-256, so files in one commit don't collide, and the identity is report metadata; the cache uses the real OS filesystem, with modes 0700 and 0600; a cache that can't be used gives `WarnIncludeCache`; there's no eviction yet. |
+| 207 | Cache freshness                             | `WithIncludeCache(dir, ttl)`, where a TTL of 0 always fetches; only a `*FetchError` falls back to a stale copy; cached content is rechecked for size, integrity fragment and format, never the trust store, which includes don't consult. |
+| 208 | `httpresolver`                              | `New(WithClient(c))`, with the client copied; at most 5 redirects, none to `http`, each checked with `IncludeRef.Check`; only a 200 is content, 404 and 410 are `*NotFoundError`s, and other statuses are 502s; the identity is the body's SHA-256. |
+| 209 | `cctest.Clock`                              | `NewClock`, `Now`, `Advance` and `Set`, passed to a loader with `cctest.WithClock`; M9 adds timers. |
 
 ---
 
