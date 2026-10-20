@@ -260,7 +260,7 @@ mise.Preset.Extend(
   - **Both** is an `*OptionError`.
 - **Names** must be unique. A clash with any scope, built-in or custom, is an error.
 - **Selection:** a custom scope is used only if `WithScopes(...)` lists it, as with the built-in scopes. Defining a
-  scope doesn't select it.
+  scope doesn't select it. The defaults scope is the one exception: it is always selected (DL-153).
 - **Env-var bindings:** none are created automatically. An app adds them explicitly, for example
   `WithEnvBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
 - **Trust:** each scope kind has a default trust level, and `Trust(...)` overrides it. File-based kinds default to
@@ -287,7 +287,8 @@ are set by scope, not by trust level.
   ([3.1](config-locations.md#31-tiers)).
 - **Trust, policy and `Layer.Scope`** come from the **more trusted** route, the user scope. Otherwise the user's own
   global config would be treated as a project file, needing project approval and limited by project bootstrap rules.
-- **`Describe()`** records both routes.
+- **`Describe()`** records both routes: the other route is listed as `LayerDuplicate`, naming the route that was kept
+  (DL-158).
 
 ## Warnings and logging
 
@@ -712,8 +713,9 @@ These options mirror cosmiconfig's `searchStrategy` and `stopDir`. They are shor
 - **First-match resolution** (DL-139): `WithResolution(FirstMatch)` loads only the highest-precedence non-empty file,
   across every scope, so the nearest file wins and the user directory is reached only if nothing nearer matched. The
   other files are listed as `LayerIgnored`, without a warning. Files below the chosen one aren't decoded, so a broken
-  file there doesn't fail the load, as in cosmiconfig. Empty files are skipped. `WithResolution(MergeAll)` is the
-  default.
+  file there doesn't fail the load, as in cosmiconfig. Empty files are skipped. Only files are chosen between: value
+  layers, such as `Values`, `EnvVars` and the [defaults](api.md#defaults), always merge at their own position, so flags
+  still override the chosen file and defaults still sit below it (DL-154). `WithResolution(MergeAll)` is the default.
 - **Explicit files replace everything** (DL-144): with `WithConfigFilesOnly()`, explicit config files are the whole
   load, and no scope is searched, as with cosmiconfig's `load(path)`. Bootstrap files are still read.
 - **The current directory:** `FixedDir` accepts a `{cwd}` placeholder, for cosmiconfig's meta file, which is read from
@@ -1469,7 +1471,8 @@ value outside the canonical types, is a code-500 `*BaseError` whose `Op` is `Val
 - **Trust:** both kinds default to `TrustUser`, so no `Trust(...)` is needed. They have no bootstrap files and no
   includes, so trust only shows up in `Describe()`.
 - **Provenance:** `Describe()` attributes each value to its source, for example "`server.port` set by
-  `MYAPP_SERVER__PORT`".
+  `MYAPP_SERVER__PORT`". An `EnvVars` scope is one layer, and `Origin.EnvVar` names the variable behind each key
+  (DL-152).
 
 ## Transform hooks
 
@@ -1658,7 +1661,7 @@ There are no open questions.
 | 45 | `cosmiconfig.Preset` user dir                | cosmiconfig's `env-paths` locations (see [Platform directories](#platform-directories)).                      |
 | 46 | Extensionless files                          | Decoded by the format `WithExtensionlessFormat` names. `cosmiconfig.Preset` uses YAML if registered, otherwise JSON. |
 | 47 | YAML extensions                              | `.yaml` and `.yml` are both YAML. The format order lists formats. Within YAML, `.yaml` ranks above `.yml` (see [File format precedence](#file-format-precedence)). |
-| 48 | Dates and times                              | Strings in the tree, in RFC 3339 form, for every format. A decode hook parses them into `time.Time` fields. This differs from koanf with TOML, which hands `time.Time` through (see [Format dialects](#format-dialects)). |
+| 48 | Dates and times                              | Strings in the tree, in RFC 3339 form, for every format. koanf's `TextUnmarshaler` hook parses them into `time.Time` fields (DL-148). This differs from koanf with TOML, which hands `time.Time` through (see [Format dialects](#format-dialects)). |
 | 49 | Integers                                     | `int64` only for literals with no fraction or exponent that fit; out of range is a `*ParseError`.             |
 | 50 | YAML dialect                                 | YAML 1.2 core schema. Keys become strings. Several documents, and unknown tags, are `*ParseError`s. Alias expansion is capped. |
 | 51 | Duplicate keys                               | Each format's own semantics: JSON keeps the last and logs a warning; TOML and YAML raise a `*ParseError`.       |
@@ -1758,6 +1761,20 @@ There are no open questions.
 | 145 | `$import`                                   | Deferred, and possibly never supported, depending on how it fits the include security and trust model. |
 | 146 | `CosmiconfigLayout`'s scopes                | `user`, `project` and `meta`, with first-match resolution and `SearchNone` (see [Deviations from cosmiconfig](#deviations-from-cosmiconfig)). |
 | 147 | Golden tests in M4d                         | One directory with every search place, each strategy's walk, `SearchGlobal` reaching the user directory, and the meta file's key winning. |
+| 148 | Dates when decoding                         | koanf's three hooks and no fourth: `time.Time` implements `UnmarshalText`, so the `TextUnmarshaler` hook already parses RFC 3339 strings, and the koanf parity tests cover dates ([api.md](api.md#decoding)). |
+| 149 | Custom decoder configs                      | `WithDecoderConfig` replaces our hooks, as in koanf; `DecodeHook()` returns ours to compose; the config is copied; a `Metadata` in it is an `*OptionError`, since concurrent decodes would share it. |
+| 150 | Decode errors                               | One `*DecodeError` per key, with `Key`, the file in `Path` and the scope, joined; messages never quote values; the layer blamed is the value's own: an element's, a merged table's latest, `defaults`, or the variable. |
+| 151 | Unknown keys                                | Recorded on the `Result` from every decode through it, once each, under a lock; `UnknownKeysIgnore` silences them; keys inside arrays are named as mapstructure names them (`servers[0].hots`). |
+| 152 | Env-var provenance                          | `Origin.EnvVar` names the variable behind a key from `EnvVars`, including through `MapEnv`; the scope stays one layer. |
+| 153 | The defaults scope                          | `ScopeDefaults`, always the lowest and always selected, removable with `WithoutScopes`; a second `WithDefaults` replaces the first; the tag is read after every option; a non-nil pointer to a zero value is included; invalid values are `*OptionError`s naming the field. |
+| 154 | First match and value layers                | First-match resolution chooses between files only; value layers, defaults included, always merge at their own position (see [Search strategies](#search-strategies)). |
+| 155 | Load stages                                 | Settings, then discovery and reading, then merging, then requirements; each stage reports all its errors, joined; a failed stage stops the load ([api.md](api.md#errors)). |
+| 156 | Failed loads                                | Broken files are `LayerFailed`, with a `Reason` built from the error's fields, never the parser's text; `Decode` and `DecodeAt` on a failed result return the load's error. |
+| 157 | What `RequireConfig` counts                 | Empty value layers count as nothing; empty files count except with `RequireNonEmpty`; skipped layers never count; explicit files count for the scope they replace, or every scope under `WithConfigFilesOnly`; an unselected scope is an `*OptionError` ([api.md](api.md#requiring-config)). |
+| 158 | The report's shape                          | `ScopeInfo`, `EnvInfo`, `Probe` and `BindingInfo` as in [api.md](api.md#result-report-and-origin); `Report.Bootstrap`; `Preset` is the preset's name; `LayerDuplicate` for a file's other route; `snake_case` JSON with enums as strings; `String()` grouped by scope like `mise config ls`. |
+| 159 | Deferred from M5                            | `ScopeInfo`'s policy arrives in M7 and `Layer.Remote` in M8; the transform checks of DL-76 move to M7, with transforms. |
+| 160 | `KoanfProvider` and `DecodeAt`              | `(*Loader).KoanfProvider()` loads with `context.Background()` on each `Read`; the koanf parity tests load through it; `DecodeAt` on a missing path leaves `v` untouched; a bad path or a non-pointer `v` is a 400 `*BaseError`. |
+| 161 | Decoding dependencies                       | mapstructure v2.5.0 is the core module's one requirement; koanf v2.4.1 is pinned in the test-only `internal/compat` module. |
 
 ---
 
