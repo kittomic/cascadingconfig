@@ -97,9 +97,10 @@ var (
 	)
 
 	// MiseHardenedLayout is MiseLayout with hardened settings: project bootstrap files may only set env and formats,
-	// local includes are confined, and files must pass StrictModes (DL-189).
+	// local includes are confined, files must pass StrictModes (DL-189), and remote includes are off (DL-205).
 	MiseHardenedLayout = MiseLayout.ExtendAs("MiseHardenedLayout",
 		WithBootstrapLimit(ScopeProject, BootstrapEnv, BootstrapFormats),
+		WithoutRemoteIncludes(),
 		WithDefaultPolicy(
 			AllowResolvers("file"),
 			Confine("{config_root}", "{user}", "{system}"),

@@ -69,12 +69,18 @@ func (c *config) resolverSchemes() []string {
 	return []string{"file"}
 }
 
-// IncludeRef is an include reference, as a resolver and a MatchRef matcher see it.
+// IncludeRef is an include reference, as a resolver and a MatchRef matcher see it (DL-198).
 type IncludeRef struct {
 	Raw      string // as written in the config file
-	Scheme   string // "file" until M8
-	Location string // the normalised reference: for "file", the absolute slash path after symlinks
+	Scheme   string // "file", "https", "git", "oci", …
+	Ref      string // the normalised reference string that matchers see
+	Location string // the URL without its fragment, the repo URL, or registry/repository; for "file", the path
 	Path     string // path inside a repo or artifact, if any
-	Version  string // git ref, tag or digest, if any
+	Version  string // git ref; oci tag, digest or tag@digest; sha256:<hex> from an integrity fragment
 	From     Layer  // the including file
+	MaxSize  int64  // the size limit the loader enforces on the content
+
+	// Check normalises another reference, such as a redirect target, and runs the scheme and allow-list checks this
+	// reference passed, under the same policy. It returns a *ReferenceError or a *PolicyError.
+	Check func(ref string) error
 }

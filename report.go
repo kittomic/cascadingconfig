@@ -46,6 +46,7 @@ type PolicyInfo struct {
 	Allow           []string            `json:"allow,omitempty"`     // the global allow-list: Prefix("…"), MatchFunc, …
 	AllowFor        map[string][]string `json:"allow_for,omitempty"` // the allow-list for each scheme
 	Confine         []string            `json:"confine,omitempty"`   // the roots, as written
+	RequirePinned   bool                `json:"require_pinned"`
 	RequireTrust    bool                `json:"require_trust"`
 	FilePermissions bool                `json:"file_permissions"`
 }

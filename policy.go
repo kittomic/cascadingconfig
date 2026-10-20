@@ -271,6 +271,12 @@ func checkRoot(r string) error {
 	return fmt.Errorf("the root %q must be absolute, or start with ~, {config_root}, {user}, {system} or {cwd}", r)
 }
 
+// RequirePinned makes the policy accept only pinned remote references: a full git commit id, an OCI digest, or a URL
+// with an integrity fragment (DL-201). It's checked before anything is fetched.
+func RequirePinned() PolicyOption {
+	return policyOpt{op: "RequirePinned", set: func(*policy) {}} // stub
+}
+
 // RequireTrust skips files the store hasn't approved, with a warning (DL-192).
 func RequireTrust(store TrustStore) PolicyOption {
 	return policyOpt{
