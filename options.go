@@ -3,6 +3,7 @@ package cascadingconfig
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 )
 
@@ -15,6 +16,12 @@ type Option interface {
 // ScopeKind is how a scope finds its sources, passed to WithScope.
 type ScopeKind interface {
 	defaultTrust() TrustLevel
+	// check reports the kind's own mistakes when WithScope uses it.
+	check(c *config)
+	// readsFiles reports whether the kind needs a decoder.
+	readsFiles() bool
+	// discover adds the scope's layers to the load, lowest precedence first.
+	discover(ld *loading, s *scopeDef)
 }
 
 // ScopeOption sets where a scope goes and how far it is trusted, passed to WithScope.
@@ -77,19 +84,29 @@ type config struct {
 	bindings []bindingDef       // declared, in declaration order
 	vars     map[Binding]string // each declared binding's variable; set by finish
 
+	host        host
+	fsys        FileSystem
+	maxFileSize int64
+	logger      *slog.Logger // nil means slog.Default(), looked up at each load
+	dirs        PlatformDirs // nil when not set
+
 	errs []error
 }
 
 // scopeDef is one defined scope.
 type scopeDef struct {
-	name  ScopeName
-	kind  ScopeKind
-	trust TrustLevel
+	name    ScopeName
+	kind    ScopeKind
+	trust   TrustLevel
+	invalid bool // its kind reported a mistake, so later checks leave it alone
 }
 
 // newConfig returns the engine defaults for app name.
 func newConfig(name string) *config {
-	c := &config{name: name, envName: envName(name), selected: map[ScopeName]bool{}, merge: defaultMergeConfig()}
+	c := &config{
+		name: name, envName: envName(name), selected: map[ScopeName]bool{}, merge: defaultMergeConfig(),
+		host: osHost{}, fsys: osFileSystem{}, maxFileSize: defaultMaxFileSize,
+	}
 	if err := checkName(name); err != nil {
 		c.fail("New", "invalid app name %q: %w", name, err)
 	}
@@ -124,6 +141,15 @@ func (c *config) finish() error {
 	c.finishBindings()
 	if len(c.scopeOrder()) == 0 {
 		c.fail("New", "no scopes are selected, so nothing would be searched")
+	}
+	for _, s := range c.scopes {
+		if fd, ok := s.kind.(fixedDirKind); ok && !s.invalid && fd.usesPlatformDirs() && c.dirs == nil {
+			c.fail("FixedDir", "the scope %q uses %s, which needs WithPlatformDirs", s.name, fd.dir)
+			s.invalid = true
+		}
+		if c.selected[s.name] && !s.invalid && s.kind.readsFiles() && len(c.order) == 0 {
+			c.fail("New", "the scope %q reads files, but no format has a registered decoder", s.name)
+		}
 	}
 	return errors.Join(c.errs...)
 }
