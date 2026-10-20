@@ -277,7 +277,7 @@ layouts (DL-94).
 
 | Area           | Options                                                                                                   |
 | -------------- | --------------------------------------------------------------------------------------------------------- |
-| Resolution     | `WithResolution(MergeAll \| FirstMatch)`                                                                  |
+| Resolution     | **Settled** (DL-139): `WithResolution(MergeAll \| FirstMatch)`                                            |
 | Patterns       | `Pattern(template, variant, root)` inside a scope kind. `template` uses `{name}`, `{env}` and `{ext}`; `variant` is `VariantShared`, `VariantEnv`, `VariantLocal` or `VariantEnvLocal`; `root` says how the config root is derived (the scope dir, or the file's own dir). |
 | Includes       | `WithIncludeKey(key, nesting)`, where `nesting` allows or forbids includes in included files              |
 | Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit` and `WithBootstrapTransform` |
@@ -439,6 +439,40 @@ func WithBootstrapTransform(f func(ctx context.Context, l Layer, t Tree) (Tree, 
 ```
 
 - **`WithBootstrap` is gone,** replaced by `BootstrapFiles` and the key options (DL-131, DL-132).
+
+#### Settled in M4d
+
+```go
+// Resolution (DL-139)
+type Resolution int // MergeAll (the default), FirstMatch
+
+func WithResolution(r Resolution) Option
+
+// Walk stops and search strategies (DL-140); WalkStop gains StopAtStart and StopAtMarker
+func WithStopDir(dir string) Option
+func WithRootMarker(names ...string) Option
+
+type SearchStrategy int // SearchNone, SearchProject, SearchGlobal
+
+func WithSearchStrategy(s SearchStrategy) Option
+
+// Choosing a file's format (DL-141)
+func WithFileFormat(m Matcher, formats ...string) Option
+func Extension(exts ...string) Matcher
+func FileName(glob string) Matcher
+func Glob(pattern string) Matcher
+func Regexp(expr string) Matcher
+func MatchFunc(f func(path string) bool) Matcher
+
+// Directories and explicit files (DL-143, DL-144); FixedDir gains the {cwd} placeholder
+var EnvPathsDirs PlatformDirs
+
+func WithConfigFilesOnly() Option
+
+// Bootstrap keys added (DL-142): BootstrapSearchPlaces ("searchPlaces"), BootstrapMergeSearchPlaces ("mergeSearchPlaces")
+```
+
+- **`WithExtensionlessFormat` is gone,** replaced by `WithFileFormat` (DL-141).
 - **Sealed kinds.** `Option`, `ScopeKind`, `ScopeOption`, `EnvVarsOption`, `PolicyOption`, `Matcher` and `WatchOption`
   are interfaces with unexported methods. The last three exist as types now, so the compiler already rejects them in the
   wrong place, and get their options in later milestones.
@@ -453,7 +487,7 @@ func WithBootstrapTransform(f func(ctx context.Context, l Layer, t Tree) (Tree, 
 | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Scopes        | `WithScopes`, `WithoutScopes`, `WithScope`, `WithPlatformDirs`, `WithDefaults`, `WithStartDir` (default: the current directory at each `Load`), `WithWalkStop`, `WithCeilingPaths`, `WithIgnoredPaths`, `WithSearchStrategy`, `WithStopDir`, `WithRootMarker` |
 | Environments  | `WithEnvs`                                                                                                                  |
-| Formats       | `WithDecoder`, `WithFormats`, `WithDefaultFormats`, `WithFormatConflict`, `WithExtensionlessFormat`                                              |
+| Formats       | `WithDecoder`, `WithFormats`, `WithDefaultFormats`, `WithFormatConflict`, `WithFileFormat`                                                       |
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
 | Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |

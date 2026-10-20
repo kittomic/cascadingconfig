@@ -99,8 +99,9 @@ var (
 		WithBootstrapLimit(ScopeProject, BootstrapEnv, BootstrapFormats),
 	)
 
-	// CosmiconfigLayout is cosmiconfig's layout: JSON, then YAML; the first file in a slot; arrays appended. Its scopes
-	// arrive in M4d.
+	// CosmiconfigLayout is cosmiconfig's layout (DL-146): the first file found wins; the start directory only by
+	// default, with WithSearchStrategy to walk; the user directory where env-paths puts it; and the meta config in the
+	// current directory. JSON ranks above YAML, and arrays are appended.
 	CosmiconfigLayout = NewPreset("CosmiconfigLayout",
 		WithDecoder(builtinJSONDecoder),
 		WithDefaultFormats("json", "yaml"),
@@ -108,6 +109,28 @@ var (
 		WithArrayMerge(Append),
 		WithEnvBinding(BindConfigFile, ""),
 		WithEnvBinding(BindConfigFormats, ""),
+		WithResolution(FirstMatch),
+		WithPlatformDirs(EnvPathsDirs),
+		WithConfigFilesOnly(),
+		WithFileFormat(FileName(".{name}rc"), "yaml", "json"),
+		WithFileFormat(FileName("{name}rc"), "yaml", "json"),
+		WithFileFormat(FileName("config"), "yaml", "json"),
+		WithBootstrapKeys(BootstrapFormats, BootstrapSearchPlaces, BootstrapMergeSearchPlaces),
+
+		// cosmiconfig's search places (config-locations.md 2.1, 2.3), lowest precedence first, without JS and TS.
+		WithScope(ScopeUser, FixedDir("{user}", Pattern{Template: "config.{ext}"}, Pattern{Template: "config"}),
+			Trust(TrustUser)),
+		WithScope(ScopeProject, Walk(
+			Pattern{Template: ".config/{name}rc.{ext}"},
+			Pattern{Template: ".config/{name}rc"},
+			Pattern{Template: ".{name}rc.{ext}"},
+			Pattern{Template: ".{name}rc"},
+		)),
+		// The meta config (config-locations.md 2.5): its {name} key is config, and its cosmiconfig key bootstrap.
+		WithScope("meta", FixedDir("{cwd}", Pattern{Template: ".config/config.{ext}", Key: "{name}"}),
+			BootstrapFiles(Pattern{Template: ".config/config.{ext}", Key: "cosmiconfig"})),
+		WithScopes(ScopeUser, ScopeProject, "meta"),
+		WithSearchStrategy(SearchNone),
 	)
 )
 

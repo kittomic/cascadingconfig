@@ -335,27 +335,35 @@ The largest milestone, done in four parts (DL-106).
 
 **Scope:**
 
-- **First-match resolution.**
+- **First-match resolution** (DL-139).
+- **Walk stops and search strategies:** `StopAtStart`, `StopAtMarker` with `WithRootMarker`, `WithStopDir`, and
+  `WithSearchStrategy(SearchNone | SearchProject | SearchGlobal)` (DL-140).
+- **Choosing a file's format:** `WithFileFormat` with the matchers `Extension`, `FileName`, `Glob`, `Regexp` and
+  `MatchFunc` (DL-141).
 - **Search places:** rc files and `.config/` in the order of
   [config-locations.md 2.1](config-locations.md#21-search-places-within-one-directory), without JS/TS.
-- **Search strategies:** `None`, `Project` (with `WithRootMarker`) and `Global` (with `WithStopDir`).
-- **The meta config** in `.config/config.{ext}`. There's no `package.json` or `package.yaml` support
-  ([Deviations from cosmiconfig](design.md#deviations-from-cosmiconfig)).
-- **Extensionless `.{name}rc`** through `WithExtensionlessFormat`.
-- **The global dir** through `EnvPathsDirs`, the `env-paths`-compatible resolver (DL-112).
-- **Options** (DL-94): this milestone settles `WithResolution`, the search-strategy options and
-  `WithExtensionlessFormat`, and adds `CosmiconfigLayout`'s scopes.
+- **The meta config** in `.config/config.{ext}`, through a `{cwd}` scope and bootstrap keys (DL-142). There's no
+  `package.json` or `package.yaml` support ([Deviations from cosmiconfig](design.md#deviations-from-cosmiconfig)).
+- **The global dir** through `EnvPathsDirs` (DL-143).
+- **Explicit files** replacing everything, with `WithConfigFilesOnly` (DL-144).
+- **`CosmiconfigLayout`'s scopes** (DL-146).
+- **Deferred:** `$import`, which may never be supported (DL-145).
 
 **Acceptance tests:**
 
 - **Search order:** golden tables for each search strategy, including the stop dir and root marker being inclusive. The
-  default searches only the start dir and not the user dir (DL-42).
-- **Invalid combinations:** `WithStopDir` without `Global`, and `Project` without a root marker, are `*OptionError`s.
+  default searches only the start dir and not the user dir (DL-42). One directory with every search place shows the full
+  order and the single file loaded (DL-147).
+- **First match:** the nearest non-empty file wins across scopes; files below it aren't decoded; empty files are
+  skipped; `SearchGlobal` reaches the user dir only when nothing nearer matched.
+- **Invalid combinations:** `WithStopDir` without `StopAtHome`, and `StopAtMarker` without a root marker, are
+  `*OptionError`s, and so are bad matchers and `{system}` with `EnvPathsDirs`.
+- **File formats:** rules beat extensions, the latest rule first; `.{name}rc` decodes as YAML, or JSON without YAML;
+  explicit files use the rules.
 - **Node.js sources are ignored:** a `package.json` with a `{name}` key loads nothing (DL-44).
 - **Explicit files** replace everything in `CosmiconfigLayout`.
-- **`$import` arrays** concatenate in `CosmiconfigLayout` (DL-43).
-- **Empty files** are skipped.
-- **The meta config's `{name}` key** is checked before the normal search.
+- **The meta config's `{name}` key** is checked before the normal search, and its `searchPlaces` and `mergeSearchPlaces`
+  change the walk.
 
 ## M5: Decoding, results and reports
 
@@ -436,6 +444,7 @@ first release is decided at the start of this milestone.
 - **Trust:** `RequireTrust` and `TrustPaths` (DL-28).
 - **The permission policy** (DL-20), with owners in `cctest.FS` (DL-108).
 - **Layer and result transforms** (DL-36).
+- **Not `$import`:** deferred from M4d, and possibly never supported (DL-145).
 - **Options** (DL-94): this milestone settles the include, policy, matcher and transform options, and adds the layouts'
   include keys and `MiseHardenedLayout`'s policies. An include key with no `file` resolver becomes an `*OptionError`,
   the bare-loader check moved from M3.

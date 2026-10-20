@@ -9,6 +9,11 @@ const (
 	StopAtHome WalkStop = iota
 	// StopAtRoot always walks to /, as mise does.
 	StopAtRoot
+	// StopAtStart searches the start directory only, as cosmiconfig's "none" strategy does.
+	StopAtStart
+	// StopAtMarker walks up to and including the first directory that contains an entry WithRootMarker names, or to
+	// /, as cosmiconfig's "project" strategy does.
+	StopAtMarker
 )
 
 // WithStartDir sets where walks start. By default it is the current directory at each load; a relative dir resolves
@@ -26,7 +31,7 @@ func WithStartDir(dir string) Option {
 // WithWalkStop sets where walks stop.
 func WithWalkStop(s WalkStop) Option {
 	return optionFunc(func(c *config) {
-		if s != StopAtHome && s != StopAtRoot {
+		if s < StopAtHome || s > StopAtMarker {
 			c.fail("WithWalkStop", "unknown walk stop %d", int(s))
 			return
 		}
