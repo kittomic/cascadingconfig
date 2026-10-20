@@ -8,13 +8,14 @@ import (
 	"testing/fstest"
 
 	cc "github.com/kittomic/cascadingconfig"
+	ccjson "github.com/kittomic/cascadingconfig/format/json"
 )
 
-// loadReal loads one FixedDir scope over dir from the real filesystem, the default.
+// loadReal loads one FixedDir scope over dir from the real filesystem, the default, with format/json's decoder.
 func loadReal(t *testing.T, dir string, templates ...string) (*cc.Result, *records) {
 	t.Helper()
 	logs := &records{}
-	l, err := cc.New("myapp", cc.WithDecoder(jsonDec), cc.WithLogger(slogFor(logs)), useKind(cc.FixedDir(dir, p(templates...)...)))
+	l, err := cc.New("myapp", cc.WithDecoder(ccjson.Decoder()), cc.WithLogger(slogFor(logs)), useKind(cc.FixedDir(dir, p(templates...)...)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -81,7 +82,7 @@ func TestOSUnreadableFile(t *testing.T) {
 // design.md Filesystem hook: MountFS makes an fs.FS appear at an absolute directory, and nothing else exists.
 func TestMountFS(t *testing.T) {
 	fsys := cc.MountFS("/virtual", fstest.MapFS{"myapp/config.json": {Data: []byte(`{"a": 1}`)}})
-	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cc.WithDecoder(jsonDec),
+	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cc.WithDecoder(ccjson.Decoder()),
 		cc.WithScope("in", cc.FixedDir("/virtual/{name}", p("config.json")...)),
 		cc.WithScope("out", cc.FixedDir("/elsewhere", p("config.json")...)),
 		cc.WithScopes("in", "out"),

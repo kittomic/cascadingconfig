@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cc "github.com/kittomic/cascadingconfig"
+	ccjson "github.com/kittomic/cascadingconfig/format/json"
 )
 
 // DL-63: on a real filesystem, a FIFO named like a candidate is skipped with a warning, without blocking.
@@ -18,7 +19,7 @@ func TestOSFIFODoesNotBlock(t *testing.T) {
 		t.Skipf("mkfifo: %v", err)
 	}
 	logs := &records{}
-	l, err := cc.New("myapp", cc.WithDecoder(jsonDec), cc.WithLogger(slogFor(logs)), useKind(cc.FixedDir(dir, p("config.json")...)))
+	l, err := cc.New("myapp", cc.WithDecoder(ccjson.Decoder()), cc.WithLogger(slogFor(logs)), useKind(cc.FixedDir(dir, p("config.json")...)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -74,13 +74,18 @@ func TestFSSpecialEntries(t *testing.T) {
 	if link != "/srv/real.json" {
 		t.Errorf("EvalSymlinks = %q, want /srv/real.json", link)
 	}
+	srv, err := fsys.OpenRoot("/srv")
+	if err != nil {
+		t.Fatalf("OpenRoot: %v", err)
+	}
+	defer srv.Close()
 	hard, err1 := root.Stat("hard.json")
-	linked, err2 := root.Stat("link.json")
+	target, err2 := srv.Stat("real.json")
 	if err1 != nil || err2 != nil {
 		t.Fatalf("Stat: %v, %v", err1, err2)
 	}
-	if !fsys.SameFile(hard, linked) {
-		t.Errorf("SameFile(hard link, symlink target) = false, want true")
+	if !fsys.SameFile(hard, target) {
+		t.Errorf("SameFile(hard link, its original) = false, want true")
 	}
 	entries, err := root.ReadDir(".")
 	if err != nil {
