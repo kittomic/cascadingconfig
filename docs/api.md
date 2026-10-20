@@ -280,7 +280,7 @@ layouts (DL-94).
 | Resolution     | `WithResolution(MergeAll \| FirstMatch)`                                                                  |
 | Patterns       | `Pattern(template, variant, root)` inside a scope kind. `template` uses `{name}`, `{env}` and `{ext}`; `variant` is `VariantShared`, `VariantEnv`, `VariantLocal` or `VariantEnvLocal`; `root` says how the config root is derived (the scope dir, or the file's own dir). |
 | Includes       | `WithIncludeKey(key, nesting)`, where `nesting` allows or forbids includes in included files              |
-| Bootstrap      | `WithBootstrap(scopes, patterns, allowedKeys, limits)`: where bootstrap files are searched, their names, which keys they may set, and the per-scope key limits |
+| Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit` and `WithBootstrapTransform` |
 | Limits         | `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
 | Directories    | **Settled** (DL-112): `WithPlatformDirs(XDGDirs)` for the mise layouts, and `EnvPathsDirs` for the cosmiconfig layout (M4d). It replaces the proposed `WithUserDir` and `WithSystemDir` pair. |
 | Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
@@ -410,6 +410,35 @@ func WithIgnoredPaths(paths ...string) Option
 ```
 
 - **`Embedded` is gone,** replaced by `Pattern.Key` (DL-120).
+
+#### Settled in M4c
+
+```go
+// Bootstrap files (DL-131 to DL-134)
+func BootstrapFiles(patterns ...Pattern) ScopeOption // FixedDir and Walk only
+
+// Pattern gains a field:
+//	SkipHomeAndRoot bool // Walk only: not searched in ~ or /
+
+type BootstrapKey string
+
+const (
+	BootstrapEnv                     BootstrapKey = "env"
+	BootstrapFormats                 BootstrapKey = "formats"
+	BootstrapCeilingPaths            BootstrapKey = "ceiling_paths"
+	BootstrapIgnoredConfigPaths      BootstrapKey = "ignored_config_paths"
+	BootstrapOverrideConfigFilenames BootstrapKey = "override_config_filenames"
+)
+
+func WithBootstrapKeys(keys ...BootstrapKey) Option
+func WithoutBootstrapKey(key BootstrapKey) Option
+func WithBootstrapLimit(scope ScopeName, keys ...BootstrapKey) Option
+func WithBootstrapTransform(f func(ctx context.Context, l Layer, t Tree) (Tree, error)) Option
+
+// Warning codes added: WarnBootstrapUnknownKey, WarnBootstrapKeyDropped
+```
+
+- **`WithBootstrap` is gone,** replaced by `BootstrapFiles` and the key options (DL-131, DL-132).
 - **Sealed kinds.** `Option`, `ScopeKind`, `ScopeOption`, `EnvVarsOption`, `PolicyOption`, `Matcher` and `WatchOption`
   are interfaces with unexported methods. The last three exist as types now, so the compiler already rejects them in the
   wrong place, and get their options in later milestones.
@@ -428,7 +457,8 @@ func WithIgnoredPaths(paths ...string) Option
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
 | Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithDefaultPolicy`, `WithScopePolicy` |
-| Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`, `WithoutBootstrapKey`                                                                |
+| Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`                                                                                       |
+| Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
 | Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
 | Behaviour     | `RequireConfig`, `WithLogger`, `WithProbes`                                                                                 |
 
