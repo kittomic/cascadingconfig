@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 )
@@ -128,6 +129,17 @@ type config struct {
 	nesting        IncludeNesting
 	noFileResolver bool // WithoutIncludeResolver("file")
 
+	resolvers       map[string]IncludeResolver // WithIncludeResolver, by lowercased scheme
+	hardened        bool                       // WithoutRemoteIncludes
+	includeTimeout  time.Duration
+	maxIncludeSize  int64
+	maxIncludeDepth int
+	maxIncludes     int
+	cacheDir        string        // WithIncludeCache; empty means the default
+	cacheTTL        time.Duration // WithIncludeCache
+	noCache         bool          // WithoutIncludeCache
+	now             func() time.Time
+
 	defaultPolicy *policyDef               // WithDefaultPolicy; nil means the engine default
 	scopePolicies map[ScopeName]*policyDef // WithScopePolicy
 	policyDefault *policy                  // the effective default policy; set by finish
@@ -158,6 +170,9 @@ func newConfig(name string) *config {
 	c := &config{
 		name: name, envName: envName(name), selected: map[ScopeName]bool{}, merge: defaultMergeConfig(),
 		host: osHost{}, fsys: osFileSystem{}, maxFileSize: defaultMaxFileSize,
+		includeTimeout: defaultIncludeTimeout, maxIncludeSize: defaultMaxIncludeSize,
+		maxIncludeDepth: defaultMaxIncludeDepth, maxIncludes: defaultMaxIncludes, cacheTTL: defaultCacheTTL,
+		now: time.Now,
 	}
 	if err := checkName(name); err != nil {
 		c.fail("New", "invalid app name %q: %w", name, err)
@@ -205,6 +220,7 @@ func (c *config) finish() error {
 	c.finishRequirements()
 	c.finishIncludes()
 	c.finishPolicies()
+	c.finishRemote()
 	for _, s := range c.scopes {
 		if fd, ok := s.kind.(fixedDirKind); ok && !s.invalid && fd.usesPlatformDirs() {
 			switch {

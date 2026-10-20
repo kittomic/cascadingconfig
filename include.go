@@ -1,5 +1,11 @@
 package cascadingconfig
 
+import (
+	"maps"
+	"slices"
+	"strings"
+)
+
 // IncludeNesting says whether an included file can include others (DL-178).
 type IncludeNesting int
 
@@ -31,15 +37,18 @@ func WithoutIncludeKey() Option {
 	return optionFunc(func(c *config) { c.includeKey = "" })
 }
 
-// WithoutIncludeResolver removes the resolver for scheme. Removing the built-in "file" resolver while an include key is
-// set is an *OptionError (DL-177); a policy whose AllowResolvers leaves out "file" forbids local includes instead.
+// WithoutIncludeResolver removes the resolver for scheme, even from a resolver that handles others too (DL-196).
+// Removing the built-in "file" resolver while an include key is set is an *OptionError (DL-177); a policy whose
+// AllowResolvers leaves out "file" forbids local includes instead.
 func WithoutIncludeResolver(scheme string) Option {
 	return optionFunc(func(c *config) {
-		switch scheme {
+		switch s := strings.ToLower(scheme); s {
 		case "":
 			c.fail("WithoutIncludeResolver", "an empty scheme")
 		case "file":
 			c.noFileResolver = true
+		default:
+			delete(c.resolvers, s)
 		}
 	})
 }
@@ -56,17 +65,22 @@ func (c *config) finishIncludes() {
 	}
 }
 
-// hasResolver reports whether a resolver is registered for scheme. Until M8, only the built-in file resolver exists.
+// hasResolver reports whether a resolver is registered for scheme: the built-in file resolver, or a remote one.
 func (c *config) hasResolver(scheme string) bool {
-	return scheme == "file" && !c.noFileResolver
+	if scheme == "file" {
+		return !c.noFileResolver
+	}
+	_, ok := c.resolvers[scheme]
+	return ok
 }
 
 // resolverSchemes returns the registered resolvers' schemes, sorted.
 func (c *config) resolverSchemes() []string {
-	if c.noFileResolver {
-		return nil
+	var out []string
+	if !c.noFileResolver {
+		out = append(out, "file")
 	}
-	return []string{"file"}
+	return slices.Sorted(slices.Values(append(out, slices.Collect(maps.Keys(c.resolvers))...)))
 }
 
 // IncludeRef is an include reference, as a resolver and a MatchRef matcher see it (DL-198).
@@ -88,11 +102,23 @@ type IncludeRef struct {
 // WithMaxIncludeDepth limits how deep includes nest: an include more than n levels below its root file is a
 // *CycleError (508). The default is 16 (DL-210). A limit that isn't positive is an *OptionError.
 func WithMaxIncludeDepth(n int) Option {
-	return optionFunc(func(*config) { _ = n }) // stub
+	return optionFunc(func(c *config) {
+		if n <= 0 {
+			c.fail("WithMaxIncludeDepth", "the limit must be positive, not %d", n)
+			return
+		}
+		c.maxIncludeDepth = n
+	})
 }
 
 // WithMaxIncludes limits how many include references one load follows, a reference listed twice counting twice; more
 // is a *TooLargeError (413). The default is 1000 (DL-210). A limit that isn't positive is an *OptionError.
 func WithMaxIncludes(n int) Option {
-	return optionFunc(func(*config) { _ = n }) // stub
+	return optionFunc(func(c *config) {
+		if n <= 0 {
+			c.fail("WithMaxIncludes", "the limit must be positive, not %d", n)
+			return
+		}
+		c.maxIncludes = n
+	})
 }

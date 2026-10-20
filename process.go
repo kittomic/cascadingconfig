@@ -57,6 +57,9 @@ type processor struct {
 	layers []mergeLayer // highest precedence first
 	chosen *entry       // the first-match result
 
+	refs       int                  // include references followed so far, for WithMaxIncludes
+	remoteSeen map[string]ScopeName // the remote files walked so far, by normalised reference, with their scopes
+
 	firstErr error // with first-match resolution, the problem that fails the load
 }
 
@@ -127,7 +130,7 @@ func (p *processor) visit(e *entry, chain []*entry) bool {
 	p.layers = append(p.layers, mergeLayer{layer: e.layer, tree: e.tree})
 	ancestors := append(slices.Clone(chain), e)
 	for i := len(refs) - 1; i >= 0; i-- {
-		p.visit(ld.resolveInclude(e, ancestors[0], refs[i], ancestors, p.found), ancestors)
+		p.visit(p.resolve(e, ancestors, refs[i]), ancestors)
 	}
 	return true
 }
@@ -215,7 +218,7 @@ func (ld *loading) checkPerms(pol *policy, e *entry) (Permission, string) {
 // included itself.
 func (ld *loading) includeRefs(e *entry, nested bool) ([]string, error) {
 	key := ld.c.includeKey
-	if key == "" || !e.file || e.tree == nil {
+	if key == "" || (!e.file && e.remote == nil) || e.tree == nil {
 		return nil, nil
 	}
 	v, ok := e.tree[key]
@@ -306,7 +309,7 @@ func (ld *loading) resolveInclude(from, root *entry, raw string, ancestors, foun
 	if pol.confine != nil && !ld.confined(pol, root, target) {
 		return reject(fmt.Sprintf("resolves to %s, outside the confinement roots of the %s policy", target, name), "outside the confinement roots")
 	}
-	ref := IncludeRef{Raw: raw, Scheme: "file", Location: filepath.ToSlash(target), From: from.layer}
+	ref := IncludeRef{Raw: raw, Scheme: "file", Ref: filepath.ToSlash(target), Location: filepath.ToSlash(target), From: from.layer}
 	if !allowed(pol.allow, ref, c.name) || !allowed(pol.allowFor["file"], ref, c.name) {
 		return reject(fmt.Sprintf("(%s) isn't on the %s policy's allow-list", ref.Location, name), "not on its allow-list")
 	}

@@ -91,6 +91,7 @@ type policy struct {
 	allow        []Matcher
 	allowFor     map[string][]Matcher
 	confine      []string
+	pinned       bool
 	trust        TrustStore
 	perms        func(FileCheck) (Permission, string)
 }
@@ -274,7 +275,7 @@ func checkRoot(r string) error {
 // RequirePinned makes the policy accept only pinned remote references: a full git commit id, an OCI digest, or a URL
 // with an integrity fragment (DL-201). It's checked before anything is fetched.
 func RequirePinned() PolicyOption {
-	return policyOpt{op: "RequirePinned", set: func(*policy) {}} // stub
+	return policyOpt{op: "RequirePinned", set: func(p *policy) { p.pinned = true }}
 }
 
 // RequireTrust skips files the store hasn't approved, with a warning (DL-192).

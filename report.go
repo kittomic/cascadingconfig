@@ -133,7 +133,7 @@ func (ld *loading) report() *Report {
 func (c *config) policyInfo(p *policy) *PolicyInfo {
 	info := &PolicyInfo{
 		Inherited: p.inherited, Resolvers: []string{}, Confine: slices.Clone(p.confine),
-		RequireTrust: p.trust != nil, FilePermissions: p.perms != nil,
+		RequirePinned: p.pinned, RequireTrust: p.trust != nil, FilePermissions: p.perms != nil,
 	}
 	for _, s := range c.resolverSchemes() {
 		if p.usable(c, s) {
@@ -174,6 +174,9 @@ func describePolicy(p *PolicyInfo) string {
 	}
 	for _, s := range slices.Sorted(maps.Keys(p.AllowFor)) {
 		parts = append(parts, "allow for "+s+": "+strings.Join(p.AllowFor[s], ", "))
+	}
+	if p.RequirePinned {
+		parts = append(parts, "pinned")
 	}
 	if len(p.Confine) > 0 {
 		parts = append(parts, "confine "+strings.Join(p.Confine, ", "))
@@ -252,6 +255,10 @@ func cloneLayers(ls []Layer) []Layer {
 	out := make([]Layer, len(ls))
 	for i, l := range ls {
 		l.Warnings = cloneWarnings(l.Warnings)
+		if l.Remote != nil {
+			r := *l.Remote
+			l.Remote = &r
+		}
 		out[i] = l
 	}
 	return out
@@ -377,6 +384,16 @@ func layerRows(ls []Layer) [][]string {
 		}
 		if l.IncludedBy != "" {
 			details = append(details, "included by "+l.IncludedBy)
+		}
+		if r := l.Remote; r != nil {
+			d := "remote " + r.Ref
+			if r.Identity != "" {
+				d += " @ " + r.Identity
+			}
+			if r.Cache != "" {
+				d += " (" + r.Cache + ")"
+			}
+			details = append(details, d)
 		}
 		rows = append(rows, []string{string(l.Scope), l.Status.String(), p, strings.Join(details, ", "), l.Reason})
 	}
