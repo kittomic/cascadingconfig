@@ -536,6 +536,33 @@ func (p *KoanfProvider) ReadBytes() ([]byte, error)
 - **`Load[T]`** decodes into a fresh `T`, which can be any type mapstructure decodes into, such as a struct, a pointer
   to one, or a map.
 
+#### Settled in M6
+
+```go
+// package toml (github.com/kittomic/cascadingconfig/format/toml), DL-169, DL-172
+func Decoder() cascadingconfig.Decoder // format "toml"; extension toml; media type application/toml
+
+// package yaml (github.com/kittomic/cascadingconfig/format/yaml), DL-163 to DL-168, DL-172
+func Decoder(opts ...Option) cascadingconfig.Decoder // format "yaml"; extensions yaml, yml; media types below
+
+type Option interface{ /* sealed */ }
+
+func WithLegacyNumbers() Option         // YAML 1.1 integers: 017 as octal, 0b11, and _ separators
+func WithMaxAliasValues(n int) Option   // the alias cap; 10,000 by default
+
+// WarnVersion warns that a %YAML directive named a version other than 1.2, which was parsed as 1.2 (DL-175).
+const WarnVersion cascadingconfig.WarningCode = "yaml-version"
+```
+
+- **YAML media types:** `application/yaml`, `application/x-yaml`, `text/yaml` and `text/x-yaml`.
+- **`WithMaxAliasValues` below 1** makes every `Decode` fail with an error saying so, because `Decoder` has no error to
+  return. The first load reports it.
+- **`WithLegacyNumbers` is tentative** (DL-163): it may be dropped if it complicates the decoder.
+- **A custom decoder** replaces a built-in one with `WithDecoder`, as any decoder registers. For example, to keep
+  yaml.v3's YAML 1.1 behaviour, an app wraps `yaml.Unmarshal` into `map[string]any` in a type with `Format`,
+  `Extensions`, `MediaTypes` and `Decode`, converting its non-canonical values, such as `time.Time` and `uint64`, in
+  `Decode`. `DecodeDocument` applies the shared rules and rejects any non-canonical value it misses.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
