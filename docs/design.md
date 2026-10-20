@@ -323,9 +323,9 @@ type Pattern struct {
   a group they keep their listed order. A layout reproduces mise's layers A–D by listing them in mise's order.
 - **Globs** (DL-118): `*` is the only glob character, and it matches within one path segment. In the file name it
   matches a non-empty name with no dots, so `conf.d/*.{ext}` never takes `10-node.dev.toml` as a shared file and
-  `conf.d/*.{env}.{ext}` reads its environment from the dot. In a directory segment it matches any name that doesn't
-  start with a dot. Matches apply in alphabetical order, and each stem is its own slot. Other glob characters are
-  literal, and `**` is an `*OptionError`.
+  `conf.d/*.{env}.{ext}` reads its environment from the dot. In a directory segment it matches any directory whose name
+  doesn't start with a dot. Matches apply in alphabetical order, and each stem is its own slot. Other glob characters
+  are literal, and `**` is an `*OptionError`.
 - **Config roots** (DL-119): `RootSearchDir` is the directory being searched, as mise uses even for
   `.config/{name}/config.toml`. `RootFileDir` is the file's own directory, as for `.config/{name}/{name}.toml` and each
   `conf.d/*/` folder. The scope option `ConfigRoot(dir)` replaces the search directory as the root, as `MiseLayout`'s
@@ -359,7 +359,7 @@ load, and a relative value resolves against it. `WithWalkStop(StopAtHome)` is th
 
 **A moved user directory** (DL-128): when `{NAME}_CONFIG_DIR` moves the user directory, files under the default
 `~/.config/{name}` that the walk finds are dropped, as mise does, so the old directory doesn't keep loading as project
-config of `~`.
+config of `~`. They aren't listed among the layers at all.
 
 ## `MiseLayout`'s scopes
 
@@ -1251,7 +1251,8 @@ or with `{NAME}_CONFIG_FILE=/path/a.toml:/path/b.yaml`.
 - **What it replaces (`mise.Preset`):** the project scope only. The directory walk is skipped, but the system, user and
   override scopes still apply. Generally, the files replace the scope marked `ReplacedByConfigFiles()`, at its position,
   even when it isn't selected, and take `TrustProject` and that scope's name. With no marked scope, they go above every
-  scope (DL-126).
+  scope (DL-126). An explicit file's config root is its scope's `ConfigRoot`, if it has one, and otherwise the file's
+  own directory.
 - **Errors:** a missing file is a `*NotFoundError` (404), an unregistered format an `*UnsupportedFormatError` (415), and
   a file that can't be read, or a directory, an `*IOError`.
 - **What it replaces (`cosmiconfig.Preset`):** everything. This matches cosmiconfig's `load(path)`, which reads only
