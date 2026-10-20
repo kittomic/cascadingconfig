@@ -1280,10 +1280,16 @@ These checks also cover resolvers that apps write themselves:
   Docker v2 schema 2 manifests are accepted; an image index or any other type is a `*ReferenceError` that asks for a
   manifest.
 - **Two artifact forms.** An artifact pushed with `oras push` stores each file as its own blob, named by the
-  `org.opencontainers.image.title` annotation. An image-style artifact stores files in tar layers. Both are supported: a
-  layer with a tar media type (OCI or Docker, plain or gzip) is read as entries, and any other layer is the file its
-  title names. A non-tar layer without a title is ignored. A zstd layer is a `*ReferenceError` for now, because zstd
-  needs a new dependency.
+  `org.opencontainers.image.title` annotation. An image-style artifact stores files in tar layers. Both are supported
+  (DL-215):
+  - **A titled layer** without `io.deis.oras.content.unpack: "true"` is one file, named by its title, whatever its media
+    type: `oras push` gives a file the media type `application/vnd.oci.image.layer.v1.tar` by default, though its
+    content is the file itself.
+  - **A titled layer with that annotation,** as `oras push` stores a directory, is read as tar entries. oras puts the
+    directory's name at the start of every entry, so `conf/a.json` matches the inner path `conf/a.json`.
+  - **A layer without a title** is read as tar entries when its media type is a tar type (OCI or Docker, plain or gzip),
+    and is ignored otherwise.
+  - **zstd** layers are a `*ReferenceError` for now, because zstd needs a new dependency.
 - **No extraction to disk.** Layers are read as streams, and the requested file is found among them. Only the titled
   blobs that match are downloaded; every tar layer is read in full, for the malformed-entry rule and for whiteouts.
 - **Duplicates:** layers are taken in manifest order, and if the same path appears in several, the **last** wins, as in
@@ -2099,7 +2105,7 @@ There are no open questions.
 | 212 | Isolating git                               | Every `GIT_*` variable is removed, since `GIT_CONFIG_COUNT` injects config past `GIT_CONFIG_NOSYSTEM`; global config is an empty file; prompts, hooks, submodules and filters are off; ssh runs in batch mode. The repo URL's scheme is checked against `WithProtocols` before git runs, a `*PolicyError` if it isn't allowed. |
 | 213 | git and redirects                           | git never follows redirects itself. For http and https repos, the resolver follows them first with Go's client, at most 5 hops, none to http, each through `IncludeRef.Check`, and git fetches from the final URL; `WithClient` sets the client. With git's default, a redirect silently reached another host. |
 | 214 | gitresolver's API and errors                | `New(WithProtocols, WithCredentialHelper, WithGit, WithClient)`. A missing ref or path is a `*NotFoundError`, a symlink, submodule or directory a `*ReferenceError`, a large file a `*TooLargeError`, and anything else a `*FetchError` with git's first error line. Tests use `git http-backend` through `net/http/cgi`. |
-| 215 | Reading OCI artifacts                       | The tag or digest is resolved to a manifest digest first, which is the identity; OCI image and Docker v2 manifests only, capped at 4 MiB. Tar layers (plain or gzip) are read as entries and other layers by title, in manifest order, with image whiteouts; zstd and indexes are rejected. Entries with absolute names, `..` or `\` fail the fetch. |
+| 215 | Reading OCI artifacts                       | The tag or digest is resolved to a manifest digest first, which is the identity; OCI image and Docker v2 manifests only, capped at 4 MiB. Titled layers are files, whatever their media type (oras's default for a file is the tar type), unless oras's unpack annotation marks a directory tar; untitled tar layers (plain or gzip) are read as entries; all in manifest order, with image whiteouts; zstd and indexes are rejected. Entries with absolute names, `..` or `\` fail the fetch. |
 | 216 | OCI caps                                    | `WithMaxLayerSize(n)`, 64 MiB by default, caps each blob's declared size, download and decompressed layer; the matched file keeps the include size limit. This replaces capping decompression at the include size limit, which ruled out image-style artifacts with more than 1 MiB of files. |
 | 217 | ociresolver's API and network               | `New(WithCredentials, WithPlainHTTP, WithClient, WithMaxLayerSize)`, with the package's own `Credential` so oras types stay out; no Docker config is read. Registry redirects are followed without allow-list checks, at most 5 hops, never to http, since content is digest-verified. oras-go v2.6.4, measured by a new core-oci setup. |
 | 218 | ociresolver's errors and tests              | Missing things are `*NotFoundError`s; indexes, unsupported layers, malformed entries and non-regular files `*ReferenceError`s; caps `*TooLargeError`s; anything else `*FetchError`s. Tests use a hand-written in-memory registry; `FuzzTarEntries` fuzzes the layer reader. |
