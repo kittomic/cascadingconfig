@@ -79,39 +79,114 @@ func (decoder) MediaTypes() []string {
 }
 
 // Decode parses data with goccy and builds the tree from its syntax tree. Errors carry a position and a short message,
-// never an excerpt of the file; a panic in goccy is returned as an error, so a hostile file can't crash the app.
-func (d decoder) Decode(data []byte) (doc cascadingconfig.Document, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			doc, err = cascadingconfig.Document{}, errors.New("the YAML parser failed on this file")
-		}
-	}()
+// never an excerpt of the file.
+func (d decoder) Decode(data []byte) (cascadingconfig.Document, error) {
 	if d.c.maxAliasValues < 1 {
 		return cascadingconfig.Document{}, fmt.Errorf("WithMaxAliasValues(%d): the cap must be at least 1", d.c.maxAliasValues)
 	}
-	f, err := parser.ParseBytes(data, 0)
+	f, err := parse(data)
 	if err != nil {
-		return cascadingconfig.Document{}, fromGoccy(err)
+		return cascadingconfig.Document{}, err
 	}
-	if len(f.Docs) > 1 {
-		return cascadingconfig.Document{}, errorAt(docToken(f.Docs[1]), "the file holds more than one document; a config file must hold one")
+	body, handles, warnings, err := document(f)
+	if err != nil {
+		return cascadingconfig.Document{}, err
 	}
-	if len(f.Docs) == 0 || f.Docs[0].Body == nil {
-		return cascadingconfig.Document{Empty: true}, nil
+	if body == nil {
+		return cascadingconfig.Document{Empty: true, Warnings: warnings}, nil
 	}
-	b := &builder{c: d.c, anchors: map[string]anchor{}, building: map[string]bool{}}
-	v, err := b.value(f.Docs[0].Body, "")
+	b := &builder{c: d.c, handles: handles, anchors: map[string]anchor{}, building: map[string]bool{}}
+	v, err := b.value(body, "")
 	if err != nil {
 		return cascadingconfig.Document{}, err
 	}
 	switch v := v.(type) {
 	case nil:
-		return cascadingconfig.Document{Empty: true}, nil
+		return cascadingconfig.Document{Empty: true, Warnings: warnings}, nil
 	case map[string]any:
-		return cascadingconfig.Document{Tree: v}, nil
+		return cascadingconfig.Document{Tree: v, Warnings: warnings}, nil
 	default:
-		return cascadingconfig.Document{}, errorAt(f.Docs[0].Body.GetToken(), "the top level must be a table, not %s", describe(v))
+		return cascadingconfig.Document{}, errorAt(body.GetToken(), "the top level must be a table, not %s", describe(v))
 	}
+}
+
+// parse runs goccy's parser. A panic inside it is returned as an error, so a hostile file can't crash the app; this
+// guard covers only goccy's parse call, so a panic in this package's own code still surfaces as a bug.
+func parse(data []byte) (f *ast.File, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			f, err = nil, errors.New("the YAML parser failed on this file")
+		}
+	}()
+	f, err = parser.ParseBytes(data, 0)
+	if err != nil {
+		return nil, fromGoccy(err)
+	}
+	return f, nil
+}
+
+// document returns the file's one document, with its %TAG handles and any warnings about its %YAML directive. goccy
+// puts each directive in a document of its own, so those belong to the document after them.
+func document(f *ast.File) (ast.Node, map[string]string, []cascadingconfig.Warning, error) {
+	handles := map[string]string{}
+	var warnings []cascadingconfig.Warning
+	var docs []*ast.DocumentNode
+	for _, d := range f.Docs {
+		dn, ok := d.Body.(*ast.DirectiveNode)
+		if !ok {
+			docs = append(docs, d)
+			continue
+		}
+		if len(docs) > 0 {
+			continue // directives for a later document, which is an error below anyway
+		}
+		w, err := directive(dn, handles)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		warnings = append(warnings, w...)
+	}
+	switch len(docs) {
+	case 0:
+		return nil, handles, warnings, nil
+	case 1:
+		return docs[0].Body, handles, warnings, nil
+	default:
+		return nil, nil, nil, errorAt(docToken(docs[1]), "the file holds more than one document; a config file must hold one")
+	}
+}
+
+// directive applies a %YAML or %TAG directive. Other directives are reserved, and ignored, as the spec says.
+func directive(n *ast.DirectiveNode, handles map[string]string) ([]cascadingconfig.Warning, error) {
+	if n.Name == nil {
+		return nil, nil
+	}
+	var values []string
+	for _, v := range n.Values {
+		values = append(values, v.GetToken().Value)
+	}
+	switch n.Name.GetToken().Value {
+	case "YAML":
+		if len(values) != 1 {
+			return nil, errorAt(n.GetToken(), "a %%YAML directive needs one version")
+		}
+		major, minor, ok := strings.Cut(values[0], ".")
+		if !ok || major != "1" {
+			return nil, errorAt(n.GetToken(), "YAML %s isn't supported; this decoder reads YAML 1.2", values[0])
+		}
+		if minor != "2" {
+			return []cascadingconfig.Warning{{
+				Code:    WarnVersion,
+				Message: fmt.Sprintf("the file asks for YAML %s, and was parsed as YAML 1.2", values[0]),
+			}}, nil
+		}
+	case "TAG":
+		if len(values) != 2 {
+			return nil, errorAt(n.GetToken(), "a %%TAG directive needs a handle and a prefix")
+		}
+		handles[values[0]] = values[1]
+	}
+	return nil, nil
 }
 
 // docToken returns the token that starts a document, for its position.
@@ -161,6 +236,7 @@ type anchor struct {
 // so each value is a fresh copy, and every value built inside an alias or merge counts towards the cap.
 type builder struct {
 	c        config
+	handles  map[string]string // %TAG handles, to their prefixes
 	anchors  map[string]anchor
 	building map[string]bool // anchors whose value is being built, to catch a self-alias
 	inAlias  int
@@ -180,7 +256,7 @@ func (b *builder) value(n ast.Node, tag string) (any, error) {
 		if tag != "" {
 			return nil, errorAt(n.GetToken(), "a value has two tags")
 		}
-		t, err := normaliseTag(n)
+		t, err := b.normaliseTag(n)
 		if err != nil {
 			return nil, err
 		}
@@ -391,17 +467,53 @@ func init() {
 	}
 }
 
-// normaliseTag returns a tag's short core-schema name, or an error for any other tag.
-func normaliseTag(n *ast.TagNode) (string, error) {
+// normaliseTag expands a tag's handle and returns its short core-schema name, or an error for any other tag: !! stands
+// for tag:yaml.org,2002: and ! for a local tag, unless a %TAG directive says otherwise.
+func (b *builder) normaliseTag(n *ast.TagNode) (string, error) {
 	text := n.Start.Value
-	if t, ok := coreTags[text]; ok && n.Directive == nil {
-		return t, nil
+	if text == "!" {
+		return "!", nil
 	}
-	name := text
+	var uri string
 	if strings.HasPrefix(text, "!<") && strings.HasSuffix(text, ">") {
-		name = text[2 : len(text)-1]
+		uri = text[2 : len(text)-1]
+	} else {
+		handle, suffix := splitHandle(text)
+		prefix, ok := b.handles[handle]
+		if !ok {
+			switch handle {
+			case "!!":
+				prefix = "tag:yaml.org,2002:"
+			case "!":
+				prefix = "!"
+			default:
+				return "", errorAt(n.GetToken(), "the tag %s uses the handle %s, which no %%TAG directive defines", text, handle)
+			}
+		}
+		uri = prefix + suffix
+	}
+	if name, ok := strings.CutPrefix(uri, "tag:yaml.org,2002:"); ok {
+		if t, ok := coreTags["!!"+name]; ok {
+			return t, nil
+		}
+	}
+	name := uri
+	if !strings.HasPrefix(text, "!<") && text != uri {
+		name = text + " (" + uri + ")"
 	}
 	return "", errorAt(n.GetToken(), "the tag %s isn't supported; only the YAML 1.2 core schema's tags are", name)
+}
+
+// splitHandle splits a shorthand tag into its handle and suffix: "!!str" into "!!" and "str", "!e!x" into "!e!" and
+// "x", and "!foo" into "!" and "foo".
+func splitHandle(text string) (string, string) {
+	if strings.HasPrefix(text, "!!") {
+		return "!!", text[2:]
+	}
+	if i := strings.IndexByte(text[1:], '!'); i >= 0 {
+		return text[:i+2], text[i+2:]
+	}
+	return "!", text[1:]
 }
 
 // The YAML 1.2 core schema's resolution (§10.3.2), and the YAML 1.1 integer forms WithLegacyNumbers adds.

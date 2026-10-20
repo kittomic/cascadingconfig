@@ -30,16 +30,10 @@ func (decoder) Extensions() []string { return []string{"toml"} }
 
 func (decoder) MediaTypes() []string { return []string{"application/toml"} }
 
-// Decode parses data. go-toml's errors carry their position and a short message that doesn't quote the file; a panic
-// in go-toml is returned as an error, so a hostile file can't crash the app.
-func (decoder) Decode(data []byte) (doc cascadingconfig.Document, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			doc, err = cascadingconfig.Document{}, errors.New("the TOML parser failed on this file")
-		}
-	}()
-	var m map[string]any
-	if err := toml.Unmarshal(data, &m); err != nil {
+// Decode parses data. go-toml's errors carry their position and a short message that doesn't quote the file.
+func (decoder) Decode(data []byte) (cascadingconfig.Document, error) {
+	m, err := parse(data)
+	if err != nil {
 		return cascadingconfig.Document{}, err
 	}
 	if len(m) == 0 {
@@ -50,6 +44,18 @@ func (decoder) Decode(data []byte) (doc cascadingconfig.Document, err error) {
 		return cascadingconfig.Document{}, err
 	}
 	return cascadingconfig.Document{Tree: t.(map[string]any)}, nil
+}
+
+// parse runs go-toml. A panic inside it is returned as an error, so a hostile file can't crash the app; this guard
+// covers only go-toml's call, so a panic in this package's own code still surfaces as a bug.
+func parse(data []byte) (m map[string]any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			m, err = nil, errors.New("the TOML parser failed on this file")
+		}
+	}()
+	err = toml.Unmarshal(data, &m)
+	return m, err
 }
 
 // canonical turns go-toml's values into canonical ones: its date and time types become text.
