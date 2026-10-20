@@ -130,3 +130,10 @@ var (
 		WithEnvBinding(BindConfigFormats, ""),
 	)
 )
+
+// MiseGlobalPatterns returns mise's global-directory patterns (config-locations.md 3.4), lowest precedence first, as
+// MiseLayout's system and user scopes use them. Apps can use them for their own scopes, such as a mounted config
+// directory. Each call returns a fresh copy.
+func MiseGlobalPatterns() []Pattern {
+	return nil // stub
+}
