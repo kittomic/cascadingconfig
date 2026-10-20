@@ -17,10 +17,16 @@ import (
 func checkNormalised(t *testing.T, ref cc.IncludeRef) {
 	t.Helper()
 	s := ref.Ref
-	lower := strings.ToLower(s)
-	for _, bad := range []string{"%2e", "%2f", "%5c", `\`, "#"} {
-		if strings.Contains(lower, bad) {
+	for _, bad := range []string{`\`, "#"} {
+		if strings.Contains(s, bad) {
 			t.Errorf("Ref %q contains %q", s, bad)
+		}
+	}
+	// Encoded separators are banned in paths; a query may hold them.
+	beforeQuery, _, _ := strings.Cut(strings.ToLower(s), "?")
+	for _, bad := range []string{"%2e", "%2f", "%5c"} {
+		if strings.Contains(beforeQuery, bad) {
+			t.Errorf("Ref %q has %q before its query", s, bad)
 		}
 	}
 	for _, r := range s {
