@@ -1127,7 +1127,7 @@ cascadingconfig.WithDefaultPolicy(
 		cascadingconfig.Prefix("https://config.example.com/"),
 	),
 	cascadingconfig.AllowFor("git",
-		cascadingconfig.Glob("git::https://github.com/acme/*"),
+		cascadingconfig.Glob("git::https://github.com/acme/*//**"),
 		cascadingconfig.MatchRef(func(ref cascadingconfig.IncludeRef) bool {
 			return ref.From.Scope != cascadingconfig.ScopeProject // only user/system files may fetch
 		}),
@@ -1140,8 +1140,10 @@ cascadingconfig.WithDefaultPolicy(
   path or the inner path, ignoring the query and the ref (DL-202). `MatchRef` gets the whole `IncludeRef`, including the
   file that asked for it; it's for allow-lists only, and an `*OptionError` in `WithFileFormat`.
   - **`Glob`:** `*` matches within one `/`-separated segment, and `**` matches across segments. So
-    `git::https://github.com/acme/*` matches `…/acme/config.git` but not `…/acme/team/config.git`, and
-    `git::https://github.com/acme/**` matches both. `?` matches one character, and there are no other metacharacters.
+    `git::https://github.com/acme/*//**` matches every file in `…/acme/config.git` but not in `…/acme/team/config.git`,
+    and `git::https://github.com/acme/**` matches both. A git reference's normalised string goes on with `//<path>`, so
+    `git::https://github.com/acme/*` alone matches none. `?` matches one character, and there are no other
+    metacharacters.
   - **`Regexp`** is anchored at both ends: it must match the **whole** normalised string.
   - **`Prefix`** is a plain string prefix, so end it with `/` to match a directory: `Prefix("/etc/acme")` also matches
     `/etc/acmex/base.toml`. It works in `WithFileFormat` too.
