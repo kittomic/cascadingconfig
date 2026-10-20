@@ -1,0 +1,7 @@
+system /etc/myapp/myapprc.toml loaded
+user /home/me/.config/myapp/myapprc.toml loaded
+user /home/me/.config/myapp/myapprc.local.toml loaded
+project /home/me/.myapprc.toml loaded
+project /home/me/work/.config/myapprc.toml loaded
+project /home/me/work/.myapprc.toml loaded
+project /home/me/work/app/.myapprc.local.toml loaded
