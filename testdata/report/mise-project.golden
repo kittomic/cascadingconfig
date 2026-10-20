@@ -11,6 +11,9 @@ scopes:
   override  FixedDir  user     selected
   env       EnvVars   user     selected
 
+policies:
+  default  resolvers file
+
 bootstrap:
   user  loaded  /home/me/.config/myapp/myapprc.json  json
 

@@ -11,25 +11,57 @@
       "name": "system",
       "kind": "FixedDir",
       "trust": "system",
-      "selected": true
+      "selected": true,
+      "policy": {
+        "inherited": false,
+        "resolvers": [
+          "file"
+        ],
+        "require_trust": false,
+        "file_permissions": false
+      }
     },
     {
       "name": "user",
       "kind": "FixedDir",
       "trust": "user",
-      "selected": true
+      "selected": true,
+      "policy": {
+        "inherited": false,
+        "resolvers": [
+          "file"
+        ],
+        "require_trust": false,
+        "file_permissions": false
+      }
     },
     {
       "name": "project",
       "kind": "Walk",
       "trust": "project",
-      "selected": true
+      "selected": true,
+      "policy": {
+        "inherited": false,
+        "resolvers": [
+          "file"
+        ],
+        "require_trust": false,
+        "file_permissions": false
+      }
     },
     {
       "name": "override",
       "kind": "FixedDir",
       "trust": "user",
-      "selected": true
+      "selected": true,
+      "policy": {
+        "inherited": false,
+        "resolvers": [
+          "file"
+        ],
+        "require_trust": false,
+        "file_permissions": false
+      }
     },
     {
       "name": "env",
