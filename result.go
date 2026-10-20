@@ -3,6 +3,7 @@ package cascadingconfig
 import (
 	"reflect"
 	"slices"
+	"sync"
 
 	"github.com/kittomic/cascadingconfig/internal/tree"
 )
@@ -16,6 +17,22 @@ type Result struct {
 	found     []Layer   // every layer the load considered, lowest precedence first, with its status
 	warnings  []Warning // warnings that belong to no layer, such as WarnNoHome
 	bootstrap []Layer   // the bootstrap files the load read, lowest precedence first
+
+	cfg     *config             // the loader's settings, for decoding
+	err     error               // the load's error, for a failed result
+	envVars []map[string]string // for each merged layer from EnvVars, the variable behind each key path
+	report  *Report             // the report, without the unknown keys
+
+	mu          sync.Mutex
+	unknownKeys []Warning // found by decodes through this result, once each
+}
+
+// envVar returns the variable that set the key at keys in merged layer i, if it came from EnvVars.
+func (r *Result) envVar(i int, keys Path) string {
+	if i < 0 || i >= len(r.envVars) || r.envVars[i] == nil {
+		return ""
+	}
+	return r.envVars[i][keys.String()]
 }
 
 // Tree returns a copy of the merged tree, so changing it can't affect the result or another caller.
@@ -54,12 +71,12 @@ const (
 
 // String returns the kind's name: "set", "merged", "appended", "prepended", "null", "func" or "unset".
 func (k OriginKind) String() string {
-	return "" // stub
+	return enumName(int(k), "", "set", "merged", "appended", "prepended", "null", "func", "unset")
 }
 
 // MarshalText returns the kind's name.
 func (k OriginKind) MarshalText() ([]byte, error) {
-	return nil, nil // stub
+	return []byte(k.String()), nil
 }
 
 // OriginOf reports where the value at path came from: the latest step and its history.
@@ -82,7 +99,7 @@ func OriginOf[P PathSpec](r *Result, path P) (Origin, bool) {
 		return Origin{}, false
 	}
 
-	o := Origin{Layer: r.layers[n.layer], Kind: n.kind}
+	o := Origin{Layer: r.layers[n.layer], Kind: n.kind, EnvVar: r.envVar(n.layer, p)}
 	for _, i := range n.elements {
 		o.Elements = append(o.Elements, r.layers[i])
 	}

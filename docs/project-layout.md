@@ -79,6 +79,8 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
   consumers.
 - **Release check:** each module is also built and tested with `GOWORK=off`, from lefthook's pre-push for now and from
   CI later. That catches a module that silently depends on unreleased core changes.
+- **Modules that are never released** (`internal/compat`, `examples`) may `replace` the core with the repository's copy,
+  so they build with `GOWORK=off` too. A released module never does.
 
 ## Tooling changes
 

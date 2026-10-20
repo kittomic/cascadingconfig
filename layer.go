@@ -1,5 +1,7 @@
 package cascadingconfig
 
+import "strconv"
+
 // ScopeName names a scope. Custom scopes use their own names, and untyped string constants convert implicitly.
 type ScopeName string
 
@@ -24,12 +26,12 @@ const (
 
 // String returns the variant's name: "shared", "env", "local" or "env_local".
 func (v Variant) String() string {
-	return "" // stub
+	return enumName(int(v), "shared", "env", "local", "env_local")
 }
 
 // MarshalText returns the variant's name.
 func (v Variant) MarshalText() ([]byte, error) {
-	return nil, nil // stub
+	return []byte(v.String()), nil
 }
 
 // TrustLevel orders scopes by how far their files are trusted: TrustProject < TrustUser < TrustSystem.
@@ -44,12 +46,12 @@ const (
 
 // String returns the level's name: "project", "user" or "system".
 func (t TrustLevel) String() string {
-	return "" // stub
+	return enumName(int(t), "project", "user", "system")
 }
 
 // MarshalText returns the level's name.
 func (t TrustLevel) MarshalText() ([]byte, error) {
-	return nil, nil // stub
+	return []byte(t.String()), nil
 }
 
 // LayerStatus says what happened to a layer.
@@ -76,12 +78,20 @@ const (
 
 // String returns the status's name: "loaded", "ignored", "empty", "unreadable", "failed" or "duplicate".
 func (s LayerStatus) String() string {
-	return "" // stub
+	return enumName(int(s), "loaded", "ignored", "empty", "unreadable", "failed", "duplicate")
 }
 
 // MarshalText returns the status's name.
 func (s LayerStatus) MarshalText() ([]byte, error) {
-	return nil, nil // stub
+	return []byte(s.String()), nil
+}
+
+// enumName returns names[v], or the number for a value with no name.
+func enumName(v int, names ...string) string {
+	if v >= 0 && v < len(names) {
+		return names[v]
+	}
+	return strconv.Itoa(v)
 }
 
 // Layer is the metadata for one source. It never contains the layer's tree, so it is safe to log and to keep.

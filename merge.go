@@ -56,6 +56,7 @@ func defaultMergeConfig() mergeConfig {
 type mergeLayer struct {
 	layer Layer
 	tree  Tree
+	vars  map[string]string // an EnvVars layer's variable for each key path; the merge ignores it
 }
 
 // merge merges layers, lowest precedence first, into a Result. Each layer's unset paths are removed from the result of

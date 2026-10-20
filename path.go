@@ -3,6 +3,7 @@ package cascadingconfig
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -97,12 +98,16 @@ func parseQuotedSegment(s string, i int) (string, int, error) {
 
 // MarshalText returns the dotted form of p, so a Path encodes as a string.
 func (p Path) MarshalText() ([]byte, error) {
-	return nil, nil // stub
+	return []byte(p.String()), nil
 }
 
 // UnmarshalText parses the dotted form, as ParsePath does.
 func (p *Path) UnmarshalText(text []byte) error {
-	_, _ = p, text // stub
+	parsed, err := ParsePath(string(text))
+	if err != nil {
+		return err
+	}
+	*p = parsed
 	return nil
 }
 
@@ -128,4 +133,9 @@ func (p Path) String() string {
 		b.WriteByte('"')
 	}
 	return b.String()
+}
+
+// hasPrefix reports whether p starts with prefix.
+func hasPrefix(p, prefix Path) bool {
+	return len(p) >= len(prefix) && slices.Equal(p[:len(prefix)], prefix)
 }

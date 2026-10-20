@@ -647,15 +647,18 @@ a `*BaseError` with code 400. On a failed result, `Decode` and `DecodeAt` return
   every decode made through it, once each, under a lock. `Describe()` returns a snapshot. `Load[T]` decodes once.
 - **Inside arrays,** a key is named as mapstructure names it, for example `servers[0].hots`, and attributed to that
   element's layer.
+- **A table no field consumes** is listed as each of its leaf keys, such as `sever.port`, because each may come from a
+  different file. mapstructure itself reports only the table.
 - **How they're found:** through mapstructure's `Metadata.Unused`. If the app sets `ErrorUnused` itself, mapstructure's
   error is wrapped in a `*DecodeError`.
 
 **Decode errors carry provenance, never values** (DL-150). Each key that fails is its own `*DecodeError`, with `Key` set
 to the key, `Path` to the file that set it and `Scope` to its scope, and several are joined. For example:
-"`server.port`: expected int, got string, set by `~/work/app/myapp.local.toml`". The value is left out, because config
-often holds secrets and errors end up in logs. Mapstructure's own error, which does quote it, is still reachable through
-`Unwrap`. The file named is the value's own layer: an array element's layer for an element, the latest layer for a table
-several layers merged into, `defaults` for a default, and the variable (`Origin.EnvVar`) for a key from `EnvVars`.
+"`cascadingconfig: decode: server.port: expected int, got a string, set by ~/work/app/myapp.local.toml`". The value is
+left out, because config often holds secrets and errors end up in logs. Mapstructure's own error, which does quote it,
+is still reachable through `Unwrap`. The file named is the value's own layer: an array element's layer for an element,
+the latest layer for a table several layers merged into, `defaults` for a default, and the variable (`Origin.EnvVar`)
+for a key from `EnvVars`.
 
 **`null` and defaults set in Go code.** Decoding keeps koanf's mapstructure setting, `ZeroFields: false`:
 

@@ -2,6 +2,7 @@ package cascadingconfig
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -285,6 +286,22 @@ type DecodeError struct {
 
 	Key     Path // the key that failed
 	Unknown bool // the key matches no field, under UnknownKeysError
+
+	detail string // what went wrong, without the value
+	source string // the file, variable or scope that set the key
+}
+
+// Error returns "cascadingconfig: decode: <key>: <what went wrong>, set by <source>", which never quotes the value. An
+// error built elsewhere, without those details, is formatted as a BaseError.
+func (e *DecodeError) Error() string {
+	if e.detail == "" {
+		return e.BaseError.Error()
+	}
+	msg := fmt.Sprintf("cascadingconfig: %s: %s: %s", e.Op, e.Key, e.detail)
+	if e.source != "" {
+		msg += ", set by " + e.source
+	}
+	return msg
 }
 
 // Code returns CodeUnprocessable.

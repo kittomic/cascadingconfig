@@ -140,6 +140,7 @@ func mapKeys[K comparable, V any](m map[K]V) func(yield func(K) bool) {
 // bootSettings is what the bootstrap files set, combined.
 type bootSettings struct {
 	env      []string // the highest file's env; nil when no file set it
+	envFrom  string   // the file env came from
 	override []string // the highest file's override_config_filenames
 	formats  []bootFormats
 	ceilings []string
@@ -173,6 +174,7 @@ func (ld *loading) readBootstrap() error {
 			continue
 		}
 		ld.order = ld.baseOrder
+		ld.booting = true
 		saved := ld.entries
 		ld.entries = nil
 		switch k := s.kind.(type) {
@@ -202,7 +204,7 @@ func (ld *loading) readBootstrap() error {
 			}
 			ld.boot = append(ld.boot, e)
 		}
-		ld.entries = saved
+		ld.entries, ld.booting = saved, false
 	}
 	if len(errs) > 0 {
 		return errors.Join(errs...)
@@ -287,7 +289,7 @@ func (ld *loading) applyBootstrap(e *entry) error {
 					return ld.bootError(e, key, fmt.Errorf("invalid environment name %q: %w", env, err))
 				}
 			}
-			ld.settings.env = list
+			ld.settings.env, ld.settings.envFrom = list, e.layer.Path
 		case BootstrapFormats:
 			if len(list) == 0 {
 				return ld.bootError(e, key, errors.New("an empty list would turn every format off"))

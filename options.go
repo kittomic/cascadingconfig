@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+
+	"github.com/go-viper/mapstructure/v2"
 )
 
 // Option configures a loader. Options are sealed: only this package creates them, so the set can grow without
@@ -108,6 +110,13 @@ type config struct {
 	markers         []string // WithRootMarker
 	configFilesOnly bool     // WithConfigFilesOnly
 
+	tag         string                      // WithTag; empty means the decoder config's, or koanf
+	decoderConf *mapstructure.DecoderConfig // WithDecoderConfig, copied; nil means koanf's defaults
+	flatPaths   bool
+	unknownKeys UnknownKeys
+	requires    []requirement // RequireConfig, in order
+	probes      bool          // WithProbes
+
 	bootstrapKeys       map[BootstrapKey]bool
 	bootstrapLimits     map[ScopeName][]BootstrapKey
 	bootstrapTransforms []func(ctx context.Context, l Layer, t Tree) (Tree, error)
@@ -158,6 +167,7 @@ func (c *config) fail(op, format string, args ...any) {
 // finish checks what needs every option to have run: the format order, the merge rules, the bindings, and that some
 // scope is selected.
 func (c *config) finish() error {
+	c.finishDefaults()
 	c.finishFormats()
 	if len(c.rules) > 0 {
 		rs, err := newRuleSet(c.rules)
@@ -177,6 +187,7 @@ func (c *config) finish() error {
 	if len(c.scopeOrder()) == 0 {
 		c.fail("New", "no scopes are selected, so nothing would be searched")
 	}
+	c.finishRequirements()
 	for _, s := range c.scopes {
 		if fd, ok := s.kind.(fixedDirKind); ok && !s.invalid && fd.usesPlatformDirs() {
 			switch {
