@@ -1224,26 +1224,51 @@ These checks also cover resolvers that apps write themselves:
 
 #### `git`
 
-- **No worktree.** The file is read from the object database (`git cat-file` on `<commit>:<path>`), not from a
-  checked-out tree. There are no files on disk for a symlink to redirect.
+- **No worktree.** The file is read from the object database, not from a checked-out tree, so there are no files on disk
+  for a symlink to redirect (DL-211). Each fetch uses a fresh bare repo in a 0700 temp dir, removed afterwards:
+  1. `git fetch --depth=1 --no-tags` of the ref, the commit id, or `HEAD` when there's no ref, with protocol v2 forced
+  2. `git rev-parse --verify --end-of-options FETCH_HEAD^{commit}`; for a commit id, the result must equal it
+  3. `git ls-tree <commit> -- <path>` for the entry's mode and type
+  4. `git cat-file -s` for its size, checked against `MaxSize` before anything is read
+  5. `git cat-file blob` for the content
 - **Regular files only:** the tree entry's mode must be `100644` or `100755`. A symlink (`120000`) or submodule
   (`160000`) is rejected, even if it points inside the repo. This is stricter than mise, which canonicalises the path in
   a checkout and rejects it if it escapes or isn't a regular file (`validate_remote_git_path`).
 - **No option injection:** the ref is resolved to a full commit SHA with `git rev-parse --verify --end-of-options`, and
   refs starting with `-` are rejected.
-- **Transports:** only `https` and `ssh` are allowed (`GIT_ALLOW_PROTOCOL=https:ssh`). That blocks `ext::`, `fd::`,
-  `file://` and local-path remotes.
+- **Transports:** only `https` and `ssh` are allowed by default. The repo URL's scheme is checked before git starts, and
+  one that isn't allowed is a `*PolicyError` (DL-212); git also gets `GIT_ALLOW_PROTOCOL` and `protocol.allow=never`
+  with each allowed protocol set to `always`. That blocks `ext::`, `fd::`, `file://` and local-path remotes.
 - **No side effects:** fetches are shallow, of that commit only. They use no submodules, no LFS or other filters, and
-  `core.hooksPath` is set to an empty directory.
-- **Isolated config:** git runs with `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL` pointing at an empty file, so the
-  user's and the system's git config never apply. Otherwise a `url.<base>.insteadOf` rule could rewrite a URL *after*
-  the allow-list check, and `includeIf` or credential helpers would run. Credential helpers are opt-in, with
-  `gitresolver.WithCredentialHelper(...)`.
-- **Version:** git 2.24 or newer is required, for `--end-of-options`. An older git is a `*FetchError` that says so.
-- **Fetching by commit:** some servers refuse to fetch an arbitrary commit id. Then the resolver fetches the ref
-  instead, and checks the commit is reachable from it.
+  `core.hooksPath` is set to an empty directory. `transfer.fsckObjects` checks every object received.
+- **Isolated environment** (DL-212): git runs with every `GIT_*` variable removed, because `GIT_CONFIG_COUNT` and
+  `GIT_CONFIG_KEY_<n>` set config even with `GIT_CONFIG_NOSYSTEM=1`. It keeps `PATH`, `HOME`, `SSH_AUTH_SOCK`, the proxy
+  variables and, on Windows, the system variables, and gets `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL` pointing at an
+  empty file, `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` and an empty stdin. So the user's and the system's git
+  config never apply: otherwise a `url.<base>.insteadOf` rule could rewrite a URL *after* the allow-list check, and
+  `includeIf` or credential helpers would run. Credential helpers are opt-in, with
+  `gitresolver.WithCredentialHelper(helper)`. ssh runs with `BatchMode=yes`, so nothing prompts.
+- **Redirects** (DL-213): git never follows one itself (`http.followRedirects=false`), because with its default it
+  silently follows a redirect to another host. For an `http` or `https` repo URL, the resolver first requests
+  `<repo>/info/refs?service=git-upload-pack` with Go's HTTP client, following redirects under `httpresolver`'s rules: at
+  most 5 hops, none from `https` to `http`, and each one through `IncludeRef.Check`. git then fetches from the final
+  URL. The layer's `Remote.Ref` and the cache key stay the original reference. An answer that isn't a redirect, such as
+  a 401 from a private repo, leaves the original URL. `gitresolver.WithClient(c)` sets that client.
+- **Version:** git 2.24 or newer is required, for `--end-of-options`, and 2.29 for SHA-256 repositories. An older or
+  missing git is a `*FetchError` that says so, checked once per resolver. `gitresolver.WithGit(path)` names the program;
+  by default it's found on `PATH`.
+- **Fetching by commit:** protocol v2 servers serve any reachable commit by its id, but some v0 and v1 servers refuse.
+  Then the resolver fetches every branch and tag with `--filter=blob:none` (a server without filter support sends
+  everything), checks the commit is among them, and reads the file (DL-211).
+- **SHA-256 repositories:** a 64-hex commit id fetches into a SHA-256 repo. A named ref in a SHA-256 repository is
+  fetched again into one when git reports the object-format mismatch.
+- **Errors** (DL-214): a ref the remote doesn't have, or a path the commit doesn't have, is a `*NotFoundError`. A
+  symlink, submodule or directory is a `*ReferenceError`, so no stale copy stands in for it. A file over `MaxSize` is a
+  `*TooLargeError`. Anything else is a `*FetchError` with the first line of git's error output, at most 200 characters.
+  A timeout kills git and its ssh child.
+- **Identity:** the full commit id. There's no media type.
 - **Protocols:** `gitresolver.WithProtocols(...)` changes the allowed transports. The default is `https` and `ssh`.
-  Tests use it to allow `file` for repositories in temporary directories.
+  Tests use it to allow `file` for repositories in temporary directories, and `http` for a test server.
 
 #### `oci`
 
@@ -2044,6 +2069,10 @@ There are no open questions.
 | 208 | `httpresolver`                              | `New(WithClient(c))`, with the client copied; at most 5 redirects, none to `http`, each checked with `IncludeRef.Check`; only a 200 is content, 404 and 410 are `*NotFoundError`s, and other statuses are 502s; the identity is the body's SHA-256. |
 | 209 | `cctest.Clock`                              | `NewClock`, `Now`, `Advance` and `Set`, passed to a loader with `cctest.WithClock`; M9 adds timers. |
 | 210 | Include limits                              | `WithMaxIncludeDepth(n)`, 16 by default, and `WithMaxIncludes(n)`, 1000 by default, bound every load's includes, local and remote; going deeper is a `*CycleError` (508), and more references, duplicates counted, a `*TooLargeError` (413). |
+| 211 | Fetching with git                           | A fresh bare repo per fetch; a shallow fetch with protocol v2, then `rev-parse --end-of-options`, `ls-tree`, `cat-file -s` against the size limit and `cat-file blob`. When a server refuses a commit id, every branch and tag is fetched without blobs. SHA-256 repositories are supported. The identity is the commit id. |
+| 212 | Isolating git                               | Every `GIT_*` variable is removed, since `GIT_CONFIG_COUNT` injects config past `GIT_CONFIG_NOSYSTEM`; global config is an empty file; prompts, hooks, submodules and filters are off; ssh runs in batch mode. The repo URL's scheme is checked against `WithProtocols` before git runs, a `*PolicyError` if it isn't allowed. |
+| 213 | git and redirects                           | git never follows redirects itself. For http and https repos, the resolver follows them first with Go's client, at most 5 hops, none to http, each through `IncludeRef.Check`, and git fetches from the final URL; `WithClient` sets the client. With git's default, a redirect silently reached another host. |
+| 214 | gitresolver's API and errors                | `New(WithProtocols, WithCredentialHelper, WithGit, WithClient)`. A missing ref or path is a `*NotFoundError`, a symlink, submodule or directory a `*ReferenceError`, a large file a `*TooLargeError`, and anything else a `*FetchError` with git's first error line. Tests use `git http-backend` through `net/http/cgi`. |
 
 ---
 

@@ -603,19 +603,27 @@ resolver shares, with the http resolver, and M8b and M8c add git and OCI.
 
 ### M8b: git resolver
 
-**Scope:** `gitresolver`, which runs the `git` program (DL-59). Its details get their own gap list when M8b starts.
+**Scope:** `gitresolver`, which runs the `git` program, as decided in DL-59 and DL-211 to DL-214: the fetch procedure,
+the isolated environment, redirects followed before git runs, the options, and the errors.
 
 **Acceptance tests,** attack tests first:
 
-- **git:**
-  - **Fixtures:** test repositories are created in temporary directories.
-  - **Modes:** a symlink (mode `120000`) or a submodule is rejected.
-  - **No option injection:** a ref that starts with `-` is rejected.
-  - **Transports:** `ext::` and `file://` are blocked.
-  - **No side effects:** no hooks or filters run.
-  - **Isolated config:** a `url.insteadOf` rule in a test `~/.gitconfig` has no effect (DL-59).
-  - **Fixtures** are reached through `gitresolver.WithProtocols("file")`, which the tests set explicitly.
-- **Fuzz tests:** ref validation.
+- **Fixtures:** test repositories are made with the git binary in temporary directories, and reached through
+  `gitresolver.WithProtocols("file")`. An `httptest` server running `git http-backend` through `net/http/cgi` serves
+  them over `http`. Tests skip when git is missing or older than 2.29.
+- **Fetching** (DL-211): a branch, a tag, a full commit id and no ref; a SHA-256 repository; an internal test that
+  forces protocol v0 for the fallback; the identity is the commit id.
+- **Modes:** a symlink (mode `120000`), a submodule or a directory is a `*ReferenceError`.
+- **No option injection:** a ref that starts with `-` never reaches git.
+- **Transports** (DL-212): `ext::`, `file://` and `http` are blocked by default, as a `*PolicyError`, before git runs.
+- **No side effects:** no hooks or filters run.
+- **Isolated config** (DL-59, DL-212): a `url.insteadOf` rule, a `core.hooksPath` hook and a smudge filter in a test
+  global config, and `GIT_CONFIG_COUNT`, have no effect.
+- **Redirects** (DL-213): a redirect to an allowed URL is followed, one the allow-list rejects is a 403 that git never
+  reaches, `https` to `http` is refused, and more than 5 hops fails.
+- **Errors** (DL-214): a missing ref or path is a 404; a file over the limit is a 413; a timeout is a 504; a missing git
+  is a 502.
+- **Fuzz tests:** `FuzzGitArgs` and `FuzzLsTree`, each with a positive control.
 
 ### M8c: OCI resolver
 
