@@ -368,7 +368,7 @@ where mise has `.toml`.
 
 | Scope      | Kind                  | Patterns                                                                                     | Options                                   |
 | ---------- | --------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `system`   | `FixedDir("{system}")` | mise's global layout ([3.4](config-locations.md#34-global-directory))                       | `Trust(TrustSystem)`, `ReplacedByFile(BindSystemConfigFile)` |
+| `system`   | `FixedDir("{system}")` | `MiseGlobalPatterns()`: mise's global layout ([3.4](config-locations.md#34-global-directory)) | `Trust(TrustSystem)`, `ReplacedByFile(BindSystemConfigFile)` |
 | `user`     | `FixedDir("{user}")`   | the same                                                                                     | `Trust(TrustUser)`, `ConfigRoot("~")`, `ReplacedByFile(BindGlobalConfigFile)` |
 | `project`  | `Walk`                 | layers A–D ([3.2](config-locations.md#32-filenames-within-one-project-directory)), without `.tool-versions` | `ReplacedByConfigFiles()`                 |
 | `override` | `FixedDir("{user}")`   | `config.override.{ext}`, then `config.{env}.override.{ext}`                                  | `Trust(TrustUser)`, `ConfigRoot("~")`, `DisabledBy(BindGlobalConfigFile)` |
@@ -1624,6 +1624,7 @@ There are no open questions.
 | 127 | Ignored paths                               | `WithIgnoredPaths` with the env var; matches are `LayerIgnored` without a warning; explicit files are never ignored. |
 | 128 | A moved user directory                      | The walk drops files under the default user directory when `{NAME}_CONFIG_DIR` moves it, as mise does. |
 | 129 | Golden tests in M4b                         | The worked example, a full directory with layers A–D, the user and override scopes, and walks from inside and outside `~`. |
+| 130 | Sharing mise's global patterns              | `MiseGlobalPatterns()` returns them, a fresh copy each call, for the system and user scopes and for apps' own scopes, such as a mounted config directory. A package can't hold them, because `Pattern` lives in the core. |
 
 ---
 

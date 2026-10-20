@@ -396,6 +396,10 @@ func ReplacedByFile(b Binding) ScopeOption
 func DisabledBy(b Binding) ScopeOption
 func ReplacedByConfigFiles() ScopeOption
 
+// mise's global-directory patterns, as MiseLayout's system and user scopes use them (DL-130). Each call returns a
+// fresh copy.
+func MiseGlobalPatterns() []Pattern
+
 // The walk and ignored paths (DL-122, DL-127)
 type WalkStop int // StopAtHome (the default), StopAtRoot
 
