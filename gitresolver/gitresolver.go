@@ -8,6 +8,10 @@ import (
 	"github.com/kittomic/cascadingconfig"
 )
 
+// protocolVersion is the git protocol version every fetch forces. Only the internal test of the fallback for servers
+// that refuse a commit id changes it, to 0, since protocol v2 servers serve any reachable commit.
+var protocolVersion = "2"
+
 // Option configures the resolver.
 type Option func(*resolver)
 
@@ -54,7 +58,7 @@ func (r *resolver) Schemes() []string { return nil } // stub
 
 // Resolve implements cascadingconfig.IncludeResolver.
 func (r *resolver) Resolve(ctx context.Context, ref cascadingconfig.IncludeRef) (*cascadingconfig.Fetched, error) {
-	_, _, _, _ = ctx, ref, commands, parseLsTree
+	_, _, _, _, _ = ctx, ref, commands, parseLsTree, protocolVersion
 	return nil, errors.New("gitresolver: not implemented") // stub
 }
 
