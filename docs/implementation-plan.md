@@ -627,18 +627,26 @@ the isolated environment, redirects followed before git runs, the options, and t
 
 ### M8c: OCI resolver
 
-**Scope:** the `ociresolver` module (DL-60). Its details get their own gap list when M8c starts.
+**Scope:** the `ociresolver` module, with `oras-go` v2.6.4, as decided in DL-60 and DL-215 to DL-218: manifests, both
+artifact forms, whiteouts, caps, credentials, plain HTTP, redirects and errors. `check-deps.sh` gains a core-oci setup.
 
 **Acceptance tests,** attack tests first:
 
-- **oci:**
-  - **Fixtures:** an in-memory registry.
-  - **Archive entries:** any absolute or `..` entry fails the whole fetch.
-  - **Regular files only:** symlinks and hard links are rejected.
-  - **Digests:** a digest mismatch fails.
-  - **Both artifact forms** (DL-60): per-file artifacts and tar layers; the last layer wins; an oversized decompressed
-    layer fails.
-- **Fuzz tests:** tar entries.
+- **Fixtures:** a hand-written in-memory registry: ping, manifests by tag and digest, blobs, bearer-token auth, and blob
+  redirects to a second server.
+- **Manifests** (DL-215): a tag and a digest resolve to the manifest digest, which is the identity; an index is a 400; a
+  manifest whose digest doesn't match fails.
+- **Both artifact forms** (DL-60): per-file artifacts and tar layers, plain and gzip; the last layer wins; whiteouts and
+  opaque directories hide earlier files; zstd is a 400.
+- **Archive entries:** any absolute, `..` or `\` entry or title fails the whole fetch.
+- **Regular files only:** symlinks, hard links and directories are rejected.
+- **Digests:** a blob whose digest doesn't match fails.
+- **Caps** (DL-216): a blob declared over the layer cap is never downloaded; an oversized decompressed layer and a file
+  over the include limit are 413s.
+- **Network** (DL-217): credentials only through `WithCredentials`; anonymous tokens; plain HTTP only for listed
+  registries; blob redirects to another host followed, but never from `https` to `http` or past 5 hops.
+- **Errors** (DL-218): a missing tag, digest or path is a 404; a 401 without credentials is a 502.
+- **Fuzz tests:** `FuzzTarEntries`, with a positive control.
 
 ## M9: Hot reload
 
