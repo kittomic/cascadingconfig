@@ -961,6 +961,11 @@ built-in layout nests includes while `$import` is deferred, so `IncludeNested` i
   once, and different references to the same content are separate layers (DL-203).
 - **Nesting:** under `IncludeFlat`, an include key in an included file is a `*ParseError` naming the file and the key,
   as mise rejects it. Under `IncludeNested`, included files can include, with cycle detection.
+- **Limits** (DL-210): every reference is new to cycle detection when a remote server answers each fetch with another
+  relative include, so two limits bound every load, local and remote alike. An include nested more than
+  `WithMaxIncludeDepth(n)` levels below its root file (16 by default) is a `*CycleError` (508). More than
+  `WithMaxIncludes(n)` include references in one load (1000 by default), a reference listed twice counting twice, is a
+  `*TooLargeError` (413). Both name the including file, and a limit that isn't positive is an `*OptionError`.
 - **Where includes work** (DL-187): in files from `FixedDir`, `Walk` and `ExplicitFile` scopes, and in a custom scope's
   `Source`s with a `Path`. In `EmbeddedFS` sources, value scopes (`Values`, `ValuesFunc`, `EnvVars`) and bootstrap
   files, the key is ordinary data: there's no file location to resolve a relative reference against, and bootstrap files
@@ -2030,6 +2035,7 @@ There are no open questions.
 | 207 | Cache freshness                             | `WithIncludeCache(dir, ttl)`, where a TTL of 0 always fetches; only a `*FetchError` falls back to a stale copy; cached content is rechecked for size, integrity fragment and format, never the trust store, which includes don't consult. |
 | 208 | `httpresolver`                              | `New(WithClient(c))`, with the client copied; at most 5 redirects, none to `http`, each checked with `IncludeRef.Check`; only a 200 is content, 404 and 410 are `*NotFoundError`s, and other statuses are 502s; the identity is the body's SHA-256. |
 | 209 | `cctest.Clock`                              | `NewClock`, `Now`, `Advance` and `Set`, passed to a loader with `cctest.WithClock`; M9 adds timers. |
+| 210 | Include limits                              | `WithMaxIncludeDepth(n)`, 16 by default, and `WithMaxIncludes(n)`, 1000 by default, bound every load's includes, local and remote; going deeper is a `*CycleError` (508), and more references, duplicates counted, a `*TooLargeError` (413). |
 
 ---
 

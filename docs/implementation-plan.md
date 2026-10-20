@@ -546,7 +546,7 @@ resolver shares, with the http resolver, and M8b and M8c add git and OCI.
 
 ### M8a: Remote includes
 
-**Scope:** remote references in the loader, as decided in DL-195 to DL-209.
+**Scope:** remote references in the loader, as decided in DL-195 to DL-210.
 
 - **Test helper:** `cctest.Clock` (DL-209).
 - **The resolver interface** (DL-196 to DL-199): `IncludeResolver`, `Fetched`, `WithIncludeResolver`, `IncludeRef`'s new
@@ -558,6 +558,7 @@ resolver shares, with the http resolver, and M8b and M8c add git and OCI.
 - **Caching** (DL-19, DL-58, DL-206, DL-207).
 - **`httpresolver`** (DL-208).
 - **Hardened** (DL-205): `WithoutRemoteIncludes`, added to `MiseHardenedLayout`.
+- **Include limits** (DL-210): `WithMaxIncludeDepth` and `WithMaxIncludes`.
 - **Options** (DL-94): this part settles the resolver, cache, size and timeout options.
 
 **Acceptance tests,** attack tests first, mostly through a fake resolver:
@@ -594,6 +595,8 @@ resolver shares, with the http resolver, and M8b and M8c add git and OCI.
 - **Hardened** (DL-205): a remote reference under `MiseHardenedLayout` is a 501, and a policy that allows a remote
   scheme without an allow-list and `RequirePinned()` is an `*OptionError`.
 - **The report** (DL-203, DL-205): `Layer.Remote` and `PolicyInfo.RequirePinned`, in `Describe()`, JSON and text.
+- **Include limits** (DL-210): an include nested deeper than the limit is a 508, and more references than the limit a
+  413, for local and remote includes, with the defaults and with the options.
 - **Fuzz tests:** `FuzzNormaliseReference` (normalising is idempotent, and the result never has userinfo, a `..`
   segment, an encoded `.`, `/` or `\`, or an invalid inner path) and `FuzzIncludeRemote` (random references through a
   fake resolver never panic, and never reach it unnormalised).

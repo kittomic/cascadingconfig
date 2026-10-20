@@ -662,6 +662,8 @@ type Fetched struct {
 func WithIncludeResolver(r IncludeResolver) Option
 func WithIncludeTimeout(d time.Duration) Option // each fetch; default 30 seconds
 func WithMaxIncludeSize(n int64) Option         // remote content; default 1 MiB
+func WithMaxIncludeDepth(n int) Option          // levels below the root file; default 16 (DL-210)
+func WithMaxIncludes(n int) Option              // include references in one load; default 1000 (DL-210)
 func WithoutRemoteIncludes() Option             // DL-205
 
 // IncludeRef gains (DL-198):
@@ -706,7 +708,7 @@ func WithClient(c *http.Client) Option
   unless the app registers a resolver. `MiseHardenedLayout` gets `WithoutRemoteIncludes()`.
 - **Option errors:** these are `*OptionError`s:
   - in `WithIncludeResolver`, a nil resolver, no schemes, an invalid scheme or `file`
-  - a timeout or size that isn't positive
+  - a timeout, size or include limit that isn't positive
   - a relative cache dir or a negative TTL
   - under `WithoutRemoteIncludes()`, a policy that allows a remote scheme without an allow-list and `RequirePinned()`
 - **`Report.String()`** shows `remote <ref> @ <identity>` in a remote layer's details, with `(cached)` or `(stale)`, and
