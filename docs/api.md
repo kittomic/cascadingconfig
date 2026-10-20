@@ -716,6 +716,17 @@ func WithClient(c *http.Client) Option
   `cache` and `require_pinned`.
 - **`gitresolver` and `ociresolver`** are settled in M8b and M8c.
 
+#### Settled in M8b
+
+```go
+// gitresolver (DL-211 to DL-214)
+func New(opts ...Option) cascadingconfig.IncludeResolver // handles "git"
+func WithProtocols(protocols ...string) Option          // default "https", "ssh"
+func WithCredentialHelper(helper string) Option         // git's credential.helper; none by default
+func WithGit(path string) Option                        // default: git on PATH
+func WithClient(c *http.Client) Option                  // for following redirects before git runs; copied
+```
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |

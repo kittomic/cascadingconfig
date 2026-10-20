@@ -48,9 +48,19 @@ func (c *config) fileFormat(slashPath string) (string, bool) {
 
 // ruleFormat returns the format of the last WithFileFormat rule matching s with a registered decoder.
 func (c *config) ruleFormat(s string) (string, bool) {
+	return c.ruleFormatBy(func(m Matcher) bool { return m.matches(s, c.name) })
+}
+
+// refRuleFormat is ruleFormat for an include reference, matched as allow-lists match it: Extension and FileName see
+// its file path, and the other matchers its normalised form (DL-202).
+func (c *config) refRuleFormat(ref IncludeRef) (string, bool) {
+	return c.ruleFormatBy(func(m Matcher) bool { return matchRef(m, ref, c.name) })
+}
+
+func (c *config) ruleFormatBy(match func(Matcher) bool) (string, bool) {
 	for i := len(c.fileFormats) - 1; i >= 0; i-- {
 		r := c.fileFormats[i]
-		if !r.m.matches(s, c.name) {
+		if !match(r.m) {
 			continue
 		}
 		for _, f := range r.formats {
