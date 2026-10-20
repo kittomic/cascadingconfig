@@ -27,6 +27,7 @@ func (r *Result) Tree() Tree {
 type Origin struct {
 	Layer    Layer        // the latest layer to set, merge into, null or unset the value
 	Kind     OriginKind   // what that layer did
+	EnvVar   string       // the variable that set the value, for keys from an EnvVars scope
 	Elements []Layer      // OriginAppended and OriginPrepended only: each element's layer, in order
 	History  []OriginStep // the earlier steps, oldest first
 }
@@ -50,6 +51,16 @@ const (
 	OriginFunc                            // the result of a MergeFunc
 	OriginUnset                           // removed the value with the unset key
 )
+
+// String returns the kind's name: "set", "merged", "appended", "prepended", "null", "func" or "unset".
+func (k OriginKind) String() string {
+	return "" // stub
+}
+
+// MarshalText returns the kind's name.
+func (k OriginKind) MarshalText() ([]byte, error) {
+	return nil, nil // stub
+}
 
 // OriginOf reports where the value at path came from: the latest step and its history.
 //

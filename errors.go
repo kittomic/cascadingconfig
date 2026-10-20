@@ -278,10 +278,13 @@ func (e *UnsupportedFormatError) Is(target error) bool {
 // ErrUnsupportedFormat is the sentinel for *UnsupportedFormatError.
 var ErrUnsupportedFormat = errors.New("cascadingconfig: unsupported format")
 
-// DecodeError reports a failure to decode the merged tree into a struct: a type mismatch, or unknown keys in strict
-// mode.
+// DecodeError reports a failure to decode one key of the merged tree: a type mismatch, or an unknown key in strict
+// mode. Path is the file that set the key. The message never quotes the value; the underlying error may.
 type DecodeError struct {
 	BaseError
+
+	Key     Path // the key that failed
+	Unknown bool // the key matches no field, under UnknownKeysError
 }
 
 // Code returns CodeUnprocessable.

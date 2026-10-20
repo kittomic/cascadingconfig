@@ -95,6 +95,17 @@ func parseQuotedSegment(s string, i int) (string, int, error) {
 	return "", 0, errors.New("unterminated quoted segment")
 }
 
+// MarshalText returns the dotted form of p, so a Path encodes as a string.
+func (p Path) MarshalText() ([]byte, error) {
+	return nil, nil // stub
+}
+
+// UnmarshalText parses the dotted form, as ParsePath does.
+func (p *Path) UnmarshalText(text []byte) error {
+	_, _ = p, text // stub
+	return nil
+}
+
 // String returns the dotted form of p. It quotes any segment that is empty or contains '.', '"' or '\', so every Path
 // round-trips through ParsePath.
 func (p Path) String() string {
