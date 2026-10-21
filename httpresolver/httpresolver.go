@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/kittomic/cascadingconfig"
 )
@@ -43,6 +44,9 @@ func (r *resolver) Schemes() []string { return []string{"http", "https"} }
 
 // Resolve implements cascadingconfig.IncludeResolver. Only a 200 is content: a 404 or 410 is a *NotFoundError, and
 // any other status a *FetchError. Content over ref.MaxSize is a *TooLargeError.
+//
+// The validator is the ETag, or else Last-Modified, sent back as If-None-Match or If-Modified-Since; a 304 in answer
+// is ErrNotModified (DL-229).
 func (r *resolver) Resolve(ctx context.Context, ref cascadingconfig.IncludeRef) (*cascadingconfig.Fetched, error) {
 	base := func(err error) cascadingconfig.BaseError {
 		return cascadingconfig.BaseError{Op: "fetch", Path: ref.Raw, Err: err}
@@ -76,12 +80,22 @@ func (r *resolver) Resolve(ctx context.Context, ref cascadingconfig.IncludeRef) 
 	if err != nil {
 		return nil, err
 	}
+	conditional := true
+	if v, ok := strings.CutPrefix(ref.Validator, etagPrefix); ok {
+		req.Header.Set("If-None-Match", v)
+	} else if v, ok := strings.CutPrefix(ref.Validator, lastModifiedPrefix); ok {
+		req.Header.Set("If-Modified-Since", v)
+	} else {
+		conditional = false
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	switch {
+	case resp.StatusCode == http.StatusNotModified && conditional:
+		return nil, cascadingconfig.ErrNotModified
 	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusGone:
 		return nil, &cascadingconfig.NotFoundError{BaseError: base(fmt.Errorf("the server answered %s", resp.Status))}
 	case resp.StatusCode != http.StatusOK:
@@ -104,5 +118,23 @@ func (r *resolver) Resolve(ctx context.Context, ref cascadingconfig.IncludeRef) 
 	sum := sha256.Sum256(content)
 	return &cascadingconfig.Fetched{
 		Content: content, MediaType: resp.Header.Get("Content-Type"), Identity: "sha256:" + hex.EncodeToString(sum[:]),
+		Validator: validator(resp.Header),
 	}, nil
+}
+
+// The validator's prefixes say which header it came from.
+const (
+	etagPrefix         = "etag:"
+	lastModifiedPrefix = "last-modified:"
+)
+
+// validator is the response's ETag, weak or strong, or else its Last-Modified, or none.
+func validator(h http.Header) string {
+	if v := h.Get("ETag"); v != "" {
+		return etagPrefix + v
+	}
+	if v := h.Get("Last-Modified"); v != "" {
+		return lastModifiedPrefix + v
+	}
+	return ""
 }

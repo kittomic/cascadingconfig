@@ -141,6 +141,15 @@ func (f *fetch) run() (*cascadingconfig.Fetched, error) {
 		return nil, f.failed(err)
 	}
 	f.env = gitEnv(global, r.protocols)
+	if ref.Validator != "" && !commitID.MatchString(ref.Version) {
+		same, err := f.unchanged(repoURL)
+		if err != nil {
+			return nil, err
+		}
+		if same {
+			return nil, cascadingconfig.ErrNotModified
+		}
+	}
 	format := "sha1"
 	if len(ref.Version) == 64 && isHex(ref.Version) {
 		format = "sha256"
@@ -153,7 +162,39 @@ func (f *fetch) run() (*cascadingconfig.Fetched, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &cascadingconfig.Fetched{Content: content, Identity: commit}, nil
+	return &cascadingconfig.Fetched{Content: content, Identity: commit, Validator: commit}, nil
+}
+
+// unchanged asks the remote, with ls-remote, which commit the reference names now, and reports whether it's still
+// the validator's (DL-229). The ref is matched as fetch matches it: as given, then under refs/, refs/tags/ and
+// refs/heads/, with an annotated tag's commit taken from its peeled line. A ref the remote doesn't have isn't
+// unchanged, so the fetch reports it.
+func (f *fetch) unchanged(repoURL string) (bool, error) {
+	want := f.ref.Version
+	if want == "" {
+		want = "HEAD"
+	}
+	out, err := f.git(f.dir, "ls-remote", "--end-of-options", repoURL, want)
+	if err != nil {
+		return false, err
+	}
+	refs := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		oid, name, ok := strings.Cut(line, "\t")
+		if ok && commitID.MatchString(oid) {
+			refs[name] = oid
+		}
+	}
+	for _, name := range []string{want, "refs/" + want, "refs/tags/" + want, "refs/heads/" + want} {
+		oid, ok := refs[name+"^{}"]
+		if !ok {
+			oid, ok = refs[name]
+		}
+		if ok {
+			return strings.EqualFold(oid, f.ref.Validator), nil
+		}
+	}
+	return false, nil
 }
 
 // mismatch is git's report that the repository uses another object format.
