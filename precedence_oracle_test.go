@@ -59,7 +59,7 @@ type oWorld struct {
 	scopes             []oScope // lowest first
 	explicit           []string // explicit files, at the place of the scope named explicitAt, or above every scope
 	explicitAt         string
-	explicitOnly       bool              // WithConfigFilesOnly: explicit files replace every scope that searches for files
+	explicitOnly       bool              // WithConfigFilesOnly: explicit files replace every file-searching scope, at the highest one\'s place (the top here)
 	files              map[string]bool   // regular files; true for an empty one
 	links              map[string]string // symlinks: path → target
 }
