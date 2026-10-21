@@ -59,8 +59,8 @@ func forward[V any](in <-chan V, out chan<- V, done <-chan struct{}) {
 	}
 }
 
-// New returns the notifier itself, as a factory for WithNotifier. A closed notifier is opened again, with no watched
-// directories.
+// New is a factory for WithNotifier: it returns the cascadingconfig.Notifier that the watcher reads n's events from.
+// After that notifier is closed, New opens n again, with no watched directories.
 func (n *Notifier) New() (cascadingconfig.Notifier, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -68,7 +68,7 @@ func (n *Notifier) New() (cascadingconfig.Notifier, error) {
 		n.open()
 		n.watched = map[string]bool{}
 	}
-	return n, nil
+	return conn{n}, nil
 }
 
 // Send reports a change to path, and waits until the watcher has handled it.
@@ -122,41 +122,8 @@ func (n *Notifier) Watched() []string {
 	return dirs
 }
 
-// Add watches dir, unless FailAdd made it fail.
-func (n *Notifier) Add(dir string) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if err := n.failAdd[dir]; err != nil {
-		return err
-	}
-	n.watched[dir] = true
-	return nil
-}
-
-// Remove stops watching dir.
-func (n *Notifier) Remove(dir string) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	delete(n.watched, dir)
-	return nil
-}
-
-// Events returns the channel Send writes to.
-func (n *Notifier) Events() <-chan string {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.events
-}
-
-// Errors returns the channel SendError writes to.
-func (n *Notifier) Errors() <-chan error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.errs
-}
-
-// Close closes the Events and Errors channels. A test can call it to simulate a notifier that stops. Closing twice is
-// fine.
+// Close closes the channels the watcher reads, so a test can simulate a notifier that stops (DL-225). Send and
+// SendError then return at once. Closing twice is fine, and New opens the notifier again.
 func (n *Notifier) Close() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -167,8 +134,53 @@ func (n *Notifier) Close() error {
 	return nil
 }
 
+// conn is the notifier the watcher sees, so its methods, Handled included, aren't methods of the public Notifier
+// (DL-258).
+type conn struct{ n *Notifier }
+
+// Add watches dir, unless FailAdd made it fail.
+func (c conn) Add(dir string) error {
+	n := c.n
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if err := n.failAdd[dir]; err != nil {
+		return err
+	}
+	n.watched[dir] = true
+	return nil
+}
+
+// Remove stops watching dir.
+func (c conn) Remove(dir string) error {
+	n := c.n
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	delete(n.watched, dir)
+	return nil
+}
+
+// Events returns the channel Send writes to.
+func (c conn) Events() <-chan string {
+	n := c.n
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.events
+}
+
+// Errors returns the channel SendError writes to.
+func (c conn) Errors() <-chan error {
+	n := c.n
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.errs
+}
+
+// Close closes the Events and Errors channels, as the watcher's notifier closing does. Closing twice is fine.
+func (c conn) Close() error { return c.n.Close() }
+
 // Handled is called by the watcher when it has finished with an event or error.
-func (n *Notifier) Handled() {
+func (c conn) Handled() {
+	n := c.n
 	n.mu.Lock()
 	handled, done := n.handled, n.done
 	n.mu.Unlock()

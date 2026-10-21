@@ -5,7 +5,6 @@ func NewNotifier() *Notifier
 func WithClock(*Clock) cascadingconfig.Option
 func WithHost(Host) cascadingconfig.Option
 method (*Clock) Advance(time.Duration)
-method (*Clock) AfterFunc(time.Duration, func()) hooks.Timer
 method (*Clock) Now() time.Time
 method (*Clock) Set(time.Time)
 method (*Clock) Timers() int
@@ -20,14 +19,9 @@ method (*FS) Remove(string)
 method (*FS) SameFile(fs.FileInfo, fs.FileInfo) bool
 method (*FS) Symlink(string, string)
 method (*FS) WriteFile(string, []byte, fs.FileMode)
-method (*Notifier) Add(string) error
 method (*Notifier) Close() error
-method (*Notifier) Errors() <-chan error
-method (*Notifier) Events() <-chan string
 method (*Notifier) FailAdd(string, error)
-method (*Notifier) Handled()
 method (*Notifier) New() (cascadingconfig.Notifier, error)
-method (*Notifier) Remove(string) error
 method (*Notifier) Send(string)
 method (*Notifier) SendError(error)
 method (*Notifier) Watched() []string
