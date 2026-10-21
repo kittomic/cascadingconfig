@@ -10,6 +10,10 @@ Notation (`{name}`, `{env}`, `{ext}`, precedence written **lowest → highest**)
 
 ## Overview
 
+**The order of layers** (which files are candidates, and where each ranks) is specified in
+[precedence.md](precedence.md), which is normative (DL-243). The sections below explain the layouts, and defer to it on
+order.
+
 - **The default preset is `mise.Preset`.** Where the two tools diverge, it follows mise, except for the deliberate
   changes listed in [Deviations from mise](#deviations-from-mise).
 - **We ship three presets.** `mise.Preset` and `cosmiconfig.Preset` each mirror their tool as closely as Go allows. The
@@ -736,8 +740,9 @@ These options mirror cosmiconfig's `searchStrategy` and `stopDir`. They are shor
   file there doesn't fail the load, as in cosmiconfig. Empty files are skipped. Only files are chosen between: value
   layers, such as `Values`, `EnvVars` and the [defaults](api.md#defaults), always merge at their own position, so flags
   still override the chosen file and defaults still sit below it (DL-154). `WithResolution(MergeAll)` is the default.
-- **Explicit files replace everything** (DL-144): with `WithConfigFilesOnly()`, explicit config files are the whole
-  load, and no scope is searched, as with cosmiconfig's `load(path)`. Bootstrap files are still read.
+- **Explicit files replace everything** (DL-144): with `WithConfigFilesOnly()`, explicit config files replace every
+  scope that searches for files, as with cosmiconfig's `load(path)`. Value scopes, such as flags and the defaults, still
+  take their places (DL-247). Bootstrap files are still read.
 - **The current directory:** `FixedDir` accepts a `{cwd}` placeholder, for cosmiconfig's meta file, which is read from
   the current directory only, never from the start directory or its parents (DL-142).
 - **Meta config keys:** `BootstrapSearchPlaces` (`searchPlaces`), file names that may use `{name}`, which are added to
@@ -2246,6 +2251,12 @@ There are no open questions.
 | 239 | Watching custom scopes                      | `Path` sources are watched like explicit files. `Watchable.WatchDirs`, called after `Discover` on watched loads only, adds directories with no name filter; missing ones go through their nearest existing ancestor; a relative directory or an error is `WarnWatchFailed`. Name filters are a future idea. |
 | 240 | Custom scopes in the report and tests       | `Path` layers look like searched files without a `Pattern`, `Tree` layers have no `Path`, and custom scopes record no probes. `FuzzCustomSources` checks that random sources never panic and fail only with 500s. |
 | 241 | Details the M9b implementation settled     | A `Path` source is cleaned before it's read, so dot segments work as for explicit files; a file listed twice is a duplicate; permission and trust checks skip a `Path` source with a warning, as for a searched file, rather than failing the load as for an explicit one; every source is checked before any loads. |
+| 242 | M10 in two parts                            | M10a specifies precedence in the core, with conformance tests and an oracle fuzz test; M10b is the presets module, plus a check that each preset keeps its layout's order. Each part has its own gap list, review and PR. |
+| 243 | The precedence spec                         | [precedence.md](precedence.md) is normative for the order of layers: one sort key (scope, walk directory, variant group, environment, pattern, glob match, format, extension), then rules for what the key can't say, each with an ID (`PR-n`), and the built-in layouts' tables. design.md defers to it on order. |
+| 244 | The precedence oracle                       | A test-only oracle computes the expected order from the spec alone: its own copy of the layout tables and the sort key, never `layouts.go` or loader internals. A drift test parses precedence.md's tables and checks them against the oracle's. |
+| 245 | Precedence conformance tests                | At least one named test per `PR-n` rule, and the spec's worked examples as tests with hand-written expected orders. Includes, bootstrap-chosen settings, value scopes and Windows are covered here, outside the fuzz test. |
+| 246 | `FuzzPrecedence`                            | Random layouts (built-in or random patterns), hosts, start dirs, environments, format orders, conflict policies and file sets with decoys, empty files and symlinked duplicates; the report's order, statuses and merged `top` key must match the oracle. JSON's decoder stands in for TOML and YAML. Instead of a red run, six deliberate mutations of the ordering code must each be caught within a minute. |
+| 247 | Explicit-only loads keep value scopes       | Under `WithConfigFilesOnly()`, explicit files replace only scopes that search for files; `Values`, `ValuesFunc`, `EnvVars` and the defaults still take their places, as DL-153 and DL-154 say. Until now they were dropped too. |
 
 ---
 
