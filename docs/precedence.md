@@ -5,7 +5,7 @@ where each one ranks, and what takes a place in the order. design.md explains wh
 describes order, this document decides. Tests cite rules by ID (`PR-1`, `PR-2`, …), as they cite DL rows.
 
 The order is **lowest precedence first**. Layers are merged in that order, so a later layer wins wherever two set the
-same key, subject to the [merge rules](design.md#merging).
+same key, subject to the [merge rules](design/design.md#merging).
 
 ---
 

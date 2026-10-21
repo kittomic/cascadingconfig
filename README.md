@@ -5,13 +5,14 @@ A Go library that discovers, merges and decodes layered configuration files, in 
 
 **Status: in development.** Nothing is released yet, and the API may change.
 
-## Design
+## Using it
 
-- [Design](docs/design.md): how config files are found, merged and trusted.
-- [API](docs/api.md): the public Go API.
-- [Project layout](docs/project-layout.md): the modules, and what each one depends on.
-- [Implementation plan](docs/implementation-plan.md): the milestones.
-- [Research](docs/config-locations.md): how mise and cosmiconfig search for config.
+- [Precedence](docs/precedence.md): which config files are loaded, and which wins.
+
+## Working on it
+
+- [Contributing](CONTRIBUTING.md): setup, checks and how changes are made.
+- [Documentation index](docs/README.md): the design records, the plan and the contributor docs.
 
 ## Licence
 

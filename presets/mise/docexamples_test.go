@@ -16,8 +16,8 @@ import (
 	"github.com/kittomic/cascadingconfig/presets/misehardened"
 )
 
-// The examples hold every usage snippet marked <!-- example --> in docs/design.md and docs/api.md (DL-250), each
-// unchanged but for its indentation, or a variable it's assigned to, with the setup it needs around it.
+// The examples hold every usage snippet marked <!-- example --> in docs/design/design.md and docs/design/api.md
+// (DL-250), each unchanged but for its indentation, or a variable it's assigned to, with the setup it needs around it.
 // TestDocExamples checks that they do. Every example that loads runs against a cctest.FS on a fake Linux host, never
 // the real one. .golangci.yml exempts this file from the linters that the snippets' brevity trips.
 

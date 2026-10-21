@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// DL-250: every snippet marked <!-- example --> in docs/design.md and docs/api.md appears in the example sources,
-// unchanged but for indentation, runs of spaces, and an assignment in front of a line. Its import lines are left out,
-// since examples have their own.
+// DL-250: every snippet marked <!-- example --> in docs/design/design.md and docs/design/api.md appears in the example
+// sources, unchanged but for indentation, runs of spaces, and an assignment in front of a line. Its import lines are
+// left out, since examples have their own.
 func TestDocExamples(t *testing.T) {
 	var src []string
 	for _, f := range []string{"docexamples_test.go", "../internal/docexample/main.go"} {
@@ -21,7 +21,7 @@ func TestDocExamples(t *testing.T) {
 	}
 	block := regexp.MustCompile("(?s)<!-- example -->\\s*```go\\n(.*?)```")
 	count := 0
-	for _, doc := range []string{"../../docs/design.md", "../../docs/api.md"} {
+	for _, doc := range []string{"../../docs/design/design.md", "../../docs/design/api.md"} {
 		data, err := os.ReadFile(doc)
 		if err != nil {
 			t.Fatal(err)

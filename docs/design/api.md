@@ -1,7 +1,10 @@
 # cascadingconfig API
 
+**Kind: design record.** It explains why the library is built as it is, and it grows as decisions are made. Its code
+listings record the design when it was decided; the current API is in the package documentation.
+
 This document designs the public Go API for the loader described in [design.md](design.md). Each section is marked as
-decided or proposed. Names and signatures may still be refined while the API is built.
+decided or proposed, and the "Settled in" sections record what each milestone fixed.
 
 ## Overview
 
@@ -30,7 +33,7 @@ defer w.Close()
 ## Package layout
 
 **Status: decided** (see [Package layout decisions](#package-layout-decisions)). The repository tree, tooling and
-measured dependency counts are in [project-layout.md](project-layout.md).
+measured dependency counts are in [project-layout.md](../contributing/project-layout.md).
 
 The goal is that **consumers pay only for what they use**.
 
@@ -136,9 +139,9 @@ loader, err := cascadingconfig.NewWithPreset("myapp", cascadingconfig.MiseLayout
    - **The `Layout` suffix** marks a core value that brings no formats or remotes beyond JSON.
    - **One type:** layouts and presets are both of type `Preset`.
 2. **One presets module or one per preset.** **Decided:** one module for now, perhaps revisited later
-   ([project-layout.md](project-layout.md#decisions)). Measured: an app that imports only `presets/misehardened` gets
-   the same 5 modules in its `go.mod`, `go.sum` and build as with separate modules. Only `go list -m all` grows, from 5
-   to 9.
+   ([project-layout.md](../contributing/project-layout.md#decisions)). Measured: an app that imports only
+   `presets/misehardened` gets the same 5 modules in its `go.mod`, `go.sum` and build as with separate modules. Only
+   `go list -m all` grows, from 5 to 9.
 3. **Libraries.** **Decided:** `pelletier/go-toml/v2` and `goccy/go-yaml`. Neither has dependencies, and both report
    line and column positions, which `*ParseError` needs. Their maintenance status and licences are to be confirmed
    before the first release.
@@ -1668,7 +1671,7 @@ type Source struct {
 
 ## Test helpers
 
-**Status: decided** ([implementation-plan.md](implementation-plan.md#decisions)).
+**Status: decided** ([implementation-plan.md](../planning/implementation-plan.md#decisions)).
 
 The core module includes a public `cctest` package, so that the other modules' tests, and app authors' own tests, can
 exercise the loader without real files or timers:
