@@ -1,6 +1,7 @@
 # 0003: The shape of a watch Diff
 
-**Date:** 2026-10-21. **Status:** proposed.
+**Date:** 2026-10-21. **Status:** decided; see the outcome below and DL-234 in
+[design.md](../design.md#decision-log).
 
 This weighs what `Change.Diff` lists when tables appear, empty, fill or turn into scalars. DL-221 says "leaves only; an
 array is one leaf; a table that becomes a scalar, or the reverse, is one `DiffChanged`". It doesn't say what happens to
@@ -107,4 +108,13 @@ model, and also checks the properties the rule keeps, so they're enforced on the
 
 ## Outcome
 
-Pending.
+**Option 1, L′, the pure leaf-set difference**, decided on 2026-10-21 and recorded as DL-234:
+
+- **`Diff` compares the leaves of the two trees**, where a leaf is a scalar, an array or an empty table. A path that's a
+  leaf on both sides with different values is `DiffChanged`, one only in `Old` is `DiffRemoved`, and one only in `New`
+  is `DiffAdded`. Entries are sorted by path, segment by segment, so `b` comes before `b.b`.
+- **DL-221's exception goes:** a table that becomes a scalar is its leaves removed and the scalar added.
+- **A replay** applies removals first, then additions and changes, and a removal also removes tables it leaves empty.
+- **Tests:** `TestWatchDiff` is revised to the new shape, and `FuzzDiff` generates empty tables, uses L′ as its
+  reference model, and checks that the `Diff` replays `Old` into `New` and that the reverse reload gives the reverse
+  `Diff`.

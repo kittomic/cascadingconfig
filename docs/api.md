@@ -763,6 +763,8 @@ type Change[T any] struct {
 	Err      error
 }
 
+// One leaf of either tree that differs: a scalar, an array or an empty table (DL-234). Sorted by path, segment by
+// segment, so entries nest when a value changes shape: {"b":{"b":1}} → {"b":0} is "added b" and "removed b.b".
 type KeyDiff struct {
 	Path                 Path
 	Kind                 DiffKind // DiffAdded, DiffRemoved, DiffChanged

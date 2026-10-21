@@ -677,9 +677,10 @@ kinds; the custom `Scope` interface and `Watchable` are [M9b](#m9b-custom-scopes
   change.
 - **Fresh on every reload** (DL-72): deleting a key from a file removes its value on the next reload, rather than
   keeping the old one, and defaults still apply.
-- **Callbacks** (DL-40, DL-221): a touch or comment-only edit doesn't fire one, unless `WithReloadOnAnyEvent`; `Diff`
-  lists added, removed and changed leaves with their origins, and its `String()` holds no values; a changed bootstrap
-  `env` re-plans the watch set.
+- **Callbacks** (DL-40, DL-221, DL-234): a touch or comment-only edit doesn't fire one, unless `WithReloadOnAnyEvent`;
+  `Diff` is the leaf-set difference, with origins, and its `String()` holds no values; a changed bootstrap `env`
+  re-plans the watch set. `FuzzDiff` checks `Diff` against a reference model, with empty tables, and checks that it
+  replays and reverses.
 - **Lifecycle** (DL-77, DL-220, DL-223): a failed first load returns a nil watcher; a nil handler works; cancelling
   `ctx` stops the watcher; `Close` twice is fine; `Close` and `Reload` from inside the handler don't deadlock; `Reload`
   after `Close` is a 499; a panicking handler is recovered and watching continues; handler calls never overlap; a value
