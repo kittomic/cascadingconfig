@@ -107,6 +107,7 @@ done
 | `golangci-lint` (pre-push)         | Loop over the modules.                                                                          |
 | `govulncheck` (pre-push)           | Loop over the modules. Then each module is checked against its own dependencies.               |
 | `deps` (pre-push, from M6)         | `scripts/check-deps.sh` builds a throwaway consumer for each setup whose modules exist and checks the counts below (DL-173). |
+| `markdown` (pre-push, from M11a)   | `rumdl check .` on every markdown file, so a moved doc or renamed heading can't break a link in a file that wasn't staged (DL-254). |
 
 In workspace mode, `go test ./...` from the root may already match packages in every workspace module. That should be
 verified when the modules are created, but the loop is used regardless, so that every tool behaves the same way.

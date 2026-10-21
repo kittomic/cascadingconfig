@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Check the dependency budget (DL-173): for each setup in docs/project-layout.md whose modules exist, build a throwaway
-# consumer module that imports them, and compare the third-party modules it pulls in with the expected counts.
+# Check the dependency budget (DL-173): for each setup in docs/contributing/project-layout.md whose modules exist, build
+# a throwaway consumer module that imports them, and compare the third-party modules it pulls in with the expected
+# counts.
 #
 # The consumer replaces this repository's modules with the local copies, so it measures what an app would get from the
 # current code. go mod tidy needs the module cache or network access. Written for bash 3.2, which macOS ships.
@@ -81,7 +82,7 @@ for setup in "${setups[@]}"; do
 	if [[ "$got" == "$want" ]]; then
 		echo "${name}: go.mod go.sum build graph = ${got}"
 	else
-		echo "${name}: go.mod go.sum build graph = ${got}, want ${want} (docs/project-layout.md#dependency-analysis)" >&2
+		echo "${name}: go.mod go.sum build graph = ${got}, want ${want} (docs/contributing/project-layout.md#dependency-analysis)" >&2
 		failed="${failed} ${name}"
 	fi
 done
