@@ -274,7 +274,9 @@ mise.Preset.Extend(
     carries a cascadingconfig code keeps it, and any other is a 500 naming the scope.
   - **`Path` sources** join the pipeline exactly like searched files: symlinks, ignored paths, dedup, permission checks,
     the trust store, includes, `FirstMatch` and `RequireConfig(RequireFile)`. Their config root defaults to the file's
-    own directory. One that doesn't exist is a `*NotFoundError` naming the scope, as for `ExplicitFile`.
+    own directory. One that doesn't exist is a `*NotFoundError` naming the scope, as for `ExplicitFile`. A `Path` with
+    dot segments is cleaned first, as explicit files are, and a file a scope lists twice is a duplicate like any other
+    (DL-241).
   - **`Tree` sources** are like a `Values` scope: checked for canonical values and copied, `_unset` stripped with a
     warning, no includes, and they don't count for `RequireFile`. Each is its own layer.
   - **Concurrency:** `Discover` and `WatchDirs` can be called from several goroutines at once.
@@ -2243,6 +2245,7 @@ There are no open questions.
 | 238 | Sources                                     | Exactly one of an absolute `Path` and a `Tree`; a given `Format` must be registered; a broken `Source` is a 500 naming the scope; a coded `Discover` error keeps its code, and others are 500s. `Path` sources join the pipeline like searched files, with the file's directory as config root, and a missing one is a `*NotFoundError`; `Tree` sources are like `Values`. Callbacks can run concurrently. |
 | 239 | Watching custom scopes                      | `Path` sources are watched like explicit files. `Watchable.WatchDirs`, called after `Discover` on watched loads only, adds directories with no name filter; missing ones go through their nearest existing ancestor; a relative directory or an error is `WarnWatchFailed`. Name filters are a future idea. |
 | 240 | Custom scopes in the report and tests       | `Path` layers look like searched files without a `Pattern`, `Tree` layers have no `Path`, and custom scopes record no probes. `FuzzCustomSources` checks that random sources never panic and fail only with 500s. |
+| 241 | Details the M9b implementation settled     | A `Path` source is cleaned before it's read, so dot segments work as for explicit files; a file listed twice is a duplicate; permission and trust checks skip a `Path` source with a warning, as for a searched file, rather than failing the load as for an explicit one; every source is checked before any loads. |
 
 ---
 
