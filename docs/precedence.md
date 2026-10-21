@@ -151,8 +151,9 @@ A template's segments are matched one at a time:
   - **No marked scope:** they rank above every scope.
 - **Metadata:** they have `TrustProject`, and the marked scope's name, or none.
 - **`WithConfigFilesOnly()`:** explicit files replace every scope that searches for files: `FixedDir`, `Walk`,
-  `ExplicitFile`, `EmbeddedFS` and custom scopes. Value scopes (`Values`, `ValuesFunc`, `EnvVars` and the defaults)
-  still take their places (DL-247).
+  `ExplicitFile`, `EmbeddedFS` and custom scopes. They take the place of the highest of those scopes, so value scopes
+  (`Values`, `ValuesFunc`, `EnvVars` and the defaults) keep their places around them, and flags above it still beat the
+  file (DL-247).
 - **No variants:** an explicit file never brings its `.local` or `.{env}` siblings.
 
 ### PR-10: Includes

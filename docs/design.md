@@ -2256,7 +2256,7 @@ There are no open questions.
 | 244 | The precedence oracle                       | A test-only oracle computes the expected order from the spec alone: its own copy of the layout tables and the sort key, never `layouts.go` or loader internals. A drift test parses precedence.md's tables and checks them against the oracle's. |
 | 245 | Precedence conformance tests                | At least one named test per `PR-n` rule, and the spec's worked examples as tests with hand-written expected orders. Includes, bootstrap-chosen settings, value scopes and Windows are covered here, outside the fuzz test. |
 | 246 | `FuzzPrecedence`                            | Random layouts (built-in or random patterns), hosts, start dirs, environments, format orders, conflict policies and file sets with decoys, empty files and symlinked duplicates; the report's order, statuses and merged `top` key must match the oracle. JSON's decoder stands in for TOML and YAML. Instead of a red run, six deliberate mutations of the ordering code must each be caught within a minute. |
-| 247 | Explicit-only loads keep value scopes       | Under `WithConfigFilesOnly()`, explicit files replace only scopes that search for files; `Values`, `ValuesFunc`, `EnvVars` and the defaults still take their places, as DL-153 and DL-154 say. Until now they were dropped too. |
+| 247 | Explicit-only loads keep value scopes       | Under `WithConfigFilesOnly()`, explicit files replace only scopes that search for files, at the place of the highest of them; `Values`, `ValuesFunc`, `EnvVars` and the defaults still take their places, as DL-153 and DL-154 say, so flags above them still beat the file. Until now they were dropped too. |
 
 ---
 
