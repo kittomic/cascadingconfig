@@ -98,8 +98,12 @@ func Fixture(t *testing.T, layout string, exts []string) map[string]string {
 			}
 		}
 	}
-	if len(files) < 20 {
-		t.Fatalf("the fixture for %s has only %d files", layout, len(files))
+	rows := 0
+	for _, tpls := range templates {
+		rows += len(tpls)
+	}
+	if rows == 0 || len(files) < rows {
+		t.Fatalf("the fixture for %s has %d files for %d table rows; precedence.md's tables didn't parse", layout, len(files), rows)
 	}
 	return files
 }
