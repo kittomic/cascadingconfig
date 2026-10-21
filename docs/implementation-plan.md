@@ -683,7 +683,7 @@ kinds; the custom `Scope` interface and `Watchable` are [M9b](#m9b-custom-scopes
 - **Lifecycle** (DL-77, DL-220, DL-223): a failed first load returns a nil watcher; a nil handler works; cancelling
   `ctx` stops the watcher; `Close` twice is fine; `Close` and `Reload` from inside the handler don't deadlock; `Reload`
   after `Close` is a 499; a panicking handler is recovered and watching continues; handler calls never overlap; a value
-  moving to another file isn't a change; `time.Time` values are compared as instants.
+  moving to another file isn't a change; the same instant written differently is a change (DL-233), and NaN equals NaN.
 - **Event sources** (DL-225, DL-227): the factory is called once per watcher; a factory error, a failed `Add`, an error
   on `Errors` and a closed `Events` channel each behave as decided, with `WarnWatchFailed`.
 - **Polling** (DL-226): without a notifier, and with `WithPolling()`, edits, creations, removals and same-size edits are

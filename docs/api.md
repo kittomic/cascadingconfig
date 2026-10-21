@@ -1024,9 +1024,9 @@ cascadingconfig.WithDefaults(Config{
   where it returns without waiting (DL-223).
 - **`Reload(ctx)`** returns an `error`. It calls the handler only if the reload changed something, failed, or is the
   first good reload after a failure (DL-222).
-- **What counts as a change:** a difference in the merged values. `time.Time` values are compared as instants (`Equal`),
-  and NaN equals NaN. A value that moves to another file with the same value isn't a change, unless
-  `WithReloadOnAnyEvent` is set.
+- **What counts as a change:** a difference in the merged values, compared exactly (DL-233). Dates and times are RFC
+  3339 strings in the tree, so the same instant written differently is a change; NaN equals NaN. A value that moves to
+  another file with the same value isn't a change, unless `WithReloadOnAnyEvent` is set.
 - **Panics:** a handler that panics is recovered. The panic is logged as an error, and watching continues.
 - **One at a time:** handler calls never overlap.
 
