@@ -727,6 +727,23 @@ func WithGit(path string) Option                        // default: git on PATH
 func WithClient(c *http.Client) Option                  // for following redirects before git runs; copied
 ```
 
+#### Settled in M8c
+
+```go
+// ociresolver (DL-215 to DL-218)
+func New(opts ...Option) cascadingconfig.IncludeResolver // handles "oci"
+func WithCredentials(f func(ctx context.Context, registry string) (Credential, error)) Option // none by default
+func WithPlainHTTP(hosts ...string) Option  // host[:port]; for tests and local registries
+func WithClient(c *http.Client) Option      // copied
+func WithMaxLayerSize(n int64) Option       // each blob and decompressed layer; default 64 MiB
+
+type Credential struct {
+	Username, Password string
+	RefreshToken       string // an identity token, exchanged for access tokens
+	AccessToken        string // a registry token, used as it is
+}
+```
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |

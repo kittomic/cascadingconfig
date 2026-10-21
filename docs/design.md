@@ -1275,22 +1275,52 @@ These checks also cover resolvers that apps write themselves:
 
 #### `oci`
 
+- **Manifests** (DL-215): the tag or digest is resolved to a manifest digest before anything else is read, and that
+  digest is the layer's identity. A manifest is capped at 4 MiB, and a larger one is a `*TooLargeError`; it's verified
+  against its digest. OCI image manifests and Docker v2 schema 2 manifests are accepted; an image index or any other
+  type is a `*ReferenceError` that asks for a manifest.
 - **Two artifact forms.** An artifact pushed with `oras push` stores each file as its own blob, named by the
-  `org.opencontainers.image.title` annotation. An image-style artifact stores files in tar layers. Both are supported:
-  the requested path is matched against the title annotations, and against the entries of tar layers.
-- **No extraction to disk.** Layers are read as streams, and the requested file is found among them.
-- **Duplicates:** if the same path appears in several layers, the **last** layer wins, as in an image.
-- **Decompression is capped** at the include size limit, so a small compressed layer can't expand without bound.
-- **Options:** `ociresolver.WithCredentials(...)` supplies registry credentials. By default none are sent, and
-  `~/.docker/config.json` isn't read. `ociresolver.WithPlainHTTP(hosts...)` allows plain-HTTP registries, for tests and
-  local registries only.
-- **Entry matching:** each entry name is cleaned and compared to the validated inner path. An entry with an absolute
-  name or a `..` segment fails the whole fetch, even if it isn't the requested file, because it means the artifact is
-  malformed or hostile.
+  `org.opencontainers.image.title` annotation. An image-style artifact stores files in tar layers. Both are supported
+  (DL-215):
+  - **A titled layer** without `io.deis.oras.content.unpack: "true"` is one file, named by its title, whatever its media
+    type: `oras push` gives a file the media type `application/vnd.oci.image.layer.v1.tar` by default, though its
+    content is the file itself.
+  - **A titled layer with that annotation,** as `oras push` stores a directory, is read as tar entries. oras puts the
+    directory's name at the start of every entry, so `conf/a.json` matches the inner path `conf/a.json`.
+  - **A layer without a title** is read as tar entries when its media type is a tar type (OCI or Docker, plain or gzip),
+    and is ignored otherwise.
+  - **zstd** layers are a `*ReferenceError` for now, because zstd needs a new dependency.
+- **No extraction to disk.** Layers are read as streams, and the requested file is found among them. A titled file that
+  matches is downloaded only if no later layer replaces or whites it out. Only the titled blobs that match are
+  downloaded; every tar layer is read in full, for the malformed-entry rule and for whiteouts.
+- **Duplicates:** layers are taken in manifest order, and if the same path appears in several, the **last** wins, as in
+  an image. Whiteouts work as in an image too: `.wh.<name>` in a later layer removes `<name>`, and anything below it,
+  from earlier layers, and `.wh..wh..opq` hides what earlier layers put in its directory.
+- **Caps** (DL-216): `ociresolver.WithMaxLayerSize(n)`, 64 MiB by default, caps each blob's declared size (checked from
+  the manifest before downloading), each download, and each decompressed layer, so a small compressed layer can't expand
+  without bound. The matched file is capped by the include size limit, from its header before it's read. Either is a
+  `*TooLargeError`.
+- **Options** (DL-217): `ociresolver.WithCredentials(func(ctx, registry) (Credential, error))` supplies registry
+  credentials, as the package's own `Credential` type. By default none are sent, and `~/.docker/config.json` isn't read.
+  `ociresolver.WithPlainHTTP(hosts...)` allows plain-HTTP registries, by `host[:port]`, for tests and local registries
+  only; every other registry uses https. `ociresolver.WithClient(c)` sets the HTTP client, which is copied.
+- **Auth:** the standard bearer-token flow, with the credentials for the registry, and anonymous tokens otherwise. The
+  token service may be on another host, such as Docker Hub's `auth.docker.io`, as the distribution spec allows. Tokens
+  are cached per resolver.
+- **Redirects** (DL-217): registries redirect blob downloads to CDNs, so the resolver follows a registry's redirects
+  without matching them against the allow-lists: at most 5 hops, never from `https` to `http`. Unlike `http` and `git`,
+  that gives a redirect no power: blobs and digest-pinned manifests are verified, and a tag's manifest is the registry's
+  to choose anyway.
+- **Entry matching:** each entry name is cleaned, and a leading `./` is fine, then compared to the validated inner path.
+  An entry or title with an absolute name, a `..` segment or a `\` fails the whole fetch, even if it isn't the requested
+  file, because it means the artifact is malformed or hostile.
 - **Regular files only:** the matched entry must be a regular file (`TypeReg`). Symlinks, hard links, devices and
   directories are rejected.
-- **Digests:** every blob's digest is verified as it streams, and the manifest is resolved to a digest before anything
-  is read.
+- **Digests:** every blob's digest, and the manifest's, is verified as it streams.
+- **Errors** (DL-218): a missing repository, tag, digest or path is a `*NotFoundError`. An index, an unsupported layer
+  type, a malformed entry, a layer that isn't a valid tar or gzip stream (once its digest checks out) or a non-regular
+  file is a `*ReferenceError`, so no stale copy stands in for it. A cap is a `*TooLargeError`. Anything else, such as a
+  network failure, a 401 or 403, a 5xx, a digest mismatch or an error from the credentials function, is a `*FetchError`.
 
 #### `http` / `https`
 
@@ -2076,6 +2106,10 @@ There are no open questions.
 | 212 | Isolating git                               | Every `GIT_*` variable is removed, since `GIT_CONFIG_COUNT` injects config past `GIT_CONFIG_NOSYSTEM`; global config is an empty file; prompts, hooks, submodules and filters are off; ssh runs in batch mode. The repo URL's scheme is checked against `WithProtocols` before git runs, a `*PolicyError` if it isn't allowed. |
 | 213 | git and redirects                           | git never follows redirects itself. For http and https repos, the resolver follows them first with Go's client, at most 5 hops, none to http, each through `IncludeRef.Check`, and git fetches from the final URL; `WithClient` sets the client. With git's default, a redirect silently reached another host. |
 | 214 | gitresolver's API and errors                | `New(WithProtocols, WithCredentialHelper, WithGit, WithClient)`. A missing ref or path is a `*NotFoundError`, a symlink, submodule or directory a `*ReferenceError`, a large file a `*TooLargeError`, and anything else a `*FetchError` with git's first error line. Tests use `git http-backend` through `net/http/cgi`. |
+| 215 | Reading OCI artifacts                       | The tag or digest is resolved to a manifest digest first, which is the identity; OCI image and Docker v2 manifests only, capped at 4 MiB. Titled layers are files, whatever their media type (oras's default for a file is the tar type), unless oras's unpack annotation marks a directory tar; untitled tar layers (plain or gzip) are read as entries; all in manifest order, with image whiteouts; zstd and indexes are rejected. Entries with absolute names, `..` or `\` fail the fetch. |
+| 216 | OCI caps                                    | `WithMaxLayerSize(n)`, 64 MiB by default, caps each blob's declared size, download and decompressed layer; the matched file keeps the include size limit. This replaces capping decompression at the include size limit, which ruled out image-style artifacts with more than 1 MiB of files. |
+| 217 | ociresolver's API and network               | `New(WithCredentials, WithPlainHTTP, WithClient, WithMaxLayerSize)`, with the package's own `Credential` so oras types stay out; no Docker config is read. Registry redirects are followed without allow-list checks, at most 5 hops, never to http, since content is digest-verified. oras-go v2.6.4, measured by a new core-oci setup. |
+| 218 | ociresolver's errors and tests              | Missing things are `*NotFoundError`s; indexes, unsupported layers, malformed entries and non-regular files `*ReferenceError`s; caps `*TooLargeError`s; anything else `*FetchError`s. Tests use a hand-written in-memory registry; `FuzzTarEntries` fuzzes the layer reader. |
 
 ---
 

@@ -15,6 +15,7 @@ setups=(
 	"core-only|1 1 1 1|${repo}"
 	"minimal|2 2 2 2|${repo} ${repo}/format/toml"
 	"core-toml-yaml|3 3 3 3|${repo} ${repo}/format/toml ${repo}/format/yaml"
+	"core-oci|5 5 5 7|${repo} ${repo}/ociresolver"
 )
 
 work="$(mktemp -d)"
@@ -24,6 +25,7 @@ trap 'rm -rf "$work"' EXIT
 module_of() {
 	case "$1" in
 	"${repo}/format/"*) echo "${repo}/format/$(echo "${1#"${repo}/format/"}" | cut -d/ -f1)" ;;
+	"${repo}/ociresolver"*) echo "${repo}/ociresolver" ;;
 	*) echo "$repo" ;;
 	esac
 }

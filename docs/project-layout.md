@@ -130,6 +130,7 @@ stub blank-imports its real library. A small consumer app was then created for e
 | Core only (JSON)                                |      1 |      1 |     1 |     1 |
 | **Minimal: core + TOML**                        |  **2** |  **2** | **2** | **2** |
 | Core + TOML + YAML                              |      3 |      3 |     3 |     3 |
+| Core + OCI (`ociresolver`, measured in M8c)     |      5 |      5 |     5 |     7 |
 | `misehardened` (TOML, YAML, fsnotify)             |      5 |      5 |     5 |     5 |
 | `mise`, everything (adds OCI, http, git)        |      9 |      9 |     9 |    11 |
 | `misehardened`, imported from one `presets` module |     5 |      5 |     5 |     9 |
