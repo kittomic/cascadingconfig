@@ -1,6 +1,16 @@
 package misehardened
 
-import "github.com/kittomic/cascadingconfig"
+import (
+	"github.com/kittomic/cascadingconfig"
+	"github.com/kittomic/cascadingconfig/format/toml"
+	"github.com/kittomic/cascadingconfig/format/yaml"
+	"github.com/kittomic/cascadingconfig/watch/fsnotify"
+)
 
-// Preset is the ready-to-use preset (DL-248). Never reassign it.
-var Preset = cascadingconfig.NewPreset("misehardened.Preset") // stub: no layout or capabilities yet
+// Preset is cascadingconfig.MiseHardenedLayout with TOML, YAML and fsnotify for watching, and no remote resolvers
+// (DL-248). Never reassign it.
+var Preset = cascadingconfig.MiseHardenedLayout.ExtendAs("misehardened.Preset",
+	cascadingconfig.WithDecoder(toml.Decoder()),
+	cascadingconfig.WithDecoder(yaml.Decoder()),
+	cascadingconfig.WithNotifier(fsnotify.New),
+)

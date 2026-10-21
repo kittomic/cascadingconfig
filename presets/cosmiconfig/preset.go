@@ -1,6 +1,14 @@
 package cosmiconfig
 
-import "github.com/kittomic/cascadingconfig"
+import (
+	"github.com/kittomic/cascadingconfig"
+	"github.com/kittomic/cascadingconfig/format/yaml"
+	"github.com/kittomic/cascadingconfig/watch/fsnotify"
+)
 
-// Preset is the ready-to-use preset (DL-248). Never reassign it.
-var Preset = cascadingconfig.NewPreset("cosmiconfig.Preset") // stub: no layout or capabilities yet
+// Preset is cascadingconfig.CosmiconfigLayout with YAML and fsnotify for watching (DL-248). Like cosmiconfig, it has no
+// TOML and no remote includes. Never reassign it.
+var Preset = cascadingconfig.CosmiconfigLayout.ExtendAs("cosmiconfig.Preset",
+	cascadingconfig.WithDecoder(yaml.Decoder()),
+	cascadingconfig.WithNotifier(fsnotify.New),
+)
