@@ -5,6 +5,7 @@ use (
 	./examples
 	./format/toml
 	./format/yaml
+	./internal/apicheck
 	./internal/compat
 	./ociresolver
 	./presets
