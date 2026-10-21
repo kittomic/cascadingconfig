@@ -97,7 +97,7 @@ func (ld *loading) report() *Report {
 			Name: s.name, Kind: scopeKindName(s.kind), Trust: s.trust, Selected: c.selected[s.name], Skipped: ld.skipped[s.name],
 		}
 		switch s.kind.(type) {
-		case fixedDirKind, walkKind, explicitKind:
+		case fixedDirKind, walkKind, explicitKind, customKind:
 			info.Policy = c.policyInfo(c.policyFor(s.name))
 			_, rep.ownPolicy[s.name] = c.policies[s.name]
 		}

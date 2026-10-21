@@ -55,6 +55,7 @@ func (pl *watchPlan) add(dir string, m nameMatcher) {
 		cur.add(e, false)
 	}
 	cur.globs = append(cur.globs, m.globs...)
+	cur.any = cur.any || m.any
 }
 
 // dirState says whether dir exists. A directory that can't be opened for any reason but not existing counts as

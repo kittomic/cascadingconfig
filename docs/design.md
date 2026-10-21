@@ -240,7 +240,7 @@ mise.Preset.Extend(
 - **Kinds:** a custom scope is built from one of the existing kinds: `FixedDir`, `Walk`, `ExplicitFile`, or `EmbeddedFS`
   / any `fs.FS`. A key inside a manifest file, such as `package.json#{name}`, is a pattern with a `Key` (see
   [Patterns](#patterns)); no preset uses one. Fully custom discovery implements the `Scope` interface, just as resolvers
-  implement `IncludeResolver`.
+  implement `IncludeResolver` (see below).
 - **`Walk(patterns...)`** (DL-122) searches the start directory and each parent, as described in
   [Directory walk](#directory-walk), applying them root-most first. Its default trust is `TrustProject`.
 - **`ExplicitFile(paths...)`** (DL-126) loads the files as given, like [explicit config files](#explicit-config-files).
@@ -261,6 +261,26 @@ mise.Preset.Extend(
 - **Names** must be unique. A clash with any scope, built-in or custom, is an error.
 - **Selection:** a custom scope is used only if `WithScopes(...)` lists it, as with the built-in scopes. Defining a
   scope doesn't select it. The defaults scope is the one exception: it is always selected (DL-153).
+- **Fully custom discovery** (DL-236 to DL-240): `Custom(s Scope)` turns an app's `Scope` into a kind for `WithScope`.
+  The built-in kinds don't implement `Scope`: they stay sealed, because they need the loader's internals.
+  - **The kind:** a nil `Scope` is an `*OptionError`. Its default trust is `TrustProject`, the lowest, since it can
+    return files from anywhere, and it needs a registered decoder, as `FixedDir` does. `BootstrapFiles` on it is an
+    `*OptionError`, as on every kind but `FixedDir` and `Walk`.
+  - **`Discover(ctx, d)`** gets a `Discovery`: the app name, the scope's name, the start dir, the home dir, the selected
+    and platform environments, the scope's searched formats, the loader's filesystem, the host's env vars and the
+    logger. Everything comes through the loader's host, so `cctest` fakes reach custom scopes too.
+  - **Sources,** lowest precedence first: each has exactly one of `Path`, which must be absolute, and `Tree`. A
+    `Format`, when given, must be registered. A broken `Source` is a 500 naming the scope. An error from `Discover` that
+    carries a cascadingconfig code keeps it, and any other is a 500 naming the scope.
+  - **`Path` sources** join the pipeline exactly like searched files: symlinks, ignored paths, dedup, permission checks,
+    the trust store, includes, `FirstMatch` and `RequireConfig(RequireFile)`. Their config root defaults to the file's
+    own directory. One that doesn't exist is a `*NotFoundError` naming the scope, as for `ExplicitFile`. A `Path` with
+    dot segments is cleaned first, as explicit files are, and a file a scope lists twice is a duplicate like any other
+    (DL-241).
+  - **`Tree` sources** are like a `Values` scope: checked for canonical values and copied, `_unset` stripped with a
+    warning, no includes, and they don't count for `RequireFile`. Each is its own layer.
+  - **Concurrency:** `Discover` and `WatchDirs` can be called from several goroutines at once.
+  - **Watching** is described under [Hot reload](#hot-reload).
 - **Env-var bindings:** none are created automatically. An app adds them explicitly, for example
   `WithEnvBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
 - **Trust:** each scope kind has a default trust level, and `Trust(...)` overrides it. File-based kinds default to
@@ -1856,7 +1876,12 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 - **Re-planned after every reload,** because a reload can change the ceiling, the selected envs, the formats or the
   folder fragments. A failed reload re-plans from the previous set plus whatever it recorded, so a reload that fails in
   bootstrap still watches everything the last one did.
-- **Custom scopes:** the `Scope` interface, and with it `Watchable`, comes in M9b (DL-219).
+- **Custom scopes** (DL-239): a custom scope's `Path` sources are watched like explicit files, so edits to them are seen
+  without `Watchable`. A scope that implements `Watchable` also gets the directories `WatchDirs` returns watched with no
+  name filter, so any event in them reloads; that's how new files appear. `WatchDirs` is called after `Discover` on
+  every watched load, with the same `Discovery`, and never by a plain `Load`. A relative directory, or an error, is a
+  `WarnWatchFailed` warning, and the rest of the set is planned as usual. A missing directory is watched through its
+  nearest existing ancestor.
 
 **Reloading:**
 
@@ -1887,7 +1912,7 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 | NFS, SMB and FUSE mounts; watcher limits reached | Built-in stat polling, every 2 s by default (DL-226). `WithPolling()` polls everything, and any directory whose watch fails is polled automatically, with a `WarnWatchFailed` warning. |
 | Env vars, `Values`                     | Re-read on every reload, but changes to them never trigger one. Use a manual `Reload`.                  |
 | Embedded files, `embed.FS`             | Never; they're static.                                                                                  |
-| Custom `Scope` implementations         | An optional `Watchable` interface, from M9b; without it, only on a manual `Reload`.                     |
+| Custom `Scope` implementations         | `Path` sources are watched as files. New sources need the optional `Watchable` interface; without it, they appear only on a reload. `Tree` sources refresh only on a reload. |
 
 **Polling** (DL-226):
 
@@ -2215,6 +2240,12 @@ There are no open questions.
 | 233 | Comparing values                            | A change is any difference in the canonical tree, strings compared exactly, and NaN equals NaN. Dates and times are RFC 3339 strings in the tree, so DL-77's "`time.Time` values are compared as instants" has nothing to apply to: the same instant written differently is a change, because a string field sees new text. |
 | 234 | The shape of a `Diff`                       | The pure difference of the two trees' leaves, where a leaf is a scalar, an array or an empty table: changed, removed or added by path, sorted segment by segment. It replaces DL-221's "a table that becomes a scalar is one `DiffChanged`", and it's the only rule tested in which every changed key has its own entry; entries nest when a value changes shape ([decision record 0003](decisions/0003-watch-diff-shape.md)). |
 | 235 | Details the M9 implementation settled      | Polls, remote polls with new content and notifier errors all count as events, through the debounce; notifier errors are `WarnWatchFailed`; a directory that can't be opened but exists is watched or polled; glob directory segments skip hidden directories; polled directories are rescanned after each reload; git's `ls-remote` matches a ref as `fetch` does; `cctest.Clock.Timers` reports the waiting timers. |
+| 236 | Custom scope kinds                          | `Custom(s Scope) ScopeKind` adapts an app's `Scope`; a nil one is an `*OptionError`. Default trust `TrustProject`, and it needs a decoder. The built-in kinds stay sealed and don't implement `Scope`, which corrects api.md. The report's kind is `"Scope"`, and its policy is shown. |
+| 237 | `Discovery`                                 | `Name`, `Scope`, `StartDir`, `Home`, `Envs`, `PlatformEnvs`, `Formats`, `FS`, `LookupEnv` and `Logger`, all through the loader's host so `cctest` fakes apply. |
+| 238 | Sources                                     | Exactly one of an absolute `Path` and a `Tree`; a given `Format` must be registered; a broken `Source` is a 500 naming the scope; a coded `Discover` error keeps its code, and others are 500s. `Path` sources join the pipeline like searched files, with the file's directory as config root, and a missing one is a `*NotFoundError`; `Tree` sources are like `Values`. Callbacks can run concurrently. |
+| 239 | Watching custom scopes                      | `Path` sources are watched like explicit files. `Watchable.WatchDirs`, called after `Discover` on watched loads only, adds directories with no name filter; missing ones go through their nearest existing ancestor; a relative directory or an error is `WarnWatchFailed`. Name filters are a future idea. |
+| 240 | Custom scopes in the report and tests       | `Path` layers look like searched files without a `Pattern`, `Tree` layers have no `Path`, and custom scopes record no probes. `FuzzCustomSources` checks that random sources never panic and fail only with 500s. |
+| 241 | Details the M9b implementation settled     | A `Path` source is cleaned before it's read, so dot segments work as for explicit files; a file listed twice is a duplicate; permission and trust checks skip a `Path` source with a warning, as for a searched file, rather than failing the load as for an explicit one; every source is checked before any loads. |
 
 ---
 

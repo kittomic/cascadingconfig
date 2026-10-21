@@ -917,7 +917,6 @@ func (ld *loading) hasMarker(dir string) bool {
 // loadExplicit loads files as given, at the current position: no variants, any registered decoder, and errors for
 // files that are missing, unreadable or of an unknown format. Explicit files are never ignored.
 func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLevel, s *scopeDef) {
-	c := ld.c
 	for _, p := range paths {
 		abs, ok := ld.hostPath(p, s)
 		if !ok {
@@ -929,68 +928,82 @@ func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLeve
 				l.ConfigRoot = root
 			}
 		}
-		base := BaseError{Op: "load", Path: abs, Scope: string(scope)}
-		ld.watchFile(abs)
-		resolved, err := c.fsys.EvalSymlinks(abs)
-		if err != nil {
-			base.Err = err
-			if errors.Is(err, fs.ErrNotExist) {
-				ld.failLayer(l, &NotFoundError{BaseError: base})
-			} else {
-				ld.failLayer(l, &IOError{BaseError: base})
-			}
-			continue
+		ld.readNamed(l, "", true)
+	}
+}
+
+// readNamed reads a file named directly, at l.Path: an explicit file, or a custom scope's Path source. format, when
+// given, overrides the extension. A missing file, an unreadable one or an unknown format is an error. Only a file
+// that isn't explicit can be ignored, and only it is skipped, rather than failing the load, by a policy check.
+func (ld *loading) readNamed(l Layer, format string, explicit bool) {
+	c := ld.c
+	abs := l.Path
+	base := BaseError{Op: "load", Path: abs, Scope: string(l.Scope)}
+	ld.watchFile(abs)
+	resolved, err := c.fsys.EvalSymlinks(abs)
+	if err != nil {
+		base.Err = err
+		if errors.Is(err, fs.ErrNotExist) {
+			ld.failLayer(l, &NotFoundError{BaseError: base})
+		} else {
+			ld.failLayer(l, &IOError{BaseError: base})
 		}
-		format, ok := c.fileFormat(filepath.ToSlash(abs))
-		if !ok {
+		return
+	}
+	if !explicit && ld.ignore(l, resolved) {
+		return
+	}
+	if format == "" {
+		var ok bool
+		if format, ok = c.fileFormat(filepath.ToSlash(abs)); !ok {
 			base.Err = fmt.Errorf("no format rule or registered decoder's extension matches %s", abs)
 			ld.failLayer(l, &UnsupportedFormatError{BaseError: base})
-			continue
+			return
 		}
-		l.Format = format
-		root, err := c.fsys.OpenRoot(filepath.Dir(resolved))
-		if err != nil {
-			base.Err = err
-			ld.failLayer(l, &IOError{BaseError: base})
-			continue
-		}
-		info, err := root.Stat(filepath.Base(resolved))
-		switch {
-		case err != nil:
-			base.Err = err
-		case !info.Mode().IsRegular():
-			base.Err = fmt.Errorf("it is %s, not a regular file", describeMode(info.Mode()))
-		case info.Size() > c.maxFileSize:
-			_ = root.Close()
-			ld.failLayer(l, tooLarge(l, info.Size(), c.maxFileSize))
-			continue
-		}
-		if base.Err != nil {
-			_ = root.Close()
-			ld.failLayer(l, &IOError{BaseError: base})
-			continue
-		}
-		data, err := readLimited(root, filepath.Base(resolved), c.maxFileSize)
-		_ = root.Close()
-		if err != nil {
-			base.Err = err
-			ld.failLayer(l, &IOError{BaseError: base})
-			continue
-		}
-		if int64(len(data)) > c.maxFileSize {
-			ld.failLayer(l, tooLarge(l, int64(len(data)), c.maxFileSize))
-			continue
-		}
-		e := &entry{layer: l, data: data, info: info, file: true, explicit: true, real: resolved}
-		ld.watchLoaded(abs, resolved)
-		if root, err := c.fsys.OpenRoot(filepath.Dir(resolved)); err == nil {
-			if di, err := root.Stat("."); err == nil {
-				e.dirInfo = di
-			}
-			_ = root.Close()
-		}
-		ld.entries = append(ld.entries, e)
 	}
+	l.Format = format
+	root, err := c.fsys.OpenRoot(filepath.Dir(resolved))
+	if err != nil {
+		base.Err = err
+		ld.failLayer(l, &IOError{BaseError: base})
+		return
+	}
+	info, err := root.Stat(filepath.Base(resolved))
+	switch {
+	case err != nil:
+		base.Err = err
+	case !info.Mode().IsRegular():
+		base.Err = fmt.Errorf("it is %s, not a regular file", describeMode(info.Mode()))
+	case info.Size() > c.maxFileSize:
+		_ = root.Close()
+		ld.failLayer(l, tooLarge(l, info.Size(), c.maxFileSize))
+		return
+	}
+	if base.Err != nil {
+		_ = root.Close()
+		ld.failLayer(l, &IOError{BaseError: base})
+		return
+	}
+	data, err := readLimited(root, filepath.Base(resolved), c.maxFileSize)
+	_ = root.Close()
+	if err != nil {
+		base.Err = err
+		ld.failLayer(l, &IOError{BaseError: base})
+		return
+	}
+	if int64(len(data)) > c.maxFileSize {
+		ld.failLayer(l, tooLarge(l, int64(len(data)), c.maxFileSize))
+		return
+	}
+	e := &entry{layer: l, data: data, info: info, file: true, explicit: explicit, real: resolved}
+	ld.watchLoaded(abs, resolved)
+	if root, err := c.fsys.OpenRoot(filepath.Dir(resolved)); err == nil {
+		if di, err := root.Stat("."); err == nil {
+			e.dirInfo = di
+		}
+		_ = root.Close()
+	}
+	ld.entries = append(ld.entries, e)
 }
 
 // read reads one candidate, named by its slash path in root, whose directory entry has type typ.
@@ -1230,11 +1243,16 @@ func (ld *loading) log() {
 
 // addValues adds a value scope's tree, without the unset key, which a value scope can't use.
 func (ld *loading) addValues(s *scopeDef, t Tree) {
-	l := Layer{Scope: s.name, Trust: s.trust, Status: LayerLoaded}
+	ld.addValuesLayer(Layer{Scope: s.name, Trust: s.trust, Status: LayerLoaded}, t)
+}
+
+// addValuesLayer adds a value layer l with tree t, without the unset key.
+func (ld *loading) addValuesLayer(l Layer, t Tree) {
+	s := l.Scope
 	if key := ld.c.merge.unsetKey; key != "" && dropKey(t, key) {
 		l.Warnings = append(l.Warnings, Warning{
 			Code:    WarnReservedKey,
-			Message: fmt.Sprintf("the scope %q can't remove keys, so its %s keys were ignored", s.name, key),
+			Message: fmt.Sprintf("the scope %q can't remove keys, so its %s keys were ignored", s, key),
 		})
 	}
 	ld.entries = append(ld.entries, &entry{layer: l, tree: t, value: true})

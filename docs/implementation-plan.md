@@ -707,8 +707,27 @@ kinds; the custom `Scope` interface and `Watchable` are [M9b](#m9b-custom-scopes
 ## M9b: Custom scopes
 
 **Scope:** the `Scope` interface, `Discovery`, `Source` and `Watchable` from
-[Extension interfaces](api.md#extension-interfaces) (DL-219), and how a custom scope joins the watch set. Its own gap
-list comes first.
+[Extension interfaces](api.md#extension-interfaces), as decided in DL-219 and DL-236 to DL-240: the `Custom` kind,
+loading sources, and how a custom scope joins the watch set.
+
+**Acceptance tests,** attack tests first:
+
+- **Registration** (DL-236): a nil scope and `BootstrapFiles` on one are `*OptionError`s; the default trust is
+  `TrustProject`, and `Trust` overrides it.
+- **`Discovery`** (DL-237): every field comes from the loader and the `cctest` host.
+- **Broken scopes** (DL-238): a `Source` with both or neither of `Path` and `Tree`, a relative `Path`, an unregistered
+  `Format` or a non-canonical tree is a 500 naming the scope; a coded error from `Discover` keeps its code, and any
+  other is a 500.
+- **`Path` sources** (DL-238): the order returned, with `Variant` and `Env`; symlinks, ignored paths, dedup, permission
+  checks, the trust store, includes, `FirstMatch` and `RequireFile`; a missing file is a 404.
+- **`Tree` sources** (DL-238): checked, copied, `_unset` stripped with a warning, no includes, not counted for
+  `RequireFile`.
+- **Watching** (DL-239): `Path` sources are watched without `Watchable`; `WatchDirs` directories have no name filter;
+  missing ones go through their ancestors; a relative directory or an error is warned about; the set is re-planned on
+  every reload, and a plain `Load` never calls `WatchDirs`.
+- **Report** (DL-240): the kind is `"Scope"`, the policy is shown, and there are no probes.
+- **Concurrency:** parallel loads under `-race`.
+- **Fuzz test:** `FuzzCustomSources`, with a positive control.
 
 ## M10: Presets
 
