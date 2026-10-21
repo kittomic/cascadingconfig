@@ -179,7 +179,7 @@ func Open(fsys fs.FS) error // a new block starts in the core again
 `)
 	want := []string{
 		fmt.Sprintf("%d other New: differs", at(t, doc, "func New(opts ...Option) m.Decoder\n\n// package .")),
-		fmt.Sprintf("%d : unknown package", at(t, doc, "// package nope")),
+		fmt.Sprintf("%d: unknown package", at(t, doc, "// package nope")),
 	}
 	assertFindings(t, check(t, doc), want)
 }
@@ -211,7 +211,7 @@ func Nope2()
 '''
 `)
 	want := []string{
-		fmt.Sprintf("%d : unparsable", at(t, doc, "```go\nfunc Open")),
+		fmt.Sprintf("%d: unparsable", at(t, doc, "```go\nfunc Open")),
 		fmt.Sprintf("%d . Nope2: missing", at(t, doc, "func Nope2")),
 	}
 	assertFindings(t, check(t, doc), want)
