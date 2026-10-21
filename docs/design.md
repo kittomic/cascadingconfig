@@ -2271,7 +2271,7 @@ There are no open questions.
 | 249 | The presets module                          | It requires the core, `format/toml`, `format/yaml`, `ociresolver` and `watch/fsnotify` through `replace` directives until the first release (DL-162). |
 | 250 | Doc examples                                | The usage snippets in design.md and api.md, 16 of their 46 Go blocks, each marked `<!-- example -->`, are Go `Example` functions in the presets module, each holding its snippet unchanged plus its setup; a drift test checks every snippet appears in one. A wrong snippet is fixed in the doc. Snippets' `import` lines are left out of the check, and a snippet with top-level declarations is a compiled `package main`. The 30 signature listings are checked against the API in M11. |
 | 251 | Checks on the presets                       | Each preset ranks a rich fixture exactly as its layout does; each registered format loads; in `mise.Preset`, `http` fetches end to end and `git` and `oci` reach their resolvers (a 502 for an unreachable host, not a 501); `misehardened.Preset` rejects remotes with a 501; each preset's default notifier reloads a real directory. |
-| 252 | The presets' dependency budget              | `check-deps.sh` gains a setup per preset package: `misehardened` 5/5/5/9 and `mise` 9/9/9/11 as measured in M6, and `cosmiconfig` 4/4/4 with its graph count measured. |
+| 252 | The presets' dependency budget              | `check-deps.sh` gains a setup per preset package: `misehardened` 5/5/5/9 and `mise` 9/9/9/11 as measured in M6, and `cosmiconfig` 4/4/4/9, measured in M10b: its graph lists the presets module's nine, like `misehardened`. |
 
 ---
 

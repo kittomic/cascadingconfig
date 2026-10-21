@@ -135,6 +135,7 @@ stub blank-imports its real library. A small consumer app was then created for e
 | `misehardened` (TOML, YAML, fsnotify)             |      5 |      5 |     5 |     5 |
 | `mise`, everything (adds OCI, http, git)        |      9 |      9 |     9 |    11 |
 | `misehardened`, imported from one `presets` module |     5 |      5 |     5 |     9 |
+| `cosmiconfig`, imported from one `presets` module (measured in M10b) | 4 | 4 | 4 | 9 |
 
 **Modules in each setup**, with the versions `go mod tidy` selected:
 
