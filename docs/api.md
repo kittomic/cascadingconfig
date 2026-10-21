@@ -811,6 +811,27 @@ func New() (cascadingconfig.Notifier, error)
   returns, with its handler call after the current one. From any other goroutine, both wait.
 - **`Report.String()`** shows `(revalidated)` like `(cached)`.
 
+#### Settled in M9b
+
+```go
+// Custom scopes (DL-236 to DL-240)
+func Custom(s Scope) ScopeKind // for WithScope; default trust TrustProject
+
+type Scope interface {
+	Discover(ctx context.Context, d Discovery) ([]Source, error)
+}
+
+type Watchable interface { // optional
+	WatchDirs(ctx context.Context, d Discovery) ([]string, error)
+}
+
+// Discovery and Source as in Extension interfaces.
+```
+
+- **Errors:** a nil `Scope` is an `*OptionError` from `New`. A `Source` without exactly one of an absolute `Path` and a
+  `Tree`, with an unregistered `Format` or with non-canonical values is a 500, as is an uncoded error from `Discover`. A
+  missing `Path` is a `*NotFoundError`.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
@@ -1574,9 +1595,19 @@ type Watchable interface {
 	WatchDirs(ctx context.Context, d Discovery) ([]string, error)
 }
 
-// Discovery is what the loader passes to a Scope: app name, start dir, selected envs,
-// format order, the filesystem, and the logger.
-type Discovery struct { /* … */ }
+// Discovery is what the loader passes to a Scope (DL-237). Settled in M9b.
+type Discovery struct {
+	Name         string                          // the app name
+	Scope        ScopeName                       // the scope being discovered
+	StartDir     string                          // WithStartDir, or the current directory
+	Home         string                          // "" if the host has none
+	Envs         []string                        // the selected environments, lowest precedence first
+	PlatformEnvs []string                        // the platform environments in use, lowest precedence first
+	Formats      []string                        // the scope's searched formats, highest precedence first
+	FS           FileSystem                      // the loader's filesystem
+	LookupEnv    func(key string) (string, bool) // the host's env vars
+	Logger       *slog.Logger
+}
 
 // Source is one candidate a Scope found, lowest precedence first.
 type Source struct {
@@ -1591,9 +1622,10 @@ type Source struct {
 
 - **The top-level-map rule lives in each decoder,** because a `Tree` can only hold a map. The other shared rules live in
   `DecodeDocument`, so no decoder has to repeat them.
-- **Built-in kinds use the same interfaces.** `FixedDir`, `Walk` and the rest implement `Scope`, and the built-in
-  decoders and remote resolvers implement `Decoder` and `IncludeResolver`. The one exception is the `file` resolver,
-  which is part of the loader, because a local read needs the filesystem hook, dedup and the permission policy (DL-182).
+- **Built-in decoders and resolvers use the same interfaces.** The built-in decoders and remote resolvers implement
+  `Decoder` and `IncludeResolver`. The `file` resolver is part of the loader, because a local read needs the filesystem
+  hook, dedup and the permission policy (DL-182). The built-in scope kinds don't implement `Scope`: they need the
+  loader's internals, so they stay sealed, and `Scope` is for custom discovery only (DL-236).
 - **Files go through the pipeline.** A `Source` with a `Path` is read by the loader, through the filesystem hook, so a
   custom scope gets permission checks, symlink handling and dedup for free. Only `Tree` sources skip file handling.
 

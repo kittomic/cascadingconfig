@@ -12,5 +12,6 @@ decision before work starts. For things that are deliberately out of scope rathe
 | **Parallel remote fetches**   | Remote includes are fetched one at a time, in walk order (design.md DL-199). Fetching a file's includes in parallel would speed up loads with many remotes, but must keep the result deterministic. |
 | **`Retry-After` in remote polls** | A failed remote poll backs off by doubling its interval (design.md DL-230). A 429 or 503 with `Retry-After` could set the wait instead, which needs resolvers to report it. |
 | **A cache TTL per source**    | The include cache's TTL is one setting for the loader (design.md DL-207). Remote polls already have per-source intervals (DL-230); TTLs could take matchers the same way. |
+| **Name filters for `Watchable`** | A custom scope's `WatchDirs` directories are watched with no name filter, so any event in them reloads (design.md DL-239). An optional interface could return name patterns too, as the built-in kinds' watch sets have. |
 | **Pruning the include cache** | The include cache never removes entries (design.md DL-206). Entries no reference has used for a while could be pruned by age or total size. |
 | **Rename `wip` to `develop`** | The integration branch's name is cosmetic. It's deferred until there's a convenient moment ([implementation-plan.md](implementation-plan.md#decisions)). |
