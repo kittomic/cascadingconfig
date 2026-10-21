@@ -11,6 +11,9 @@ import (
 
 var t0 = time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 
+// handler is how the watcher tells the notifier New returned that it has finished with an event or error.
+type handler interface{ Handled() }
+
 // DL-231: timers fire inside Advance, in time order, with the clock at each timer's time, and not before they're due.
 func TestClockTimers(t *testing.T) {
 	c := cctest.NewClock(t0)
@@ -18,10 +21,10 @@ func TestClockTimers(t *testing.T) {
 	at := func(name string) func() {
 		return func() { fired = append(fired, name+"@"+c.Now().Sub(t0).String()) }
 	}
-	c.AfterFunc(3*time.Second, at("c"))
-	c.AfterFunc(time.Second, at("a"))
-	c.AfterFunc(2*time.Second, at("b"))
-	c.AfterFunc(2*time.Second, at("b2"))
+	cctest.AfterFunc(c, 3*time.Second, at("c"))
+	cctest.AfterFunc(c, time.Second, at("a"))
+	cctest.AfterFunc(c, 2*time.Second, at("b"))
+	cctest.AfterFunc(c, 2*time.Second, at("b2"))
 	c.Advance(time.Second - time.Nanosecond)
 	if len(fired) != 0 || c.Timers() != 4 {
 		t.Fatalf("before any is due: fired %q with %d waiting", fired, c.Timers())
@@ -46,15 +49,15 @@ func TestClockChainedTimers(t *testing.T) {
 	var tick func()
 	tick = func() {
 		fired = append(fired, c.Now().Sub(t0))
-		c.AfterFunc(time.Second, tick)
+		cctest.AfterFunc(c, time.Second, tick)
 	}
-	c.AfterFunc(time.Second, tick)
+	cctest.AfterFunc(c, time.Second, tick)
 	c.Advance(3500 * time.Millisecond)
 	if want := []time.Duration{time.Second, 2 * time.Second, 3 * time.Second}; !slices.Equal(fired, want) {
 		t.Errorf("fired at %v, want %v", fired, want)
 	}
 	now := false
-	c.AfterFunc(0, func() { now = true })
+	cctest.AfterFunc(c, 0, func() { now = true })
 	if now {
 		t.Fatalf("a timer of 0 fired before Advance")
 	}
@@ -69,7 +72,7 @@ func TestClockChainedTimers(t *testing.T) {
 func TestClockStopAndSet(t *testing.T) {
 	c := cctest.NewClock(t0)
 	fired := 0
-	tm := c.AfterFunc(time.Second, func() { fired++ })
+	tm := cctest.AfterFunc(c, time.Second, func() { fired++ })
 	if !tm.Stop() {
 		t.Errorf("Stop of a waiting timer = false")
 	}
@@ -80,7 +83,7 @@ func TestClockStopAndSet(t *testing.T) {
 	if fired != 0 {
 		t.Errorf("a stopped timer fired")
 	}
-	c.AfterFunc(time.Minute, func() { fired++ })
+	cctest.AfterFunc(c, time.Minute, func() { fired++ })
 	c.Set(t0)
 	if fired != 0 || !c.Now().Equal(t0) {
 		t.Errorf("Set back: fired %d, now %v", fired, c.Now())
@@ -89,7 +92,7 @@ func TestClockStopAndSet(t *testing.T) {
 	if fired != 1 {
 		t.Errorf("Set forward past the timer: fired %d, want 1", fired)
 	}
-	done := c.AfterFunc(time.Second, func() {})
+	done := cctest.AfterFunc(c, time.Second, func() {})
 	c.Advance(time.Second)
 	if done.Stop() {
 		t.Errorf("Stop of a fired timer = true")
@@ -124,10 +127,10 @@ func TestNotifier(t *testing.T) {
 	go func() {
 		got <- <-nn.Events()
 		<-release
-		n.Handled()
+		nn.(handler).Handled()
 		got <- (<-nn.Errors()).Error()
 		<-release
-		n.Handled()
+		nn.(handler).Handled()
 	}()
 	for _, step := range []struct {
 		name, want string
@@ -179,7 +182,7 @@ func TestNotifierClose(t *testing.T) {
 	}
 	go func() {
 		<-again.Events()
-		n.Handled()
+		again.(handler).Handled()
 	}()
 	n.Send("/b")
 }

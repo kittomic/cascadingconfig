@@ -34,8 +34,8 @@ func TestDocExamples(t *testing.T) {
 			}
 		}
 	}
-	if count != 16 {
-		t.Errorf("found %d marked snippets, want 16 (DL-250)", count)
+	if count != 18 {
+		t.Errorf("found %d marked snippets, want 18 (DL-250, DL-256)", count)
 	}
 }
 

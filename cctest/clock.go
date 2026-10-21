@@ -84,9 +84,9 @@ func (c *Clock) fireUntil(target time.Time) {
 	}
 }
 
-// AfterFunc calls f once the clock reaches d from now, inside the Advance or Set that gets it there. A d of 0 or less
-// is due at once, and fires on the next Advance, Advance(0) included. It implements the loader's internal clock.
-func (c *Clock) AfterFunc(d time.Duration, f func()) hooks.Timer {
+// afterFunc calls f once the clock reaches d from now, inside the Advance or Set that gets it there. A d of 0 or less
+// is due at once, and fires on the next Advance, Advance(0) included.
+func (c *Clock) afterFunc(d time.Duration, f func()) hooks.Timer {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.seq++
@@ -125,5 +125,12 @@ func (t *timer) Stop() bool {
 // WithClock returns an option that makes a loader read the time and set its timers from c. It also turns off
 // remote-poll jitter, so polls happen exactly on time.
 func WithClock(c *Clock) cascadingconfig.Option {
-	return hooks.WithClock(c).(cascadingconfig.Option)
+	return hooks.WithClock(loaderClock{c}).(cascadingconfig.Option)
 }
+
+// loaderClock is c as the loader's internal clock, so AfterFunc isn't a method of the public Clock (DL-258).
+type loaderClock struct{ c *Clock }
+
+func (l loaderClock) Now() time.Time { return l.c.Now() }
+
+func (l loaderClock) AfterFunc(d time.Duration, f func()) hooks.Timer { return l.c.afterFunc(d, f) }

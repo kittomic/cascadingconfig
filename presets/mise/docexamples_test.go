@@ -202,6 +202,44 @@ func Example_hardenedRemotes() {
 	// Output: [file https] true
 }
 
+// approved is a TrustStore that trusts the paths it holds.
+type approved map[string]bool
+
+func (a approved) Trusted(_ context.Context, path, _ string) (bool, error) { return a[path], nil }
+
+// design.md: Trust store.
+func Example_trustStore() {
+	store := approved{"/home/me/work/myapp.toml": true}
+	trust := cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
+		cascadingconfig.InheritDefault(),
+		cascadingconfig.RequireTrust(store),
+	)
+	files := map[string]string{"/home/me/myapp.toml": "port = 1\n", "/home/me/work/myapp.toml": "port = 2\n"}
+	l, err := cascadingconfig.NewWithPreset("myapp", mise.Preset, trust, world(files, nil))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	res, _ := l.Load(ctx)
+	for _, layer := range res.Describe().Layers {
+		fmt.Println(layer.Path, layer.Status)
+	}
+	// Output:
+	// /home/me/myapp.toml untrusted
+	// /home/me/work/myapp.toml loaded
+}
+
+// api.md: Errors, a coded error built in another module.
+func Example_fetchError() {
+	ref, cause := "https://config.example.com/team.toml", errors.New("i/o timeout")
+	err := &cascadingconfig.FetchError{
+		BaseError: cascadingconfig.BaseError{Op: "fetch", Path: ref, Err: cause},
+		Timeout:   true, // Code() is then CodeGatewayTimeout; otherwise CodeBadGateway
+	}
+	fmt.Println(cascadingconfig.CodeOf(err) == cascadingconfig.CodeGatewayTimeout)
+	// Output: true
+}
+
 // design.md: Explicit config files.
 func Example_configFiles() {
 	flagValues := []string{"/srv/app.toml"}

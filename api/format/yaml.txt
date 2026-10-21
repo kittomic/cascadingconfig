@@ -1,0 +1,6 @@
+const WarnVersion cascadingconfig.WarningCode = "yaml-version"
+func Decoder(...Option) cascadingconfig.Decoder
+func WithLegacyNumbers() Option
+func WithMaxAliasValues(int) Option
+type Option interface
+type Option interface, unexported methods

@@ -16,13 +16,17 @@ import (
 // maxRedirects is how many redirects a fetch follows (DL-208).
 const maxRedirects = 5
 
-// Option configures the resolver.
-type Option func(*resolver)
+// Option configures the resolver. It's sealed: only this package's With functions make one (DL-258).
+type Option interface{ apply(r *resolver) }
+
+type optionFunc func(r *resolver)
+
+func (f optionFunc) apply(r *resolver) { f(r) }
 
 // WithClient sets the HTTP client. The resolver copies it and installs its own redirect check, which runs before the
 // client's own, so c isn't changed. Auth headers belong in c's transport.
 func WithClient(c *http.Client) Option {
-	return func(r *resolver) { r.client = c }
+	return optionFunc(func(r *resolver) { r.client = c })
 }
 
 // New returns a resolver for http and https includes (DL-208). The loader normalises and checks every reference
@@ -30,7 +34,7 @@ func WithClient(c *http.Client) Option {
 func New(opts ...Option) cascadingconfig.IncludeResolver {
 	r := &resolver{}
 	for _, o := range opts {
-		o(r)
+		o.apply(r)
 	}
 	return r
 }

@@ -103,7 +103,7 @@ done
 | `go-mod-tidy` (pre-commit)         | Loop over the modules. Also match any `go.mod` or `go.sum`, not only the root ones.             |
 | `go-lint` (pre-commit)             | Loop over the modules, each with `--new-from-rev=HEAD`.                                         |
 | `go-fmt` (pre-commit)              | No change: it runs on staged files.                                                             |
-| `go-test` (pre-push)               | Loop over the modules, with `-race`.                                                            |
+| `go-test` (pre-push)               | Loop over the modules, with `-race`, uncached on the latest Go (DL-259).                        |
 | `golangci-lint` (pre-push)         | Loop over the modules.                                                                          |
 | `govulncheck` (pre-push)           | Loop over the modules. Then each module is checked against its own dependencies.               |
 | `deps` (pre-push, from M6)         | `scripts/check-deps.sh` builds a throwaway consumer for each setup whose modules exist and checks the counts below (DL-173). |

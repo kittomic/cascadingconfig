@@ -1,0 +1,7 @@
+func New(...Option) cascadingconfig.IncludeResolver
+func WithClient(*http.Client) Option
+func WithCredentialHelper(string) Option
+func WithGit(string) Option
+func WithProtocols(...string) Option
+type Option interface
+type Option interface, unexported methods

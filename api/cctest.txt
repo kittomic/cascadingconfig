@@ -1,0 +1,37 @@
+func Golden(testing.TB, string, []byte)
+func NewClock(time.Time) *Clock
+func NewFS(map[string]string) *FS
+func NewNotifier() *Notifier
+func WithClock(*Clock) cascadingconfig.Option
+func WithHost(Host) cascadingconfig.Option
+method (*Clock) Advance(time.Duration)
+method (*Clock) Now() time.Time
+method (*Clock) Set(time.Time)
+method (*Clock) Timers() int
+method (*FS) Chmod(string, fs.FileMode)
+method (*FS) Chown(string, int)
+method (*FS) EvalSymlinks(string) (string, error)
+method (*FS) Link(string, string)
+method (*FS) Mkdir(string, fs.FileMode)
+method (*FS) Mkfifo(string)
+method (*FS) OpenRoot(string) (cascadingconfig.Root, error)
+method (*FS) Remove(string)
+method (*FS) SameFile(fs.FileInfo, fs.FileInfo) bool
+method (*FS) Symlink(string, string)
+method (*FS) WriteFile(string, []byte, fs.FileMode)
+method (*Notifier) Close() error
+method (*Notifier) FailAdd(string, error)
+method (*Notifier) New() (cascadingconfig.Notifier, error)
+method (*Notifier) Send(string)
+method (*Notifier) SendError(error)
+method (*Notifier) Watched() []string
+type Clock struct
+type FS struct
+type Host struct
+type Host struct, Cwd string
+type Host struct, Env map[string]string
+type Host struct, GOARCH string
+type Host struct, GOOS string
+type Host struct, Home string
+type Host struct, UID int
+type Notifier struct
