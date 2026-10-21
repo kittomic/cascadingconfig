@@ -13,7 +13,9 @@ if [[ -z "$min" ]]; then
 fi
 
 echo "### latest Go: $(go env GOVERSION)"
-scripts/each-module.sh go test -race ./...
+# -count=1: go test's cache re-checks only files inside the tested module, so a test reading another module's code,
+# docs/ or api/ (internal/apicheck, the presets' doc examples) could pass from the cache after they changed (DL-259).
+scripts/each-module.sh go test -race -count=1 ./...
 
 echo "### minimum Go: ${min}"
 # GOTOOLCHAIN=local stops Go from switching to a newer toolchain, so the minimum is really what runs.
