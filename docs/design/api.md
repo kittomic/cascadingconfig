@@ -546,10 +546,10 @@ func (p *KoanfProvider) ReadBytes() ([]byte, error)
 #### Settled in M6
 
 ```go
-// package toml (github.com/kittomic/cascadingconfig/format/toml), DL-169, DL-172
+// package format/toml (DL-169, DL-172)
 func Decoder() cascadingconfig.Decoder // format "toml"; extension toml; media type application/toml
 
-// package yaml (github.com/kittomic/cascadingconfig/format/yaml), DL-163 to DL-168, DL-172
+// package format/yaml (DL-163 to DL-168, DL-172)
 func Decoder(opts ...Option) cascadingconfig.Decoder // format "yaml"; extensions yaml, yml; media types below
 
 type Option interface{ /* sealed */ }
@@ -697,14 +697,14 @@ type Remote struct {
 //   Layer.Remote *Remote; PolicyInfo.RequirePinned
 //   WarnStaleInclude ("stale-include"), WarnIncludeCache ("include-cache")
 
-// cctest (DL-209)
+// package cctest (DL-209)
 func NewClock(t time.Time) *Clock
 func (c *Clock) Now() time.Time
 func (c *Clock) Advance(d time.Duration)
 func (c *Clock) Set(t time.Time)
 func WithClock(c *Clock) cascadingconfig.Option
 
-// httpresolver (DL-208)
+// package httpresolver (DL-208)
 func New(opts ...Option) cascadingconfig.IncludeResolver
 func WithClient(c *http.Client) Option
 ```
@@ -725,7 +725,7 @@ func WithClient(c *http.Client) Option
 #### Settled in M8b
 
 ```go
-// gitresolver (DL-211 to DL-214)
+// package gitresolver (DL-211 to DL-214)
 func New(opts ...Option) cascadingconfig.IncludeResolver // handles "git"
 func WithProtocols(protocols ...string) Option          // default "https", "ssh"
 func WithCredentialHelper(helper string) Option         // git's credential.helper; none by default
@@ -736,7 +736,7 @@ func WithClient(c *http.Client) Option                  // for following redirec
 #### Settled in M8c
 
 ```go
-// ociresolver (DL-215 to DL-218)
+// package ociresolver (DL-215 to DL-218)
 func New(opts ...Option) cascadingconfig.IncludeResolver // handles "oci"
 func WithCredentials(f func(ctx context.Context, registry string) (Credential, error)) Option // none by default
 func WithPlainHTTP(hosts ...string) Option  // host[:port]; for tests and local registries
@@ -797,7 +797,7 @@ var ErrNotModified = errors.New("cascadingconfig: not modified")
 //   Remote.Cache gains "revalidated"
 //   WarnWatchFailed ("watch-failed"), WarnReloadFailed ("reload-failed")
 
-// cctest (DL-231)
+// package cctest (DL-231)
 func NewNotifier() *Notifier
 func (n *Notifier) New() (cascadingconfig.Notifier, error) // pass to WithNotifier
 func (n *Notifier) Send(path string)                       // returns once the watcher has taken the event
@@ -807,7 +807,7 @@ func (n *Notifier) Watched() []string
 func (c *Clock) Timers() int // the timers waiting to fire, for a test that waits until the watcher has set one (DL-235)
 //   Clock.Advance now fires due timers and returns once the watcher has handled them
 
-// watch/fsnotify (DL-232)
+// package watch/fsnotify (DL-232)
 func New() (cascadingconfig.Notifier, error)
 ```
 
@@ -841,7 +841,7 @@ type Watchable interface { // optional
 #### Settled in M10b
 
 ```go
-// presets/mise, presets/misehardened, presets/cosmiconfig (DL-248); never reassign them
+// package presets/mise, presets/misehardened, presets/cosmiconfig (DL-248; never reassign them)
 var Preset cascadingconfig.Preset
 ```
 
@@ -1178,18 +1178,22 @@ type ConflictError struct {
 	Files []string     // every file in the slot, highest-ranked first
 }
 
-// Built from another module, for example:
-err := &cascadingconfig.FetchError{
-	BaseError: cascadingconfig.BaseError{Op: "fetch", Path: ref, Err: cause},
-	Timeout: true, // Code() is then CodeGatewayTimeout; otherwise CodeBadGateway
-}
-
 // CodeOf returns the code of the first cascadingconfig error in err's chain, or 0.
 func CodeOf(err error) Code
 
 // Errors splits err into its individual errors: any error with an Unwrap() []error method, such as one from
 // errors.Join, is split, recursively. A single error is returned on its own, and nil gives nil.
 func Errors(err error) []error
+```
+
+Another module builds a coded error from these types, for example:
+
+<!-- example -->
+```go
+err := &cascadingconfig.FetchError{
+	BaseError: cascadingconfig.BaseError{Op: "fetch", Path: ref, Err: cause},
+	Timeout: true, // Code() is then CodeGatewayTimeout; otherwise CodeBadGateway
+}
 ```
 
 **Error types:**

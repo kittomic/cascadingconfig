@@ -791,13 +791,22 @@ test-first.
 
 ### M11b: API audit and guard
 
-**Scope:** decided in its own gap list.
+**Scope:** DL-256 and DL-257: a test-only module, `internal/apicheck`, that checks the design records' Go listings
+against the packages' real APIs, and guards the public API with a file per released package. Tooling, but test-first: a
+validator that can't fail proves nothing.
 
-- **Audit, once:** every signature listing in api.md and design.md is checked against the packages' real APIs with
-  `go/types` (DL-250). Each difference is raised: a doc error is fixed in the doc, and a real change to the design is
-  decided first.
-- **Guard, from then on:** a file per released module listing its exported API, checked both ways, so an exported name
-  that isn't listed fails, as does one listed that's gone.
+**Acceptance tests,** on fixture docs and packages with planted errors:
+
+- **Listings** (DL-256): a missing function, a wrong parameter type, the wrong kind of declaration, a wrong constant
+  value, a missing struct field, an interface missing a method or naming an extra one, a block that doesn't parse, an
+  unknown package marker, and a superseded block that's skipped.
+- **Guard** (DL-257): the rendered lines for each kind of declaration, and a guard file with an extra line or a missing
+  one.
+- **The real docs and API:** the listings have no findings, and every released package matches its `api/` file.
+- **Mutation check:** planted errors in the real docs are each caught.
+
+**Then:** a findings gap list from the checker and a by-hand triage of the names in the design records' prose, the
+fixes, and the generated `api/` files for review.
 
 ### M11c: Examples
 
@@ -824,6 +833,7 @@ Not scheduled yet: nothing goes public, and `wip` doesn't go to `main`, until th
 list.
 
 - **Package documentation:** each package's `doc.go` gives an overview that reads well on pkg.go.dev.
+- **CONTRIBUTING.md and the README:** revisited before anything is public; M11a and M11d wrote them for `wip`.
 - **Licences:** confirm that the licences of `mapstructure`, `go-toml`, `go-yaml`, `fsnotify` and `oras-go` are
   compatible with Apache-2.0, and check their maintenance status (an open item from
   [api.md](../design/api.md#package-layout-decisions)).

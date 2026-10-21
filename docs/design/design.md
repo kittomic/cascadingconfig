@@ -1527,7 +1527,7 @@ var MiseHardenedLayout = MiseLayout.Extend(
 	// … plus the permission, confinement and pinning rules below
 )
 
-// presets module: the layout plus TOML, YAML and fsnotify (no remote resolvers)
+// package presets/misehardened (the layout plus TOML, YAML and fsnotify; no remote resolvers)
 var Preset = cascadingconfig.MiseHardenedLayout.Extend( /* decoders, notifier */ )
 ```
 
@@ -1609,7 +1609,12 @@ type TrustStore interface {
 	// after the file changes.
 	Trusted(ctx context.Context, path, digest string) (bool, error)
 }
+```
 
+A scope's policy then requires it:
+
+<!-- example -->
+```go
 cascadingconfig.WithScopePolicy(cascadingconfig.ScopeProject,
 	cascadingconfig.InheritDefault(),
 	cascadingconfig.RequireTrust(store),
@@ -2279,6 +2284,8 @@ There are no open questions.
 | 253 | M11 in stages                               | M11 is documentation, the API and examples, in four stages: M11a the documentation structure, M11b the API audit and guard, M11c the examples and M11d the README and user guide. Releasing, with package documentation, licences, CI, tags and making the repository public, is a later stage of its own. |
 | 254 | Documentation structure                     | Four homes: user docs in `docs/`, design records (design.md, api.md, config-locations.md and the decision records) in `docs/design/`, plans (implementation-plan.md and future-ideas.md) in `docs/planning/`, and contributor docs (project-layout.md) in `docs/contributing/`, with names unchanged; precedence.md stays in `docs/`. Each doc says which kind it is, `docs/README.md` indexes them and pre-push checks every link ([decision record 0004](decisions/0004-documentation-structure.md)). |
 | 255 | When a decision gets a record               | Every decision gets a row here. It also gets a decision record when alternatives were weighed with evidence, when it's hard to reverse (the public API's shape, the module layout, the docs' structure), or when its recommendation was contested; the row then links to the record. Existing rows aren't backfilled. |
+| 256 | Checking the design records' listings       | `internal/apicheck`, a test-only module, checks every Go block in design.md and api.md not marked `<!-- example -->` against the real packages, with `go/types` on `go list -export` data. A line `// package <path>[, <path>…]`, paths from the repository root and `.` for the core, optionally followed by a note in parentheses, sends the declarations after it to each package named; with none, they're the core's. Functions and methods compare parameter and result types and type parameters, not parameter names; constants their type and value; variables their type; every declaration its kind. A struct listing may show some of its fields; an interface listing names every exported method. A block that doesn't parse is a finding, so usage code goes in `<!-- example -->` blocks (18 of them, up from 16). A block marked `<!-- api superseded DL-n -->` is skipped. Names in prose are triaged by hand once. |
+| 257 | The API guard                               | A file per released package under `api/`, mirroring the package paths, lists its exported API one declaration per line, sorted: functions, methods (the pointer type's method set), types with each exported field or interface method on its own line, sealed interfaces marked, constants with values, variables with types. A test checks every released package against its file both ways; `-update` rewrites the files, so each API change is a deliberate diff. |
 
 ---
 
