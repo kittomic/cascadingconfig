@@ -798,6 +798,7 @@ func (n *Notifier) Send(path string)                       // returns once the w
 func (n *Notifier) SendError(err error)
 func (n *Notifier) FailAdd(dir string, err error)
 func (n *Notifier) Watched() []string
+func (c *Clock) Timers() int // the timers waiting to fire, for a test that waits until the watcher has set one (DL-235)
 //   Clock.Advance now fires due timers and returns once the watcher has handled them
 
 // watch/fsnotify (DL-232)

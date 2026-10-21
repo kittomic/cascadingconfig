@@ -1282,7 +1282,9 @@ These checks also cover resolvers that apps write themselves:
 - **Identity:** the full commit id. There's no media type.
 - **Conditional fetches** (DL-229): the validator is the commit id. For a branch or tag with a validator,
   `git ls-remote` runs first, with the same isolation and redirect rules as the fetch, and the same commit is
-  `ErrNotModified`. A commit id is pinned, so it's never rechecked.
+  `ErrNotModified`. A commit id is pinned, so it's never rechecked. The ref is matched as `git fetch` matches it: as
+  given, then under `refs/`, `refs/tags/` and `refs/heads/`, with an annotated tag's commit taken from its peeled line.
+  A ref `ls-remote` doesn't list isn't `ErrNotModified`, so the fetch reports it.
 - **Protocols:** `gitresolver.WithProtocols(...)` changes the allowed transports. The default is `https` and `ssh`.
   Tests use it to allow `file` for repositories in temporary directories, and `http` for a test server.
 
@@ -1926,9 +1928,22 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 - **Tests** use `cctest.Notifier` and `cctest.Clock` (DL-231), so reload behaviour can be tested without real files or
   timers.
 
-**Warnings** (DL-227): `WarnWatchFailed` (`"watch-failed"`) when a directory or the notifier falls back to polling, and
-`WarnReloadFailed` (`"reload-failed"`) for a failed reload. The watcher has no report, so they go to the logger, with
-the code as an attribute. A handler that panics is logged at error level.
+**Warnings** (DL-227): `WarnWatchFailed` (`"watch-failed"`) when a directory or the notifier falls back to polling, or
+the notifier reports an error, and `WarnReloadFailed` (`"reload-failed"`) for a failed reload. The watcher has no
+report, so they go to the logger, with the code as an attribute. A handler that panics is logged at error level.
+
+**Settled by the implementation** (DL-235):
+
+- **Everything goes through the debounce:** a change found by polling, a remote poll that found new content, and a
+  notifier error each count as an event.
+- **Directories that can't be opened** for any reason but not existing count as existing, so they're watched or polled
+  rather than skipped. That's how a directory a watch fails on is polled until it can be read.
+- **Glob directory segments** skip hidden directories, as discovery does.
+- **Polled directories are scanned again after every reload,** so the next poll compares against what the reload saw.
+  Beside a symlinked file, every entry is scanned, so a `..data` swap is seen.
+- **A notifier factory that returns nil** counts as one that failed.
+- **A remote poll** that gets new content with the same SHA-256 as the cached copy doesn't reload. One that fails with
+  any error but a `*FetchError`, or finds no cached copy, reloads, so the reload reports what's wrong.
 
 **Security on reload:** every check runs again. A file that becomes group-writable is ignored on the next reload, with a
 warning, and a revoked trust approval takes effect there too.
@@ -2199,6 +2214,7 @@ There are no open questions.
 | 232 | `watch/fsnotify`                            | `fsnotify.New() (cascadingconfig.Notifier, error)`, used as `WithNotifier(fsnotify.New)`; drops Chmod, reports `ErrEventOverflow`, idempotent `Close`. Requires the current `golang.org/x/sys`, not fsnotify's v0.13.0. Real-filesystem tests cover an editor's rename, a ConfigMap swap and the fallback; a core-fsnotify dependency setup is measured. |
 | 233 | Comparing values                            | A change is any difference in the canonical tree, strings compared exactly, and NaN equals NaN. Dates and times are RFC 3339 strings in the tree, so DL-77's "`time.Time` values are compared as instants" has nothing to apply to: the same instant written differently is a change, because a string field sees new text. |
 | 234 | The shape of a `Diff`                       | The pure difference of the two trees' leaves, where a leaf is a scalar, an array or an empty table: changed, removed or added by path, sorted segment by segment. It replaces DL-221's "a table that becomes a scalar is one `DiffChanged`", and it's the only rule tested in which every changed key has its own entry; entries nest when a value changes shape ([decision record 0003](decisions/0003-watch-diff-shape.md)). |
+| 235 | Details the M9 implementation settled      | Polls, remote polls with new content and notifier errors all count as events, through the debounce; notifier errors are `WarnWatchFailed`; a directory that can't be opened but exists is watched or polled; glob directory segments skip hidden directories; polled directories are rescanned after each reload; git's `ls-remote` matches a ref as `fetch` does; `cctest.Clock.Timers` reports the waiting timers. |
 
 ---
 
