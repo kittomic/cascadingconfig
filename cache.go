@@ -22,6 +22,7 @@ type cacheEntry struct {
 	MediaType string    `json:"media_type,omitempty"`
 	Fetched   time.Time `json:"fetched"`
 	Pinned    bool      `json:"pinned"`
+	Validator string    `json:"validator,omitempty"` // the resolver's, for a conditional fetch (DL-229)
 }
 
 // cached is an index entry with its content.

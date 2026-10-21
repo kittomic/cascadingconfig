@@ -18,5 +18,11 @@ type Notifier interface {
 // notifier's events have one reader, and the watcher closes what it returns. If it fails, the watcher polls everything,
 // with a warning. Without a notifier, watching polls. A nil function is an *OptionError.
 func WithNotifier(newNotifier func() (Notifier, error)) Option {
-	return optionFunc(func(c *config) { c.newNotifier = newNotifier }) // stub: no checks
+	return optionFunc(func(c *config) {
+		if newNotifier == nil {
+			c.fail("WithNotifier", "a nil function")
+			return
+		}
+		c.newNotifier = newNotifier
+	})
 }

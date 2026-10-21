@@ -130,10 +130,17 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 	case hit && (rr.pinned || c.now().Sub(cached.entry.Fetched) < c.cacheTTL):
 		got, content, l.Remote.Cache = cached.entry, cached.content, "cached"
 	default:
-		fe, err := ld.fetch(resolver, rr, from, pol, name)
+		validator := ""
+		if hit {
+			validator = cached.entry.Validator
+		}
+		fe, err := ld.fetch(resolver, rr, from, pol, name, validator)
 		var fetchErr *FetchError
 		switch {
 		case err == nil:
+		case validator != "" && errors.Is(err, ErrNotModified):
+			got, content, l.Remote.Cache = cached.entry, cached.content, "revalidated"
+			got.Fetched = c.now()
 		case hit && errors.As(err, &fetchErr):
 			got, content, l.Remote.Cache = cached.entry, cached.content, "stale"
 			l.Warnings = append(l.Warnings, Warning{
@@ -152,7 +159,10 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 				return fail(&FetchError{BaseError: about(fmt.Errorf("%q: the resolver returned %w", raw, err))}, "")
 			}
 			content = fe.Content
-			got = cacheEntry{Identity: fe.Identity, Sum: sha256Hex(content), MediaType: fe.MediaType, Fetched: c.now(), Pinned: rr.pinned}
+			got = cacheEntry{
+				Identity: fe.Identity, Sum: sha256Hex(content), MediaType: fe.MediaType, Fetched: c.now(), Pinned: rr.pinned,
+				Validator: keptValidator(fe.Validator),
+			}
 			if got.Identity == "" {
 				got.Identity = "sha256:" + got.Sum
 			}
@@ -170,8 +180,11 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 		return fail(&UnsupportedFormatError{BaseError: inside(fmt.Errorf("no format rule, extension or media type (%q) has a registered decoder", got.MediaType))}, "")
 	}
 	l.Format = format
-	if l.Remote.Cache == "" {
+	if l.Remote.Cache == "" || l.Remote.Cache == "revalidated" {
 		ld.cacheStore(rr.ref.Ref, got, content)
+	}
+	if ld.rec != nil {
+		ld.rec.remotes = append(ld.rec.remotes, remoteUse{resolver: resolver, rr: rr, from: from, pol: pol, name: name})
 	}
 	return &entry{layer: l, data: content, included: true, remote: &rr}
 }
@@ -204,11 +217,13 @@ func (ld *loading) remoteFormat(rr remoteRef, mediaType string) (string, bool) {
 
 // fetch calls the resolver for rr with the include timeout, and turns its error into the one the load reports
 // (DL-199): an error with a cascadingconfig code keeps its type, and any other is a *FetchError. pol is the policy that
-// judged rr, which IncludeRef.Check applies to other references.
-func (ld *loading) fetch(r IncludeResolver, rr remoteRef, from *entry, pol *policy, name string) (*Fetched, error) {
+// judged rr, which IncludeRef.Check applies to other references. With a validator, a resolver's ErrNotModified comes
+// back as it is (DL-229); without one, it's a *FetchError like any other error.
+func (ld *loading) fetch(r IncludeResolver, rr remoteRef, from *entry, pol *policy, name, validator string) (*Fetched, error) {
 	c := ld.c
 	ref := rr.ref
 	ref.MaxSize = c.maxIncludeSize
+	ref.Validator = validator
 	ref.Check = func(target string) error {
 		scheme, ok := remoteScheme(target)
 		if !ok {
@@ -232,12 +247,32 @@ func (ld *loading) fetch(r IncludeResolver, rr remoteRef, from *entry, pol *poli
 		err = errors.New("the resolver returned nothing")
 	case err == nil:
 		return fe, nil
+	case validator != "" && errors.Is(err, ErrNotModified):
+		return nil, ErrNotModified
 	case CodeOf(err) != 0:
 		return nil, err
 	}
 	var t interface{ Timeout() bool }
 	timeout := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &t) && t.Timeout())
 	return nil, &FetchError{BaseError: includeAbout(from, fmt.Errorf("%q: %w", rr.ref.Raw, err)), Timeout: timeout}
+}
+
+// remoteUse is a remote include a watched load used, with what polling needs to check it again (DL-230).
+type remoteUse struct {
+	resolver IncludeResolver
+	rr       remoteRef
+	from     *entry
+	pol      *policy
+	name     string
+}
+
+// keptValidator is v if the loader may keep it: printable ASCII and at most 1 KiB, so a hostile server can't inject
+// headers through it; otherwise none (DL-229).
+func keptValidator(v string) string {
+	if len(v) > 1024 || strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r > 0x7e }) {
+		return ""
+	}
+	return v
 }
 
 // checkIdentity rejects an identity that a report can't show safely (DL-198).

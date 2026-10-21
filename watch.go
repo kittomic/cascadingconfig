@@ -3,12 +3,55 @@ package cascadingconfig
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/kittomic/cascadingconfig/internal/hooks"
 )
 
 // Watcher keeps a loader's config fresh: it reloads on file changes, debounced, and keeps the last good snapshot when
 // a reload fails (design.md: Hot reload). It's safe for concurrent use.
 type Watcher[T any] struct {
-	_ [0]T
+	l   *Loader
+	c   *config
+	ctx context.Context
+	fn  func(Change[T])
+	s   watchSettings
+
+	cur atomic.Pointer[snapshot[T]]
+
+	// run is held for a reload and the handler calls it causes, so handler calls never overlap (DL-223).
+	run     sync.Mutex
+	handler atomic.Int64 // the goroutine id of the running handler call, or 0
+	queue   []Change[T]  // changes waiting for the handler; guarded by run
+
+	mu       sync.Mutex
+	closed   bool
+	done     chan struct{}
+	notifier Notifier
+	pollAll  bool               // every directory polls: no notifier, a failed one, or WithPolling
+	plan     *watchPlan         // the current watch set
+	watched  map[string]bool    // directories added to the notifier
+	polled   map[string]dirScan // directories that poll, with their last scan
+	warned   map[string]bool    // directories already warned about
+	pollT    hooks.Timer
+	pending  bool // events are waiting for a reload
+	gen, seq int  // the burst and the latest event in it, so a stale timer does nothing
+	quietT   hooks.Timer
+	maxT     hooks.Timer
+	failed   bool // the last reload failed
+	remotes  map[string]*remoteState
+}
+
+// snapshot is one good load: the decoded value and its result.
+type snapshot[T any] struct {
+	value T
+	res   *Result
 }
 
 // Change is what a watch handler receives: after a reload that changed the merged values, after every failed reload,
@@ -20,7 +63,9 @@ type Change[T any] struct {
 	Err      error // non-nil for a failed reload
 }
 
-// KeyDiff is one changed key (DL-221). Only leaves are listed, and an array is one leaf.
+// KeyDiff is one leaf of either tree that differs: a scalar, an array or an empty table (DL-234). A Diff is sorted by
+// path, segment by segment, so entries nest when a value changes shape: {"b":{"b":1}} → {"b":0} is "added b" and
+// "removed b.b".
 type KeyDiff struct {
 	Path                 Path
 	Kind                 DiffKind
@@ -28,27 +73,71 @@ type KeyDiff struct {
 	OldOrigin, NewOrigin Origin // zero on the missing side
 }
 
-// DiffKind says how a key changed.
+// DiffKind says how a leaf changed.
 type DiffKind int
 
 const (
-	DiffAdded   DiffKind = iota + 1 // the key is new
-	DiffRemoved                     // the key is gone
-	DiffChanged                     // the key's value changed, including a table becoming a scalar or the reverse
+	DiffAdded   DiffKind = iota + 1 // the leaf is new
+	DiffRemoved                     // the leaf is gone
+	DiffChanged                     // the leaf's value changed
 )
-
-func (k DiffKind) String() string { return "" } // stub
-
-// String describes the change by its kind, path and the files its old and new values came from. It never shows
-// values, because config often holds secrets.
-func (d KeyDiff) String() string { return "" } // stub
 
 // Watch loads l's config into a fresh T, then watches for changes until ctx is cancelled or the watcher is closed. A
 // failed first load returns a nil watcher and the load's error. fn may be nil; otherwise it's called one change at a
 // time, never concurrently.
 func Watch[T any](ctx context.Context, l *Loader, fn func(Change[T]), opts ...WatchOption) (*Watcher[T], error) {
-	_, _, _, _ = ctx, l, fn, opts
-	return nil, errors.New("Watch: not implemented") // stub
+	s, err := newWatchSettings(opts)
+	if err != nil {
+		return nil, err
+	}
+	rec := newWatchRecord()
+	res, err := l.load(ctx, rec)
+	if err != nil {
+		return nil, err
+	}
+	v, err := decodeFresh[T](res)
+	if err != nil {
+		return nil, err
+	}
+	w := &Watcher[T]{
+		l: l, c: l.cfg, ctx: ctx, fn: fn, s: s, done: make(chan struct{}),
+		watched: map[string]bool{}, polled: map[string]dirScan{}, warned: map[string]bool{}, remotes: map[string]*remoteState{},
+	}
+	w.cur.Store(&snapshot[T]{value: v, res: res})
+	switch {
+	case s.polling:
+		w.pollAll = true
+		w.logger().DebugContext(ctx, "watching by polling, as WithPolling asks")
+	case w.c.newNotifier == nil:
+		w.pollAll = true
+		w.logger().DebugContext(ctx, "watching by polling, as no notifier is registered")
+	default:
+		n, err := w.c.newNotifier()
+		if err == nil && n == nil {
+			err = errors.New("the notifier factory returned nil")
+		}
+		if err != nil {
+			w.pollAll = true
+			w.warn(WarnWatchFailed, fmt.Sprintf("the notifier can't be started, so every directory is polled: %v", err))
+		} else {
+			w.notifier = n
+		}
+	}
+	w.mu.Lock()
+	w.applyPlan(planWatch(w.c.fsys, rec))
+	w.syncRemotes(rec)
+	w.mu.Unlock()
+	if w.notifier != nil {
+		go w.events(w.notifier)
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = w.Close()
+		case <-w.done:
+		}
+	}()
+	return w, nil
 }
 
 // Watch is Watch for the merged tree, without decoding.
@@ -56,11 +145,24 @@ func (l *Loader) Watch(ctx context.Context, fn func(Change[Tree]), opts ...Watch
 	return Watch(ctx, l, fn, opts...)
 }
 
+// decodeFresh decodes res into a fresh T, or copies its tree for a Tree (DL-72).
+func decodeFresh[T any](res *Result) (T, error) {
+	var v T
+	if p, ok := any(&v).(*Tree); ok {
+		*p = res.Tree()
+		return v, nil
+	}
+	if err := res.Decode(&v); err != nil {
+		var zero T
+		return zero, err
+	}
+	return v, nil
+}
+
 // Current returns the latest good snapshot, without locking. It's shared with every caller and with the handler, so
 // it must be treated as read-only (DL-220).
 func (w *Watcher[T]) Current() T {
-	var zero T
-	return zero // stub
+	return w.cur.Load().value
 }
 
 // Reload forces a reload, which also re-reads env vars and Values functions, and takes any pending events with it. It
@@ -68,12 +170,380 @@ func (w *Watcher[T]) Current() T {
 // causes; from the handler's, that call follows the current one (DL-223). After Close, or once ctx is cancelled, it's a
 // *BaseError with CodeCanceled.
 func (w *Watcher[T]) Reload(ctx context.Context) error {
-	_ = ctx
-	return errors.New("Reload: not implemented") // stub
+	if err := w.stopped(); err != nil {
+		return err
+	}
+	if w.inHandler() {
+		w.mu.Lock()
+		w.clearPending()
+		w.mu.Unlock()
+		ch, notify, err := w.reload(ctx)
+		if notify && w.fn != nil {
+			w.queue = append(w.queue, ch)
+		}
+		return err
+	}
+	w.run.Lock()
+	defer w.run.Unlock()
+	if err := w.stopped(); err != nil {
+		return err
+	}
+	w.mu.Lock()
+	w.clearPending()
+	w.mu.Unlock()
+	ch, notify, err := w.reload(ctx)
+	if notify {
+		w.deliver(ch)
+	}
+	return err
 }
 
 // Close stops watching. It waits for a running handler to return, except when called from the handler itself. It
 // returns the notifier's Close error the first time, and nil after that.
 func (w *Watcher[T]) Close() error {
-	return nil // stub
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		return nil
+	}
+	w.closed = true
+	close(w.done)
+	w.clearPending()
+	if w.pollT != nil {
+		w.pollT.Stop()
+		w.pollT = nil
+	}
+	for ref, st := range w.remotes {
+		if st.timer != nil {
+			st.timer.Stop()
+		}
+		delete(w.remotes, ref)
+	}
+	n := w.notifier
+	w.mu.Unlock()
+	var err error
+	if n != nil {
+		err = n.Close()
+	}
+	if !w.inHandler() {
+		w.run.Lock()
+		//nolint:staticcheck // an empty critical section: waiting for a running handler to return is the point
+		w.run.Unlock()
+	}
+	return err
+}
+
+// stopped returns the error for a watcher that's closed or whose ctx is done.
+func (w *Watcher[T]) stopped() error {
+	w.mu.Lock()
+	closed := w.closed
+	w.mu.Unlock()
+	if closed || w.ctx.Err() != nil {
+		return NewError(CodeCanceled, "watch", "", errors.New("the watcher is closed"))
+	}
+	return nil
+}
+
+// reload loads again, decodes, re-plans the watch set and returns the change, and whether the handler should see it
+// (DL-222). The caller holds run.
+func (w *Watcher[T]) reload(ctx context.Context) (Change[T], bool, error) {
+	rec := newWatchRecord()
+	res, err := w.l.load(ctx, rec)
+	var v T
+	if err == nil {
+		v, err = decodeFresh[T](res)
+	}
+	old := w.cur.Load()
+	if err != nil {
+		w.mu.Lock()
+		w.applyPlan(planWatch(w.c.fsys, rec).union(w.plan))
+		w.failed = true
+		w.mu.Unlock()
+		if w.ctx.Err() != nil || ctx.Err() != nil {
+			return Change[T]{}, false, err
+		}
+		w.warn(WarnReloadFailed, fmt.Sprintf("a reload failed, so the last good config is kept: %v", err))
+		return Change[T]{Old: old.value, New: old.value, Result: res, Err: err}, true, err
+	}
+	w.mu.Lock()
+	recovered := w.failed
+	w.failed = false
+	w.applyPlan(planWatch(w.c.fsys, rec))
+	w.syncRemotes(rec)
+	w.mu.Unlock()
+	changed := !equalValues(old.res.tree, res.tree)
+	w.cur.Store(&snapshot[T]{value: v, res: res})
+	ch := Change[T]{Old: old.value, New: v, Result: res}
+	if changed {
+		ch.Diff = diffResults(old.res, res)
+	}
+	return ch, changed || recovered || w.s.anyEvent, nil
+}
+
+// deliver calls the handler with ch, then with any changes a Reload from the handler queued. The caller holds run.
+func (w *Watcher[T]) deliver(ch Change[T]) {
+	if w.fn == nil {
+		return
+	}
+	w.queue = append(w.queue, ch)
+	for len(w.queue) > 0 {
+		next := w.queue[0]
+		w.queue = w.queue[1:]
+		w.mu.Lock()
+		closed := w.closed
+		w.mu.Unlock()
+		if closed {
+			w.queue = nil
+			return
+		}
+		w.call(next)
+	}
+}
+
+// call runs the handler once, recovering a panic, which is logged at error level (DL-77).
+func (w *Watcher[T]) call(ch Change[T]) {
+	w.handler.Store(goid())
+	defer w.handler.Store(0)
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger().LogAttrs(w.ctx, slog.LevelError, fmt.Sprintf("the watch handler panicked: %v", r))
+		}
+	}()
+	w.fn(ch)
+}
+
+// inHandler reports whether the calling goroutine is running the handler.
+func (w *Watcher[T]) inHandler() bool {
+	id := w.handler.Load()
+	return id != 0 && id == goid()
+}
+
+// goid returns the calling goroutine's id, from the first line of its stack: "goroutine N [".
+func goid() int64 {
+	var buf [64]byte
+	s := strings.TrimPrefix(string(buf[:runtime.Stack(buf[:], false)]), "goroutine ")
+	if i := strings.IndexByte(s, ' '); i > 0 {
+		if id, err := strconv.ParseInt(s[:i], 10, 64); err == nil {
+			return id
+		}
+	}
+	return 0
+}
+
+// events reads the notifier until it stops or the watcher closes.
+func (w *Watcher[T]) events(n Notifier) {
+	evs, errs := n.Events(), n.Errors()
+	ack := func() {
+		if h, ok := n.(hooks.Handled); ok {
+			h.Handled()
+		}
+	}
+	for evs != nil {
+		select {
+		case p, ok := <-evs:
+			if !ok {
+				evs = nil
+				w.notifierStopped()
+				continue
+			}
+			w.event(p)
+			ack()
+		case err, ok := <-errs:
+			if !ok {
+				errs = nil
+				continue
+			}
+			w.notifierError(err)
+			ack()
+		case <-w.done:
+			return
+		}
+	}
+}
+
+// event handles a notifier event for p.
+func (w *Watcher[T]) event(p string) {
+	if w.ctx.Err() != nil {
+		return
+	}
+	w.mu.Lock()
+	if w.closed || w.plan == nil || !w.plan.relevant(w.c.fsys, p) {
+		w.mu.Unlock()
+		return
+	}
+	now := w.markPending()
+	w.mu.Unlock()
+	if now {
+		w.fire(-1, -1)
+	}
+}
+
+// notifierError warns about a notifier error and reloads, because events may have been lost (DL-225).
+func (w *Watcher[T]) notifierError(err error) {
+	w.warn(WarnWatchFailed, fmt.Sprintf("the notifier failed, so the config is reloaded in case events were lost: %v", err))
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		return
+	}
+	now := w.markPending()
+	w.mu.Unlock()
+	if now {
+		w.fire(-1, -1)
+	}
+}
+
+// notifierStopped makes every directory poll, because the notifier closed its Events channel (DL-225).
+func (w *Watcher[T]) notifierStopped() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return
+	}
+	w.warn(WarnWatchFailed, "the notifier stopped, so every directory is polled")
+	w.pollAll = true
+	w.watched = map[string]bool{}
+	w.applyPlan(w.plan)
+}
+
+// markPending records an event: it starts or extends the burst's timers, or says to reload now when the quiet period
+// is 0 (DL-228). The caller holds mu.
+func (w *Watcher[T]) markPending() bool {
+	if w.s.quiet == 0 {
+		w.pending = true
+		return true
+	}
+	if !w.pending {
+		w.pending = true
+		w.gen++
+		gen := w.gen
+		w.maxT = w.c.clock.AfterFunc(w.s.maxWait, func() { w.fire(gen, -1) })
+	}
+	if w.quietT != nil {
+		w.quietT.Stop()
+	}
+	w.seq++
+	gen, seq := w.gen, w.seq
+	w.quietT = w.c.clock.AfterFunc(w.s.quiet, func() { w.fire(gen, seq) })
+	return false
+}
+
+// clearPending forgets pending events and stops their timers. The caller holds mu.
+func (w *Watcher[T]) clearPending() {
+	w.pending = false
+	w.gen++
+	for _, t := range []hooks.Timer{w.quietT, w.maxT} {
+		if t != nil {
+			t.Stop()
+		}
+	}
+	w.quietT, w.maxT = nil, nil
+}
+
+// fire reloads for pending events, unless the timer that called it is stale: gen names its burst, and seq the event
+// whose quiet period ended, or -1.
+func (w *Watcher[T]) fire(gen, seq int) {
+	w.run.Lock()
+	defer w.run.Unlock()
+	w.mu.Lock()
+	stale := (gen >= 0 && gen != w.gen) || (seq >= 0 && seq != w.seq)
+	if w.closed || !w.pending || stale || w.ctx.Err() != nil {
+		w.mu.Unlock()
+		return
+	}
+	w.clearPending()
+	w.mu.Unlock()
+	ch, notify, _ := w.reload(w.ctx)
+	if notify {
+		w.deliver(ch)
+	}
+}
+
+// applyPlan makes pl the watch set: directories are added to or removed from the notifier, or polled (DL-225,
+// DL-226). Every polled directory is scanned again, as the reload that made pl saw it. The caller holds mu.
+func (w *Watcher[T]) applyPlan(pl *watchPlan) {
+	if pl == nil {
+		return
+	}
+	w.plan = pl
+	for dir := range w.watched {
+		if _, ok := pl.dirs[dir]; !ok || w.pollAll {
+			if w.notifier != nil && !w.pollAll {
+				_ = w.notifier.Remove(dir)
+			}
+			delete(w.watched, dir)
+		}
+	}
+	polled := map[string]dirScan{}
+	for dir := range pl.dirs {
+		if w.watched[dir] {
+			continue
+		}
+		if !w.pollAll && w.notifier != nil {
+			err := w.notifier.Add(dir)
+			if err == nil {
+				w.watched[dir] = true
+				continue
+			}
+			if !w.warned[dir] {
+				w.warned[dir] = true
+				w.warn(WarnWatchFailed, fmt.Sprintf("%s can't be watched, so it's polled: %v", dir, err))
+			}
+		}
+		polled[dir] = pl.scan(w.c.fsys, dir, w.c.maxFileSize)
+	}
+	w.polled = polled
+	switch {
+	case len(w.polled) == 0 && w.pollT != nil:
+		w.pollT.Stop()
+		w.pollT = nil
+	case len(w.polled) > 0 && w.pollT == nil:
+		w.armPoll()
+	}
+}
+
+// armPoll sets the next poll. The caller holds mu.
+func (w *Watcher[T]) armPoll() {
+	w.pollT = w.c.clock.AfterFunc(w.s.pollInterval, w.poll)
+}
+
+// poll scans every polled directory, and records an event if any changed (DL-226).
+func (w *Watcher[T]) poll() {
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		return
+	}
+	changed := false
+	for dir, prev := range w.polled {
+		now := w.plan.scan(w.c.fsys, dir, w.c.maxFileSize)
+		if !prev.same(w.c.fsys, now) {
+			changed = true
+		}
+		w.polled[dir] = now
+	}
+	now := false
+	if changed {
+		now = w.markPending()
+	}
+	w.pollT = nil
+	if len(w.polled) > 0 {
+		w.armPoll()
+	}
+	w.mu.Unlock()
+	if now {
+		w.fire(-1, -1)
+	}
+}
+
+func (w *Watcher[T]) logger() *slog.Logger {
+	if w.c.logger != nil {
+		return w.c.logger
+	}
+	return slog.Default()
+}
+
+// warn logs a watcher warning, with its code as an attribute, since the watcher has no report (DL-227).
+func (w *Watcher[T]) warn(code WarningCode, msg string) {
+	w.logger().LogAttrs(w.ctx, slog.LevelWarn, msg, slog.String("code", string(code)))
 }

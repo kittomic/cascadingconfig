@@ -75,6 +75,7 @@ func (k walkKind) discover(ld *loading, s *scopeDef) {
 	for _, dir := range dirs {
 		root, ok := ld.root(dir)
 		if !ok {
+			ld.watchSearch(dir, patterns)
 			continue
 		}
 		configRoot, ok := ld.scopeRoot(s, dir)
@@ -144,6 +145,7 @@ func (k fixedDirKind) discover(ld *loading, s *scopeDef) {
 	}
 	root, ok := ld.root(dir)
 	if !ok {
+		ld.watchSearch(dir, k.patterns)
 		return
 	}
 	configRoot, ok := ld.scopeRoot(s, dir)
