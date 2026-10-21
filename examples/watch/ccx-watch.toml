@@ -1,0 +1,8 @@
+# Edit this file while ccx-watch runs: each save is reloaded, and the changed keys are printed.
+
+[server]
+port = 8080
+
+[limits]
+requests_per_second = 100
+burst = 20
