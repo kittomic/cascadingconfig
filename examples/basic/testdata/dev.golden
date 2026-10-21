@@ -1,0 +1,9 @@
+server:   localhost:8080
+log:      debug, pretty
+features: [search debug-toolbar]
+
+layers, lowest first (environments: dev):
+  defaults  (built-in defaults)
+  project   /home/me/project/ccx-basic.toml
+  project   /home/me/project/ccx-basic.dev.toml
+  env       (CCX_BASIC_* variables)
