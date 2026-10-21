@@ -1,0 +1,11 @@
+func New(...Option) cascadingconfig.IncludeResolver
+func WithClient(*http.Client) Option
+func WithCredentials(func(context.Context, string) (Credential, error)) Option
+func WithMaxLayerSize(int64) Option
+func WithPlainHTTP(...string) Option
+type Credential struct
+type Credential struct, AccessToken string
+type Credential struct, Password string
+type Credential struct, RefreshToken string
+type Credential struct, Username string
+type Option func(*resolver)

@@ -1,0 +1,3 @@
+func New(...Option) cascadingconfig.IncludeResolver
+func WithClient(*http.Client) Option
+type Option func(*resolver)
