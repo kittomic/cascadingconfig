@@ -14,16 +14,14 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 )
 
 // Load type-checks the packages that patterns name from their export data, running go list in dir, and returns them
 // by import path.
 //
-// It also stats every source file of those packages and their dependencies outside the standard library. go test
-// caches a result by the files the test opened or statted, and export data reached through go list isn't among them,
-// so without this a test using Load would stay cached, and pass, after the API changed.
+// go test's cache doesn't see what Load reads, so a test using it can pass from the cache after the packages changed;
+// the pre-push hook runs the tests with -count=1 (DL-259).
 func Load(dir string, patterns ...string) (map[string]*types.Package, error) {
 	args := append([]string{"list", "-export", "-json", "-deps", "--"}, patterns...)
 	cmd := exec.Command("go", args...)
@@ -39,10 +37,9 @@ func Load(dir string, patterns ...string) (map[string]*types.Package, error) {
 	dec := json.NewDecoder(bytes.NewReader(out))
 	for {
 		var p struct {
-			ImportPath, Export, Dir       string
-			GoFiles, CgoFiles, EmbedFiles []string
-			DepOnly, Standard             bool
-			Error                         *struct{ Err string }
+			ImportPath, Export string
+			DepOnly            bool
+			Error              *struct{ Err string }
 		}
 		if err := dec.Decode(&p); errors.Is(err, io.EOF) {
 			break
@@ -53,13 +50,6 @@ func Load(dir string, patterns ...string) (map[string]*types.Package, error) {
 			return nil, fmt.Errorf("apicheck: %s: %s", p.ImportPath, p.Error.Err)
 		}
 		exports[p.ImportPath] = p.Export
-		if !p.Standard {
-			for _, f := range slices.Concat(p.GoFiles, p.CgoFiles, p.EmbedFiles) {
-				if _, err := os.Stat(filepath.Join(p.Dir, f)); err != nil {
-					return nil, fmt.Errorf("apicheck: %w", err)
-				}
-			}
-		}
 		if !p.DepOnly {
 			wanted = append(wanted, p.ImportPath)
 		}
