@@ -705,6 +705,7 @@ func (c *Clock) Set(t time.Time)
 func WithClock(c *Clock) cascadingconfig.Option
 
 // package httpresolver (DL-208)
+type Option interface{ /* sealed */ } // DL-258
 func New(opts ...Option) cascadingconfig.IncludeResolver
 func WithClient(c *http.Client) Option
 ```
@@ -726,6 +727,7 @@ func WithClient(c *http.Client) Option
 
 ```go
 // package gitresolver (DL-211 to DL-214)
+type Option interface{ /* sealed */ } // DL-258
 func New(opts ...Option) cascadingconfig.IncludeResolver // handles "git"
 func WithProtocols(protocols ...string) Option          // default "https", "ssh"
 func WithCredentialHelper(helper string) Option         // git's credential.helper; none by default
@@ -737,6 +739,7 @@ func WithClient(c *http.Client) Option                  // for following redirec
 
 ```go
 // package ociresolver (DL-215 to DL-218)
+type Option interface{ /* sealed */ } // DL-258
 func New(opts ...Option) cascadingconfig.IncludeResolver // handles "oci"
 func WithCredentials(f func(ctx context.Context, registry string) (Credential, error)) Option // none by default
 func WithPlainHTTP(hosts ...string) Option  // host[:port]; for tests and local registries
