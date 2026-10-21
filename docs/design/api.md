@@ -263,7 +263,7 @@ Options that only make sense in one place get their own type, so the compiler re
 | Type           | Passed to                                    | Examples                                                                                    |
 | -------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `Option`       | `New`, `Preset.Extend`                       | everything in the catalogue below                                                           |
-| `ScopeKind`    | `WithScope(name, kind, …)`                   | `FixedDir`, `Walk`, `ExplicitFile`, `Embedded`, `EmbeddedFS`, `EnvVars`, `Values`             |
+| `ScopeKind`    | `WithScope(name, kind, …)`                   | `FixedDir`, `Walk`, `ExplicitFile`, `EmbeddedFS`, `EnvVars`, `Values`, `ValuesFunc`, `Custom` |
 | `ScopeOption`  | `WithScope(name, kind, …)`                   | `Before`, `After`, `Trust`                                                                  |
 | `PolicyOption` | `WithDefaultPolicy`, `WithScopePolicy`       | `InheritDefault`, `AllowResolvers`, `Allow`, `AllowFor`, `RequirePinned`, `Confine`, `RequireTrust`, `FilePermissions` |
 | `Matcher`      | `Allow`, `AllowFor`, `WithFileFormat`        | `Extension`, `FileName`, `Prefix`, `Glob`, `Regexp`, `MatchFunc`, and `MatchRef` (allow-lists only) |
@@ -997,7 +997,7 @@ for a key from `EnvVars`.
 
 | To know…                              | Use                                                                                                  |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| null, unset or never set              | The tree: a key present with a nil value is null, and an absent key is unset or never set. `OriginOf` shows kind `Null`, or an unset step in its history. |
+| null, unset or never set              | The tree: a key present with a nil value is null, and an absent key is unset or never set. `OriginOf` shows kind `OriginNull`, or an unset step in its history. |
 | That config cleared a default         | Supply defaults with [`WithDefaults`](#defaults), not as a pre-filled struct value. A higher `null` or `_unset` then removes them from the tree, and a pointer field reads `nil`. |
 | That `null` cleared a Go-side default | `WithDecoderConfig` with `ZeroFields: true`. Null then sets the field to its zero value. `_unset` still keeps the default, because the key is absent. `ZeroFields` also empties map fields before decoding into them, so pre-filled map entries are replaced, not merged. |
 
@@ -1275,7 +1275,7 @@ func RequireConfig(level Require, scopes ...ScopeName) Option
   an empty file, flags, env-var overrides, or a built-in defaults scope.
 - **Flags narrow it:**
   - **`RequireFile`:** only real files count. Flags (`Values`), env-var overrides (`EnvVars`), compiled-in defaults
-    (`Embedded`, `EmbeddedFS`) and `WithDefaults` don't.
+    (`EmbeddedFS`) and `WithDefaults` don't.
   - **`RequireNonEmpty`:** files that are [empty](design.md#format-dialects) don't count.
   - `RequireFile | RequireNonEmpty` means "at least one real, non-empty config file".
 - **Global or per scope.** With no scopes, the requirement is global: one qualifying layer anywhere is enough. With

@@ -567,8 +567,8 @@ strategies can stay constants (DL-87).
 
 **Provenance:** each merged value records the layer it came from. For `Append` and `Prepend`, each element records its
 own layer. For a function, the result is attributed to the higher layer, with the lower layer in its history. A table
-that several layers contributed to is `Merged` (see [`Origin`](api.md#result-report-and-origin)). This is what lets
-`Describe()` answer "where did this value come from?".
+that several layers contributed to is `OriginMerged` (see [`Origin`](api.md#result-report-and-origin)). This is what
+lets `Describe()` answer "where did this value come from?".
 
 #### Example: mise's section semantics as rules
 
