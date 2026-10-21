@@ -1,5 +1,7 @@
 # Config file locations
 
+**Kind: design record.** It is the research the design rests on, as checked at the versions below.
+
 This document lists every place that [cosmiconfig] and [mise] look for configuration, the order they look in, and how
 they combine what they find. It is the research behind `cascadingconfig`'s default search behaviour and the extension
 points our loader exposes. The decisions themselves are recorded in [design.md](design.md).

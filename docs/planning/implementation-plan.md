@@ -1,8 +1,10 @@
 # Implementation plan
 
-This plan orders the work of building `cascadingconfig` from the design in [design.md](design.md), [api.md](api.md) and
-[project-layout.md](project-layout.md). It also fixes how the work is done: acceptance tests come first, derived from
-those docs and reviewed before any implementation.
+**Kind: plan.** It says what is built next, and how. It doesn't describe the library.
+
+This plan orders the work of building `cascadingconfig` from the design in [design.md](../design/design.md),
+[api.md](../design/api.md) and [project-layout.md](../contributing/project-layout.md). It also fixes how the work is
+done: acceptance tests come first, derived from those docs and reviewed before any implementation.
 
 **Status: decided.** The decisions are at the end.
 
@@ -10,8 +12,8 @@ those docs and reviewed before any implementation.
 
 | Reference      | Means                                                                                         |
 | -------------- | --------------------------------------------------------------------------------------------- |
-| **DL-n**       | Entry *n* in design.md's [decision log](design.md#decision-log).                              |
-| **D-n**        | Row *n* of the [divergence table](config-locations.md#4-divergences) in config-locations.md.   |
+| **DL-n**       | Entry *n* in design.md's [decision log](../design/design.md#decision-log).                              |
+| **D-n**        | Row *n* of the [divergence table](../design/config-locations.md#4-divergences) in config-locations.md.   |
 | **§ Name**     | A section of design.md or api.md, linked where it first appears.                              |
 
 ## Workflow
@@ -49,7 +51,8 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 - every acceptance test passes, and they pass with `-race`
 - `golangci-lint` and `govulncheck` are clean in every module touched
 - the docs are updated wherever implementation clarified a behaviour
-- the measured dependency counts still match [project-layout.md](project-layout.md#dependency-analysis) (from M6 on)
+- the measured dependency counts still match [project-layout.md](../contributing/project-layout.md#dependency-analysis)
+  (from M6 on)
 
 ## Milestones at a glance
 
@@ -84,8 +87,9 @@ stage, but needs only M6.
 
 Not test-first: this is tooling.
 
-- **Module skeletons:** `go.mod` for each module in [project-layout.md](project-layout.md#repository-tree), all with
-  `go 1.26.0`, and a committed `go.work` listing them.
+- **Module skeletons:** `go.mod` for each module in
+  [project-layout.md](../contributing/project-layout.md#repository-tree), all with `go 1.26.0`, and a committed
+  `go.work` listing them.
 - **Checks as scripts.** Every check lives in `scripts/`, so lefthook runs it now and CI can run the same scripts later:
   - **`scripts/each-module.sh <command>`:** runs a command in every workspace module.
   - **`scripts/check-go-versions.sh`:** runs the tests on Go 1.26 (through `mise exec go@1.26 --`) and on the latest Go.
@@ -95,7 +99,7 @@ Not test-first: this is tooling.
   - **bash 3.2:** the scripts run on the bash that macOS ships, so they avoid `mapfile` and empty arrays under `set -u`.
 - **lefthook:**
   - **Loop over the modules:** `go-mod-tidy`, `go-lint`, `go-test`, `golangci-lint` and `govulncheck`, as listed in
-    [project-layout.md](project-layout.md#tooling-changes).
+    [project-layout.md](../contributing/project-layout.md#tooling-changes).
   - **Add to pre-push:** the Go-version and `GOWORK=off` checks.
   - **If pre-push gets too slow,** the Go-version check moves to a `mise run check` task, run before opening a PR.
 - **No CI yet.** It's deferred to M11 (see [Decisions](#decisions)).
@@ -129,10 +133,10 @@ Not test-first: this is tooling.
 
 **Scope:**
 
-- **`Tree`** and the canonical value types (§ [Core types](api.md#tree-and-values)).
+- **`Tree`** and the canonical value types (§ [Core types](../design/api.md#tree-and-values)).
 - **`Path`, `PathSpec` and `ParsePath`.**
 - **The error model:** `Code`, `Coder`, the base `BaseError`, every error type with its sentinel, `CodeOf` and `Errors`
-  (§ [Errors](api.md#errors)).
+  (§ [Errors](../design/api.md#errors)).
 - **The `Decoder` and `PositionError` interfaces,** `Document`, `DecodeDocument`, `Warning`, and the JSON decoder in
   `format/json`.
 
@@ -166,8 +170,8 @@ unexported entry point, and check the results only through `Result.Tree` and `Or
 
 **Acceptance tests:**
 
-- **Deep merge:** objects merge, arrays and scalars are replaced (DL-8, § [Merging](design.md#merging)).
-- **Per-key rules** (DL-10, § [Per-key merge rules](design.md#per-key-merge-rules)):
+- **Deep merge:** objects merge, arrays and scalars are replaced (DL-8, § [Merging](../design/design.md#merging)).
+- **Per-key rules** (DL-10, § [Per-key merge rules](../design/design.md#per-key-merge-rules)):
   - every strategy, and `MergeFunc` (DL-87)
   - wildcard matching
   - the most specific rule wins, and the same path again replaces a rule (DL-88)
@@ -176,7 +180,7 @@ unexported entry point, and check the results only through `Result.Tree` and `Or
   - type mismatches name the key and both files, and every mismatch is reported (DL-90)
   - without a rule, merging never fails
   - a function's error is a `*MergeError`, and a non-canonical result a 500 (DL-89)
-- **`_unset`** (DL-11, § [Unsetting keys](design.md#unsetting-keys)):
+- **`_unset`** (DL-11, § [Unsetting keys](../design/design.md#unsetting-keys)):
   - both path forms, and nested placement
   - removal happens before the layer's own values merge
   - only lower layers are affected
@@ -185,23 +189,24 @@ unexported entry point, and check the results only through `Result.Tree` and `Or
   - it can be renamed or turned off
   - malformed values and `_unset` inside arrays are `*ParseError`s, and a table holding only `_unset` doesn't set its
     key (DL-92)
-- **Null** (§ [Null values](design.md#null-values-yaml-and-json)):
+- **Null** (§ [Null values](../design/design.md#null-values-yaml-and-json)):
   - replaces any type
   - is replaced by any value
   - is never a type mismatch
   - stays in the result
-- **Same-slot formats** (DL-3, DL-93, § [File format precedence](design.md#file-format-precedence)): reverse-precedence
-  merge order, extension rank within a format, and the `ConflictMerge`, `ConflictFirst` and `ConflictFail` policies,
-  with their warnings and errors.
+- **Same-slot formats** (DL-3, DL-93, § [File format precedence](../design/design.md#file-format-precedence)):
+  reverse-precedence merge order, extension rank within a format, and the `ConflictMerge`, `ConflictFirst` and
+  `ConflictFail` policies, with their warnings and errors.
 - **Provenance** (DL-91): `Origin` kinds, elements and history for set, merged, appended, prepended, function, null and
   unset values, and history restarting below a replaced table.
-- **Ownership:** `Result.Tree()` returns a copy (§ [Concurrency and ownership](api.md#concurrency-and-ownership)).
+- **Ownership:** `Result.Tree()` returns a copy (§
+  [Concurrency and ownership](../design/api.md#concurrency-and-ownership)).
 
 ## M3: Options, presets and `New`
 
-**Scope** (DL-94): § [Building a loader](api.md#building-a-loader): sealed options and the option kinds, `Preset`
-(`NewPreset`, `Extend`, `ExtendAs`), `New`, `NewWithPreset` and validation. Only the options whose behaviour can work
-now are included ([Settled signatures](api.md#settled-signatures)):
+**Scope** (DL-94): § [Building a loader](../design/api.md#building-a-loader): sealed options and the option kinds,
+`Preset` (`NewPreset`, `Extend`, `ExtendAs`), `New`, `NewWithPreset` and validation. Only the options whose behaviour
+can work now are included ([Settled signatures](../design/api.md#settled-signatures)):
 
 - **Scopes:** selection, and custom scopes with the `Values` kind.
 - **Formats and decoders,** and the merge options, which feed M2's engine.
@@ -223,8 +228,8 @@ Each later milestone settles its own options at its test review and adds them to
     skips formats with no decoder instead (DL-105)
   - invalid merge options and ambiguous rules (DL-102)
   - non-canonical `Values` trees (DL-103)
-  - a loader with no scopes, the first [bare-loader](api.md#a-loader-without-a-preset) check. The other two arrive with
-    M4a and M7.
+  - a loader with no scopes, the first [bare-loader](../design/api.md#a-loader-without-a-preset) check. The other two
+    arrive with M4a and M7.
 - **Custom scopes:** placement with `Before` and `After`, the default trust of `Values`, and `Trust` overriding it.
 - **Env-var bindings** (DL-15, DL-98): `{NAME}` is derived as documented (`my-app` → `MY_APP_…`); bindings can be
   renamed and turned off; unknown keys, bad variable names and shared variables are errors; each layout declares its
@@ -243,9 +248,9 @@ The largest milestone, done in four parts (DL-106).
 
 **Scope:**
 
-- **Test helpers:** `cctest.FS`, `cctest.Host` and `cctest.Golden` ([api.md](api.md#test-helpers), DL-109).
+- **Test helpers:** `cctest.FS`, `cctest.Host` and `cctest.Golden` ([api.md](../design/api.md#test-helpers), DL-109).
 - **The filesystem hook:** OS-backed, with `os.Root` and symlinks, plus `MountFS`, the `fs.FS` adapter (§
-  [Filesystem hook](design.md#filesystem-hook)).
+  [Filesystem hook](../design/design.md#filesystem-hook)).
 - **Loading:** `Loader.Load` reads, decodes and merges every selected scope (DL-107). Several files in one slot go
   through M2's `orderSlot`.
 - **Reading rules** (DL-110): unreadable, non-regular, missing, oversized and empty files; dedup by file identity.
@@ -299,8 +304,8 @@ The largest milestone, done in four parts (DL-106).
 **Acceptance tests:**
 
 - **Golden discovery order** for one directory, matching
-  [config-locations.md 3.2](config-locations.md#32-filenames-within-one-project-directory) (layers A–D) and the
-  [worked example](design.md#environments).
+  [config-locations.md 3.2](../design/config-locations.md#32-filenames-within-one-project-directory) (layers A–D) and
+  the [worked example](../design/design.md#environments).
 - **Walk limits:** a start dir inside `~` stops after `~`, and one outside `~` walks to `/`. Ceilings are exclusive.
 - **Dedup:** a file reached as both a project file of `~` and a user file is loaded once, at its higher position, with
   user trust and user policy (DL-61).
@@ -351,9 +356,10 @@ The largest milestone, done in four parts (DL-106).
 - **Choosing a file's format:** `WithFileFormat` with the matchers `Extension`, `FileName`, `Glob`, `Regexp` and
   `MatchFunc` (DL-141).
 - **Search places:** rc files and `.config/` in the order of
-  [config-locations.md 2.1](config-locations.md#21-search-places-within-one-directory), without JS/TS.
+  [config-locations.md 2.1](../design/config-locations.md#21-search-places-within-one-directory), without JS/TS.
 - **The meta config** in `.config/config.{ext}`, through a `{cwd}` scope and bootstrap keys (DL-142). There's no
-  `package.json` or `package.yaml` support ([Deviations from cosmiconfig](design.md#deviations-from-cosmiconfig)).
+  `package.json` or `package.yaml` support
+  ([Deviations from cosmiconfig](../design/design.md#deviations-from-cosmiconfig)).
 - **The global dir** through `EnvPathsDirs` (DL-143).
 - **Explicit files** replacing everything, with `WithConfigFilesOnly` (DL-144).
 - **`CosmiconfigLayout`'s scopes** (DL-146).
@@ -380,15 +386,15 @@ The largest milestone, done in four parts (DL-106).
 **Scope:**
 
 - **Decoding:** `Load[T]` and `DecodeAt`, with koanf-compatible decoding: the `koanf` tag, mapstructure v2 and the same
-  three hooks, which also parse RFC 3339 dates (§ [Decoding](api.md#decoding), DL-148).
+  three hooks, which also parse RFC 3339 dates (§ [Decoding](../design/api.md#decoding), DL-148).
 - **Unknown keys:** a warning by default, an error in strict mode, or silence (DL-151).
 - **Defaults:** `WithDefaults` and the `defaults` scope (DL-72, DL-153).
-- **`RequireConfig`** at every level, globally and per scope ([api.md](api.md#requiring-config), DL-157).
+- **`RequireConfig`** at every level, globally and per scope ([api.md](../design/api.md#requiring-config), DL-157).
 - **Error aggregation:** every error from one stage of a load is returned together (DL-155).
 - **Reporting:** `Report`, `Describe()`, `OriginOf` with `EnvVar`, and `KoanfProvider` (DL-152, DL-158, DL-160).
 - **First-match fix:** value layers always merge (DL-154).
 - **Options** (DL-94): this milestone settles the decoding, defaults, requirement and report options
-  ([api.md](api.md#settled-in-m5)). Policies in the report wait for M7, and remote layers for M8 (DL-159).
+  ([api.md](../design/api.md#settled-in-m5)). Policies in the report wait for M7, and remote layers for M8 (DL-159).
 
 **Acceptance tests:**
 
@@ -428,7 +434,7 @@ The largest milestone, done in four parts (DL-106).
 ## M6: Format modules
 
 **Scope:** `format/toml` (`pelletier/go-toml/v2` v2.4.3) and `format/yaml` (`goccy/go-yaml` v1.19.2), as decided in
-[decision record 0002](decisions/0002-yaml-and-toml-dialects.md) and DL-162 to DL-174.
+[decision record 0002](../design/decisions/0002-yaml-and-toml-dialects.md) and DL-162 to DL-174.
 
 - **Before the first release** (DL-162): both modules replace the core with the repository's copy, so `go mod tidy` and
   the `GOWORK=off` check work while the repository is private and unreleased.
@@ -469,8 +475,8 @@ The largest milestone, done in four parts (DL-106).
 - **Across formats:** the same document in TOML, YAML and JSON gives an identical tree.
 - **Fuzz:** both decoders never panic and only produce canonical types (DL-171).
 - **Dependency budget:** `scripts/check-deps.sh` checks the counts in
-  [project-layout.md](project-layout.md#dependency-analysis) for the setups whose modules exist, from lefthook's
-  pre-push and from here on (DL-173).
+  [project-layout.md](../contributing/project-layout.md#dependency-analysis) for the setups whose modules exist, from
+  lefthook's pre-push and from here on (DL-173).
 
 ## M7: Includes, policies and transforms
 
@@ -656,8 +662,8 @@ artifact forms, whiteouts, caps, credentials, plain HTTP, redirects and errors. 
 
 ## M9: Hot reload
 
-**Scope:** § [Hot reload](design.md#hot-reload), DL-37 to DL-41 and DL-219 to DL-232. M9 covers the built-in scope
-kinds; the custom `Scope` interface and `Watchable` are [M9b](#m9b-custom-scopes) (DL-219).
+**Scope:** § [Hot reload](../design/design.md#hot-reload), DL-37 to DL-41 and DL-219 to DL-232. M9 covers the built-in
+scope kinds; the custom `Scope` interface and `Watchable` are [M9b](#m9b-custom-scopes) (DL-219).
 
 - **Test helpers** (DL-231): `cctest.Notifier`, and timers in `cctest.Clock`.
 - **Watching** (DL-220 to DL-223): `Watch[T]`, `Loader.Watch`, `Watcher`, `Change`, `KeyDiff` and the watch options.
@@ -712,8 +718,8 @@ kinds; the custom `Scope` interface and `Watchable` are [M9b](#m9b-custom-scopes
 ## M9b: Custom scopes
 
 **Scope:** the `Scope` interface, `Discovery`, `Source` and `Watchable` from
-[Extension interfaces](api.md#extension-interfaces), as decided in DL-219 and DL-236 to DL-240: the `Custom` kind,
-loading sources, and how a custom scope joins the watch set.
+[Extension interfaces](../design/api.md#extension-interfaces), as decided in DL-219 and DL-236 to DL-240: the `Custom`
+kind, loading sources, and how a custom scope joins the watch set.
 
 **Acceptance tests,** attack tests first:
 
@@ -740,8 +746,8 @@ M10 is split into two parts (DL-242), each with its own gap list, test review, P
 
 ### M10a: Precedence
 
-**Scope:** [precedence.md](precedence.md) and DL-243 to DL-247: the precedence spec, the oracle, conformance tests and
-`FuzzPrecedence`, and the fix that keeps value scopes in explicit-only loads.
+**Scope:** [precedence.md](../precedence.md) and DL-243 to DL-247: the precedence spec, the oracle, conformance tests
+and `FuzzPrecedence`, and the fix that keeps value scopes in explicit-only loads.
 
 **Acceptance tests:**
 
@@ -760,9 +766,9 @@ to DL-252.
 - **Doc examples** (DL-250): every usage snippet in design.md and api.md is an `Example` function that runs against
   `cctest.FS`, and a drift test checks each snippet appears in one, unchanged.
 - **Composition** (DL-248, DL-251): each preset's name, layout and capabilities match
-  [Layouts vs presets](api.md#layouts-vs-presets): each format loads; `mise.Preset`'s `http` resolver fetches, and its
-  `git` and `oci` resolvers are registered; `misehardened.Preset` rejects remotes; each default notifier reloads a real
-  directory.
+  [Layouts vs presets](../design/api.md#layouts-vs-presets): each format loads; `mise.Preset`'s `http` resolver fetches,
+  and its `git` and `oci` resolvers are registered; `misehardened.Preset` rejects remotes; each default notifier reloads
+  a real directory.
 - **Order** (DL-251): each preset ranks a rich fixture exactly as its layout does.
 - **Dependency budget** (DL-252): a `check-deps.sh` setup per preset package.
 
@@ -772,7 +778,8 @@ M11 is split into four stages (DL-253), each with its own gap list, review and P
 
 ### M11a: Documentation structure
 
-**Scope:** DL-254 and DL-255, and [decision record 0004](decisions/0004-documentation-structure.md). Not test-first.
+**Scope:** DL-254 and DL-255, and [decision record 0004](../design/decisions/0004-documentation-structure.md). Not
+test-first.
 
 - **Four homes:** user docs in `docs/`, design records in `docs/design/`, plans in `docs/planning/` and contributor docs
   in `docs/contributing/`, moved with `git mv` and with their names unchanged. Each moved doc says which kind it is, and
@@ -819,14 +826,14 @@ list.
 - **Package documentation:** each package's `doc.go` gives an overview that reads well on pkg.go.dev.
 - **Licences:** confirm that the licences of `mapstructure`, `go-toml`, `go-yaml`, `fsnotify` and `oras-go` are
   compatible with Apache-2.0, and check their maintenance status (an open item from
-  [api.md](api.md#package-layout-decisions)).
+  [api.md](../design/api.md#package-layout-decisions)).
 - **CI (GitHub Actions):** a workflow that runs the same `scripts/` on every PR to `wip` and `main`, with merging
   blocked until they pass. It's added now at the latest, or earlier if a second contributor joins.
 - **Release:** `wip` goes to `main` by fast-forward or merge commit, never by squash.
 - **Vulnerability reporting:** `SECURITY.md` points at GitHub's private vulnerability reporting, which GitHub only
   offers on public repositories. Enable it in the repository settings when the repository is made public.
 - **Tags:** the core `v0.1.0` first, then the other modules, then `presets`, in the order set out in
-  [project-layout.md](project-layout.md#versioning-and-releases).
+  [project-layout.md](../contributing/project-layout.md#versioning-and-releases).
 
 ## M12: Conformance
 
@@ -857,7 +864,7 @@ conformance a measured number.
 | 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. |
 | 2 | CI                        | **Deferred** until the release stage, or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
 | 3 | Clock injection           | An internal clock interface, settable only through `cctest`. No public `WithClock` option.                    |
-| 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](api.md#test-helpers)). |
+| 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](../design/api.md#test-helpers)). |
 | 5 | `internal/compat` module  | Yes, a test-only module for koanf parity tests, so koanf never enters the core `go.mod`.                     |
 | 6 | Dependency budget         | Yes, from M6, as `scripts/check-deps.sh` in lefthook's pre-push. It doesn't need CI.                         |
 | 7 | Review gate               | Once per milestone, and once per part for M4 and M8.                                                         |

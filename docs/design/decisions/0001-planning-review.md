@@ -4,8 +4,9 @@
 
 This records a review of the planning docs before implementation started. It lists every finding, the recommendation
 made, and the decision taken. The resulting behaviour is in [design.md](../design.md), [api.md](../api.md),
-[project-layout.md](../project-layout.md) and [implementation-plan.md](../implementation-plan.md). Decision-log entries
-DL-42 to DL-80 in design.md come from this review.
+[project-layout.md](../../contributing/project-layout.md) and
+[implementation-plan.md](../../planning/implementation-plan.md). Decision-log entries DL-42 to DL-80 in design.md come
+from this review.
 
 **Sources:**
 
@@ -79,7 +80,7 @@ Mostly from the library tests.
 | C2 | **Integers.** YAML gives `uint64`, including values above the int64 range. JSON `1.0` and `1e3` are undefined. | An `int64` only when the literal has no fraction or exponent and fits. Out of range is a `*ParseError`. | Accepted. |
 | C3 | **YAML dialect.** Tested: `no`, `yes`, `on`, `off` and `y` stay strings (YAML 1.2). Non-string keys (`1:`, `true:`) are quietly turned into strings, which contradicts api.md's "a non-string key is a parse error". Multi-document files, anchors, merge keys and tags are undefined. | YAML 1.2 core schema. Keys are turned into strings, as goccy does, and the parse-error rule is dropped. Several documents in one file are a `*ParseError`. Alias expansion is capped. Unknown tags are errors. | Accepted: YAML 1.2 rules. |
 | C4 | **Duplicate keys.** Tested: YAML and TOML both error, but `encoding/json` silently keeps the **last** value. | A `*ParseError` in every format. The JSON decoder adds a check at the token level. | **Changed:** each format's own semantics. JSON keeps the last value and **logs a warning**; TOML and YAML error. |
-| C5 | **JSON and TOML dialects.** Comments, trailing commas, TOML 1.0 vs 1.1 and a byte-order mark are undefined. | Strict JSON, with no comments: cosmiconfig uses plain `JSON.parse`. TOML 1.0. A UTF-8 byte-order mark is stripped in every format. | Accepted the refined recommendation, after testing the libraries: strict JSON; TOML as the pinned go-toml accepts, which is TOML 1.1 syntax as tested; a UTF-8 byte-order mark stripped and non-UTF-8 input rejected. JSONC is recorded in [future-ideas.md](../future-ideas.md), out of scope for now. |
+| C5 | **JSON and TOML dialects.** Comments, trailing commas, TOML 1.0 vs 1.1 and a byte-order mark are undefined. | Strict JSON, with no comments: cosmiconfig uses plain `JSON.parse`. TOML 1.0. A UTF-8 byte-order mark is stripped in every format. | Accepted the refined recommendation, after testing the libraries: strict JSON; TOML as the pinned go-toml accepts, which is TOML 1.1 syntax as tested; a UTF-8 byte-order mark stripped and non-UTF-8 input rejected. JSONC is recorded in [future-ideas.md](../../planning/future-ideas.md), out of scope for now. |
 | C6 | **"Empty" and the top level.** Is a comments-only file, `{}` or a YAML `~` empty? What does a JSON `[1,2]` at the top level do? First-match search depends on the answer. | Empty means whitespace or comments only, or a document that decodes to null. A top level that isn't a map is a `*ParseError`. | Accepted, with one refinement: `{}` is **not** empty, so an explicit empty config stops a first-match search, as in cosmiconfig. |
 | C7 | **What `RequireConfig` counts.** Should it count empty layers, `Values`/`EnvVars`, or a defaults scope (which would mean it never fires)? | Only non-empty layers from files. | **Changed:** `RequireConfig(level, scopes...)`. The default level counts any source; `RequireFile` and `RequireNonEmpty` flags narrow it; it works globally or per scope, and requirements combine. |
 

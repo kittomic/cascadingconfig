@@ -1,8 +1,10 @@
 # Project layout
 
+**Kind: contributor doc.** It describes the repository as it is, for working on it.
+
 This document lays out the repository, its Go modules and the tooling around them. It also measures how many
-dependencies each setup pulls in. It puts into practice the [package layout](api.md#package-layout) decided in api.md: a
-third-party dependency gets its own module, and an optional standard-library-only piece gets its own package.
+dependencies each setup pulls in. It puts into practice the [package layout](../design/api.md#package-layout) decided in
+api.md: a third-party dependency gets its own module, and an optional standard-library-only piece gets its own package.
 
 **Status: decided.**
 
@@ -109,10 +111,10 @@ done
 In workspace mode, `go test ./...` from the root may already match packages in every workspace module. That should be
 verified when the modules are created, but the loop is used regardless, so that every tool behaves the same way.
 
-CI is deferred ([implementation-plan.md](implementation-plan.md#decisions)). Until it exists, lefthook runs every check,
-including the `GOWORK=off` release check, as scripts in `scripts/` that CI will later reuse. The tests run on two Go
-versions: the minimum from the `go` directive (Go 1.26, through `mise exec go@1.26 --`) and the latest, so that the
-stated minimum is actually tested.
+CI is deferred ([implementation-plan.md](../planning/implementation-plan.md#decisions)). Until it exists, lefthook runs
+every check, including the `GOWORK=off` release check, as scripts in `scripts/` that CI will later reuse. The tests run
+on two Go versions: the minimum from the `go` directive (Go 1.26, through `mise exec go@1.26 --`) and the latest, so
+that the stated minimum is actually tested.
 
 ## Dependency analysis
 
@@ -158,10 +160,10 @@ stub blank-imports its real library. A small consumer app was then created for e
 - **The full `mise` setup's graph lists 2 extra modules,** `russross/blackfriday` v1.6.0 and
   `santhosh-tekuri/jsonschema/v5` v5.3.1. Both come from `opencontainers/image-spec`'s `go.mod`. They are never
   downloaded into `go.sum` and never compiled, but they appear in `go list -m all`.
-- **One `presets` module** ([api.md](api.md#package-layout-decisions)): an app that imports only `presets/misehardened`
-  gets the same 5 modules in its `go.mod`, `go.sum` and build as with separate modules. But `go list -m all` also lists
-  `oras-go`, `go-digest` and `image-spec` (9 instead of 5). So the cost of one module is limited to tools that read the
-  full module graph.
+- **One `presets` module** ([api.md](../design/api.md#package-layout-decisions)): an app that imports only
+  `presets/misehardened` gets the same 5 modules in its `go.mod`, `go.sum` and build as with separate modules. But
+  `go list -m all` also lists `oras-go`, `go-digest` and `image-spec` (9 instead of 5). So the cost of one module is
+  limited to tools that read the full module graph.
 - **`golang.org/x/sys` resolves to v0.13.0,** because that's what fsnotify v1.10.1 requires. That version dates from
   2023. `watch/fsnotify` requires a current `x/sys` (DL-232), so that consumers get it through minimum version
   selection.

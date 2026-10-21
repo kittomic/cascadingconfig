@@ -23,4 +23,4 @@ Bypasses of its protections are in scope, for example:
 - archive or redirect tricks in the `http`, `git` and `oci` resolvers
 - inputs that hang the loader or make it use unbounded memory
 
-See [Traversal protection](docs/design.md#traversal-protection) for what the loader is designed to prevent.
+See [Traversal protection](docs/design/design.md#traversal-protection) for what the loader is designed to prevent.

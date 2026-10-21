@@ -1,5 +1,8 @@
 # cascadingconfig design
 
+**Kind: design record.** It explains why the library is built as it is, and it grows as decisions are made. Its code
+listings record the design when it was decided; the current API is in the package documentation.
+
 This document records the design decisions for `cascadingconfig`'s config discovery and merging: presets, scopes,
 formats, includes, trust and the loader model. The research it builds on is in
 [config-locations.md](config-locations.md). That file describes how cosmiconfig and mise search for and combine config
@@ -11,8 +14,8 @@ Notation (`{name}`, `{env}`, `{ext}`, precedence written **lowest → highest**)
 ## Overview
 
 **The order of layers** (which files are candidates, and where each ranks) is specified in
-[precedence.md](precedence.md), which is normative (DL-243). The sections below explain the layouts, and defer to it on
-order.
+[precedence.md](../precedence.md), which is normative (DL-243). The sections below explain the layouts, and defer to it
+on order.
 
 - **The default preset is `mise.Preset`.** Where the two tools diverge, it follows mise, except for the deliberate
   changes listed in [Deviations from mise](#deviations-from-mise).
@@ -903,7 +906,7 @@ What each built-in decoder accepts, and the rules every decoder follows. These w
 
 **Each format's spec is the source of truth:** RFC 8259, TOML and YAML 1.2. Where a decoder departs from it, the
 departure is deliberate and listed here. Measuring conformance against each format's test suite is planned for the last
-milestone, [M12](implementation-plan.md#m12-conformance) (DL-174).
+milestone, [M12](../planning/implementation-plan.md#m12-conformance) (DL-174).
 
 | Rule                  | JSON                                              | TOML                                     | YAML                                      |
 | --------------------- | ------------------------------------------------- | ---------------------------------------- | ----------------------------------------- |
@@ -1494,7 +1497,8 @@ Remote files are cached under `{user cache dir}/{name}/includes`:
   is written by atomic rename.
 - **A cache that can't be used,** because it can't be opened, read or written, is skipped with a `WarnIncludeCache`
   warning, and the load fetches. Content that doesn't match its recorded SHA-256 counts as missing.
-- **No eviction yet:** each file is at most the include size limit. Pruning is a [future idea](future-ideas.md).
+- **No eviction yet:** each file is at most the include size limit. Pruning is a
+  [future idea](../planning/future-ideas.md).
 
 **Freshness** (DL-207):
 
@@ -2002,7 +2006,7 @@ warning, and a revoked trust approval takes effect there too.
     own `*http.Client`. Its dialer (`net.Dialer.Control`) can check each resolved IP at connect time, which also covers
     DNS rebinding.
 - **JSONC** (JSON with comments and trailing commas) is out of scope for now. It's listed in
-  [future-ideas.md](future-ideas.md).
+  [future-ideas.md](../planning/future-ideas.md).
 - **Combined-environment files** such as `myapp.dev.linux.toml`, which would load only when every environment they name
   is active, are not planned. They may be considered later, or never. Adding them would have to be **opt-in**, because
   today `dev.linux` is an ordinary single environment name, as in mise.
@@ -2071,7 +2075,7 @@ There are no open questions.
 | 49 | Integers                                     | `int64` only for literals with no fraction or exponent that fit; out of range is a `*ParseError`.             |
 | 50 | YAML dialect                                 | YAML 1.2 core schema. Keys become strings. Several documents, and unknown tags, are `*ParseError`s. Alias expansion is capped. |
 | 51 | Duplicate keys                               | Each format's own semantics: JSON keeps the last and logs a warning; TOML and YAML raise a `*ParseError`.       |
-| 52 | Dialects and encoding                        | Strict JSON (JSONC is a [future idea](future-ideas.md)); TOML as the pinned go-toml accepts; UTF-8 only, with a leading byte-order mark stripped. |
+| 52 | Dialects and encoding                        | Strict JSON (JSONC is a [future idea](../planning/future-ideas.md)); TOML as the pinned go-toml accepts; UTF-8 only, with a leading byte-order mark stripped. |
 | 53 | Empty files and the top level                | Empty means whitespace or comments only, or a null document; `{}` is not empty. The top level must be a map.   |
 | 54 | Requiring config                             | `RequireConfig(level, scopes...)`, combinable. The default level counts any source; flags narrow it to files and non-empty layers, globally or per scope ([api.md](api.md#requiring-config)). |
 | 55 | Pinned references                            | A full git commit id, an OCI digest, or an https `#sha256=` integrity fragment that's verified after download (see [Remote references](#remote-references)). |
@@ -2125,7 +2129,7 @@ There are no open questions.
 | 103 | The `Values` kind                           | Copied when called; non-canonical values are an `*OptionError` naming the key; trust `TrustUser`. `ValuesFunc` and the other kinds come in M4a. |
 | 104 | Option errors                               | Each problem is an `*OptionError` whose `Op` is the option's name; all problems from one `New` are joined. |
 | 105 | A layout's default format order             | `WithDefaultFormats`, which may name formats with no decoder; they're skipped. `WithFormats` stays strict and replaces it (see [File format precedence](#file-format-precedence)). |
-| 106 | Splitting M4                                | Four parts: M4a filesystem and loading; M4b patterns, environments and the walk, with `MiseLayout`'s scopes; M4c formats and bootstrap; M4d `CosmiconfigLayout` ([implementation-plan.md](implementation-plan.md#m4-discovery)). |
+| 106 | Splitting M4                                | Four parts: M4a filesystem and loading; M4b patterns, environments and the walk, with `MiseLayout`'s scopes; M4c formats and bootstrap; M4d `CosmiconfigLayout` ([implementation-plan.md](../planning/implementation-plan.md#m4-discovery)). |
 | 107 | Loading before reports                      | `Loader.Load(ctx)` returns a `*Result` with `Tree()` and `OriginOf`. Tests read the private layer list until `Report` arrives in M5. |
 | 108 | Paths and fake hosts                        | `cctest.Host.GOOS` picks OS-dependent defaults; paths are joined with the real OS's rules. Owners in `cctest.FS` arrive with the permission policy in M7. |
 | 109 | The `cctest` API                            | `NewFS` and its methods, `Host` and `WithHost`, and `Golden` with `-update` ([api.md](api.md#test-helpers)). |
@@ -2262,7 +2266,7 @@ There are no open questions.
 | 240 | Custom scopes in the report and tests       | `Path` layers look like searched files without a `Pattern`, `Tree` layers have no `Path`, and custom scopes record no probes. `FuzzCustomSources` checks that random sources never panic and fail only with 500s. |
 | 241 | Details the M9b implementation settled     | A `Path` source is cleaned before it's read, so dot segments work as for explicit files; a file listed twice is a duplicate; permission and trust checks skip a `Path` source with a warning, as for a searched file, rather than failing the load as for an explicit one; every source is checked before any loads. |
 | 242 | M10 in two parts                            | M10a specifies precedence in the core, with conformance tests and an oracle fuzz test; M10b is the presets module, plus a check that each preset keeps its layout's order. Each part has its own gap list, review and PR. |
-| 243 | The precedence spec                         | [precedence.md](precedence.md) is normative for the order of layers: one sort key (scope, walk directory, variant group, environment, pattern, glob match, format, extension), then rules for what the key can't say, each with an ID (`PR-n`), and the built-in layouts' tables. design.md defers to it on order. |
+| 243 | The precedence spec                         | [precedence.md](../precedence.md) is normative for the order of layers: one sort key (scope, walk directory, variant group, environment, pattern, glob match, format, extension), then rules for what the key can't say, each with an ID (`PR-n`), and the built-in layouts' tables. design.md defers to it on order. |
 | 244 | The precedence oracle                       | A test-only oracle computes the expected order from the spec alone: its own copy of the layout tables and the sort key, never `layouts.go` or loader internals. A drift test parses precedence.md's tables and checks them against the oracle's. |
 | 245 | Precedence conformance tests                | At least one named test per `PR-n` rule, and the spec's worked examples as tests with hand-written expected orders. Includes, bootstrap-chosen settings, value scopes and Windows are covered here, outside the fuzz test. |
 | 246 | `FuzzPrecedence`                            | Random layouts (built-in or random patterns), hosts, start dirs, environments, format orders, conflict policies and file sets with decoys, empty files and symlinked duplicates; the report's order, statuses and merged `top` key must match the oracle. JSON's decoder stands in for TOML and YAML. Instead of a red run, six deliberate mutations of the ordering code must each be caught within a minute. |
