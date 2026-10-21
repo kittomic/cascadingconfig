@@ -832,6 +832,18 @@ type Watchable interface { // optional
   `Tree`, with an unregistered `Format` or with non-canonical values is a 500, as is an uncoded error from `Discover`. A
   missing `Path` is a `*NotFoundError`.
 
+#### Settled in M10b
+
+```go
+// presets/mise, presets/misehardened, presets/cosmiconfig (DL-248); never reassign them
+var Preset cascadingconfig.Preset
+```
+
+- **`mise.Preset`:** `MiseLayout` with TOML, YAML, `httpresolver`, `gitresolver`, `ociresolver` and fsnotify.
+- **`misehardened.Preset`:** `MiseHardenedLayout` with TOML, YAML and fsnotify.
+- **`cosmiconfig.Preset`:** `CosmiconfigLayout` with YAML and fsnotify.
+- **Names:** `Report.Preset` shows `mise.Preset`, `misehardened.Preset` or `cosmiconfig.Preset`.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
