@@ -65,20 +65,31 @@ func (ld *loading) run() (*Result, error) {
 		}
 	}
 	placed := false
-	scopes := c.scopes
-	if explicit != nil && c.configFilesOnly {
-		for _, s := range scopes {
-			if c.selected[s.name] {
-				ld.skipped[s.name] = "replaced by explicit files"
+	// Under WithConfigFilesOnly, explicit files replace every scope that searches for files, at the place of the
+	// highest of them; value scopes keep their places (DL-247).
+	filesOnly, last := explicit != nil && c.configFilesOnly, -1
+	if filesOnly {
+		for i, s := range c.scopes {
+			if s.kind.readsFiles() {
+				last = i
 			}
 		}
-		scopes = nil
 	}
-	for _, s := range scopes {
+	for i, s := range c.scopes {
 		if err := ctx.Err(); err != nil {
 			return nil, contextError(err)
 		}
 		ld.order = ld.orderFor(s)
+		if filesOnly && s.kind.readsFiles() {
+			if c.selected[s.name] {
+				ld.skipped[s.name] = "replaced by explicit files"
+			}
+			if i == last {
+				ld.loadExplicit(explicit, "", TrustProject, nil)
+				placed = true
+			}
+			continue
+		}
 		switch {
 		case s.explicitFiles && explicit != nil:
 			ld.skipped[s.name] = "replaced by explicit files"
