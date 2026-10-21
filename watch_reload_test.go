@@ -224,26 +224,32 @@ func diffLines(d []cc.KeyDiff) []string {
 	return out
 }
 
-// DL-221: Diff lists added, removed and changed leaves, sorted by path, with their origins; an array is one leaf; a
-// table that becomes a scalar is one change; values are canonical.
+// DL-221, DL-234: Diff is the difference of the two trees' leaves, where a leaf is a scalar, an array or an empty
+// table, sorted by path segment by segment, with origins; a table that becomes a scalar is its leaves removed and the
+// scalar added; values are canonical.
 func TestWatchDiff(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{
-		rootCfg: `{"keep": 1, "gone": 1, "num": 1, "list": [1, 2], "tbl": {"x": 1, "y": 2}, "deep": {"a": {"b": 1}}}`,
+		rootCfg: `{"keep": 1, "gone": 1, "num": 1, "list": [1, 2], "tbl": {"x": 1, "y": 2}, "deep": {"a": {"b": 1}}, "emptied": {"z": 1}}`,
 		sysFile: `{"sys": "s"}`,
 	})
 	e.watch(nil)
-	e.fs.WriteFile(sysFile, []byte(`{"sys": "s", "new": {"n": 1}}`), 0o644)
+	e.fs.WriteFile(sysFile, []byte(`{"sys": "s", "new": {"n": 1}, "e": {}}`), 0o644)
 	e.n.Send(sysFile)
-	e.save(rootCfg, `{"keep": 1, "num": 2, "list": [1, 3], "tbl": "flat", "deep": {"a": {"b": 2}}}`)
+	e.save(rootCfg, `{"keep": 1, "num": 2, "list": [1, 3], "tbl": "flat", "deep": {"a": {"b": 2}}, "emptied": {}}`)
 	e.settle()
 	c := e.last()
 	want := []string{
 		"changed deep.a.b " + rootCfg + "→" + rootCfg,
+		"added e →" + sysFile,
+		"added emptied →" + rootCfg,
+		"removed emptied.z " + rootCfg + "→",
 		"removed gone " + rootCfg + "→",
 		"changed list " + rootCfg + "→" + rootCfg,
 		"added new.n →" + sysFile,
 		"changed num " + rootCfg + "→" + rootCfg,
-		"changed tbl " + rootCfg + "→" + rootCfg,
+		"added tbl →" + rootCfg,
+		"removed tbl.x " + rootCfg + "→",
+		"removed tbl.y " + rootCfg + "→",
 	}
 	if got := diffLines(c.Diff); !slices.Equal(got, want) {
 		t.Errorf("Diff =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -263,8 +269,12 @@ func TestWatchDiff(t *testing.T) {
 				t.Errorf("list: New = %#v, want [1 3]", d.New)
 			}
 		case "tbl":
-			if _, ok := d.Old.(map[string]any); !ok || d.New != "flat" {
-				t.Errorf("tbl: %#v → %#v, want a table → flat", d.Old, d.New)
+			if d.Kind != cc.DiffAdded || d.Old != nil || d.New != "flat" {
+				t.Errorf("tbl: %v %#v → %#v, want added nil → flat", d.Kind, d.Old, d.New)
+			}
+		case "e", "emptied":
+			if m, ok := d.New.(map[string]any); d.Kind != cc.DiffAdded || !ok || len(m) != 0 {
+				t.Errorf("%s: %v %#v → %#v, want an empty table added", d.Path, d.Kind, d.Old, d.New)
 			}
 		}
 	}
