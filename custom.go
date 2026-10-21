@@ -2,7 +2,13 @@ package cascadingconfig
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"path/filepath"
+	"slices"
+
+	"github.com/kittomic/cascadingconfig/internal/tree"
 )
 
 // Scope is the escape hatch for custom discovery (design.md: Custom scopes). Discover returns the scope's sources,
@@ -59,6 +65,114 @@ type customKind struct {
 func (customKind) defaultTrust() TrustLevel { return TrustProject }
 func (customKind) readsFiles() bool         { return true }
 
-func (k customKind) check(*config) { _ = k.s } // stub
+func (k customKind) check(c *config) {
+	if k.s == nil {
+		c.fail("Custom", "a nil Scope")
+	}
+}
 
-func (k customKind) discover(*loading, *scopeDef) { _ = k.s } // stub
+// discover asks the scope for its sources, checks them all, then loads them in order: Path sources like files named
+// directly, and Tree sources like a Values scope (DL-238). On a watched load, it also records the scope's WatchDirs
+// (DL-239).
+func (k customKind) discover(ld *loading, s *scopeDef) {
+	c := ld.c
+	d := ld.discovery(s)
+	srcs, err := k.s.Discover(ld.ctx, d)
+	if err != nil {
+		if CodeOf(err) == 0 {
+			err = NewError(CodeInternal, "Custom", "", fmt.Errorf("the scope %q: %w", s.name, err))
+		}
+		ld.addError(err)
+		return
+	}
+	for i, src := range srcs {
+		if err := c.checkSource(src); err != nil {
+			ld.addError(NewError(CodeInternal, "Custom", "", fmt.Errorf("the scope %q returned a broken source (number %d): %w", s.name, i+1, err)))
+			return
+		}
+	}
+	for _, src := range srcs {
+		l := Layer{Scope: s.name, Trust: s.trust, Status: LayerLoaded, Variant: src.Variant, Env: src.Env}
+		if src.Tree != nil {
+			ld.addValuesLayer(l, tree.CopyMap(src.Tree))
+			continue
+		}
+		l.Path = filepath.Clean(src.Path)
+		l.ConfigRoot = filepath.Dir(l.Path)
+		if src.ConfigRoot != "" {
+			l.ConfigRoot = filepath.Clean(src.ConfigRoot)
+		}
+		ld.readNamed(l, src.Format, false)
+	}
+	if w, ok := k.s.(Watchable); ok && ld.rec != nil {
+		ld.watchDirs(w, d, s)
+	}
+}
+
+// discovery is what a custom scope sees, all through the loader's host (DL-237).
+func (ld *loading) discovery(s *scopeDef) Discovery {
+	c, h := ld.c, ld.c.host
+	d := Discovery{
+		Name: c.name, Scope: s.name, Envs: slices.Clone(ld.selectedEnvs), PlatformEnvs: slices.Clone(ld.platformEnvs),
+		FS: c.fsys, LookupEnv: h.LookupEnv, Logger: c.logger,
+	}
+	if d.Logger == nil {
+		d.Logger = slog.Default()
+	}
+	if home, err := h.Home(); err == nil {
+		d.Home = home
+	}
+	if cwd, err := h.Cwd(); err == nil {
+		d.StartDir = cwd
+	}
+	if c.startDir != "" {
+		if dir, ok := ld.hostPath(c.startDir, s); ok {
+			d.StartDir = dir
+		}
+	}
+	for _, dec := range ld.order {
+		d.Formats = append(d.Formats, dec.Format())
+	}
+	return d
+}
+
+// checkSource says what's wrong with a source, if anything: it needs exactly one of an absolute Path and a Tree, a
+// registered Format, and canonical values.
+func (c *config) checkSource(src Source) error {
+	switch {
+	case src.Path != "" && src.Tree != nil:
+		return errors.New("it has both a Path and a Tree")
+	case src.Path == "" && src.Tree == nil:
+		return errors.New("it has neither a Path nor a Tree")
+	case src.Tree != nil:
+		if err := checkCanonical(src.Tree, nil); err != nil {
+			return fmt.Errorf("its tree has %w", err)
+		}
+		return nil
+	case !filepath.IsAbs(src.Path):
+		return fmt.Errorf("its Path %q isn't absolute", src.Path)
+	case src.Format != "" && !slices.ContainsFunc(c.decoders, func(d Decoder) bool { return d.Format() == src.Format }):
+		return fmt.Errorf("its Format %q has no registered decoder", src.Format)
+	}
+	return nil
+}
+
+// watchDirs records the directories a Watchable scope asks to be watched, with no name filter. A relative directory,
+// or an error, is a WarnWatchFailed warning (DL-239).
+func (ld *loading) watchDirs(w Watchable, d Discovery, s *scopeDef) {
+	warn := func(msg string) {
+		ld.warnings = append(ld.warnings, Warning{Code: WarnWatchFailed, Message: fmt.Sprintf("the scope %q: %s", s.name, msg)})
+	}
+	dirs, err := w.WatchDirs(ld.ctx, d)
+	if err != nil {
+		warn(fmt.Sprintf("WatchDirs failed, so only its files are watched: %v", err))
+		return
+	}
+	for _, dir := range dirs {
+		if !filepath.IsAbs(dir) {
+			warn(fmt.Sprintf("WatchDirs returned %q, which isn't absolute, so it isn't watched", dir))
+			continue
+		}
+		ld.rec.targets = append(ld.rec.targets, watchTarget{base: filepath.Clean(dir), segs: []nameMatcher{{any: true}}})
+	}
+}

@@ -26,14 +26,15 @@ type watchTarget struct {
 	segs []nameMatcher
 }
 
-// nameMatcher matches one path segment: exactly, or with a * glob, in any of several forms.
+// nameMatcher matches one path segment: exactly, or with a * glob, in any of several forms, or any name at all.
 type nameMatcher struct {
 	exact []string
 	globs []*regexp.Regexp
+	any   bool // a custom scope's WatchDirs directory (DL-239)
 }
 
 func (m nameMatcher) match(name string) bool {
-	return slices.Contains(m.exact, name) || slices.ContainsFunc(m.globs, func(re *regexp.Regexp) bool { return re.MatchString(name) })
+	return m.any || slices.Contains(m.exact, name) || slices.ContainsFunc(m.globs, func(re *regexp.Regexp) bool { return re.MatchString(name) })
 }
 
 // add adds a form of the segment; file says whether it names a file, for * matching.
