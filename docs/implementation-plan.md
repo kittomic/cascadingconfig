@@ -68,7 +68,8 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M8c | OCI resolver                      | `ociresolver`                            | M8a        |
 | M9  | Hot reload                        | core, `ociresolver`, `watch/fsnotify`    | M5, M7, M8 |
 | M9b | Custom scopes                     | core                                     | M9         |
-| M10 | Presets                           | `presets`                                | M6, M8b, M8c, M9 |
+| M10a | Precedence                       | core                                     | M9b        |
+| M10b | Presets                          | `presets`                                | M6, M8b, M8c, M9, M10a |
 | M11 | Release preparation               | all                                      | M10        |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
 
@@ -731,6 +732,22 @@ loading sources, and how a custom scope joins the watch set.
 
 ## M10: Presets
 
+M10 is split into two parts (DL-242), each with its own gap list, test review, PR and merge.
+
+### M10a: Precedence
+
+**Scope:** [precedence.md](precedence.md) and DL-243 to DL-247: the precedence spec, the oracle, conformance tests and
+`FuzzPrecedence`, and the fix that keeps value scopes in explicit-only loads.
+
+**Acceptance tests:**
+
+- **Drift** (DL-244): the tables in precedence.md parse, and equal the oracle's.
+- **Conformance** (DL-245): at least one test per `PR-n` rule, and the worked examples, with hand-written orders.
+- **Explicit-only loads** (DL-247): under `WithConfigFilesOnly()`, defaults and `Values` still merge.
+- **Fuzz** (DL-246): `FuzzPrecedence` against the oracle, and the mutation check in place of a red run.
+
+### M10b: Presets
+
 **Scope:** `mise.Preset`, `misehardened.Preset` and `cosmiconfig.Preset` in the `presets` module.
 
 **Acceptance tests:**
@@ -738,6 +755,7 @@ loading sources, and how a custom scope joins the watch set.
 - **End to end:** every Go example in design.md and api.md runs as a test against `cctest.FS`.
 - **Composition:** each preset's layout and registered capabilities match
   [Layouts vs presets](api.md#layouts-vs-presets).
+- **Order:** each preset ranks files exactly as its layout does in precedence.md.
 - **Dependency budget:** each preset matches the measured counts (5 for `misehardened`, 9 for `mise`).
 
 ## M11: Release preparation
