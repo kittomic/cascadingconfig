@@ -100,6 +100,13 @@ const (
 
 	// WarnIncludeCache reports an include cache that couldn't be opened, read or written, so the load fetched instead.
 	WarnIncludeCache WarningCode = "include-cache"
+
+	// WarnWatchFailed reports a watched directory, or the whole watch set, falling back to polling, because watching
+	// it failed or the notifier stopped (DL-227).
+	WarnWatchFailed WarningCode = "watch-failed"
+
+	// WarnReloadFailed reports a failed reload: the watcher keeps the last good config (DL-227).
+	WarnReloadFailed WarningCode = "reload-failed"
 )
 
 // DecodeDocument runs d on data, with the rules every format shares:

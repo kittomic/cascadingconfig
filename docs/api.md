@@ -772,7 +772,7 @@ type KeyDiff struct {
 func (d KeyDiff) String() string // kind, path and the origins' files; never values
 
 // Watch options (DL-226, DL-228, DL-230)
-func WithDebounce(quiet, max time.Duration) WatchOption    // default 100 ms, 1 s
+func WithDebounce(quiet, maxWait time.Duration) WatchOption // default 100 ms, 1 s
 func WithPollInterval(d time.Duration) WatchOption         // all polling; default 2 s
 func WithPolling() WatchOption                             // poll everything, without the notifier
 func WithRemotePoll(d time.Duration, m ...Matcher) WatchOption // the matched unpinned remotes; 0 means never
@@ -802,8 +802,8 @@ func (n *Notifier) Watched() []string
 func New() (cascadingconfig.Notifier, error)
 ```
 
-- **Option errors:** from `Watch`, as `*OptionError`s: a negative `quiet`, a `max` below `quiet`, a poll interval that
-  isn't positive, and a negative remote poll interval. A nil notifier factory is an `*OptionError` from `New`.
+- **Option errors:** from `Watch`, as `*OptionError`s: a negative `quiet`, a `maxWait` below `quiet`, a poll interval
+  that isn't positive, and a negative remote poll interval. A nil notifier factory is an `*OptionError` from `New`.
 - **`Close` and `Reload` from the handler** (DL-223): `Close` returns without waiting, and `Reload` runs the reload and
   returns, with its handler call after the current one. From any other goroutine, both wait.
 - **`Report.String()`** shows `(revalidated)` like `(cached)`.

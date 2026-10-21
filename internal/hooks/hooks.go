@@ -15,6 +15,24 @@ type Host struct {
 // WithHost returns a cascadingconfig.Option, as an any, that replaces the loader's host. The core sets it.
 var WithHost func(h Host) any
 
-// WithClock returns a cascadingconfig.Option, as an any, that makes the loader read the time from now. The core sets
-// it.
-var WithClock func(now func() time.Time) any
+// Clock is the loader's clock: the time, and timers for debounce and polling. cctest.Clock implements it.
+type Clock interface {
+	Now() time.Time
+	AfterFunc(d time.Duration, f func()) Timer
+}
+
+// Timer is a timer from Clock.AfterFunc.
+type Timer interface {
+	// Stop prevents the timer from firing, and reports whether it did.
+	Stop() bool
+}
+
+// WithClock returns a cascadingconfig.Option, as an any, that makes the loader use c, and turns off remote-poll jitter
+// so poll times are exact. The core sets it.
+var WithClock func(c Clock) any
+
+// Handled is implemented by a fake notifier that needs to know when the watcher has finished with each event or error
+// it sent, including any reload that follows straight away. The watcher calls Handled once for each.
+type Handled interface {
+	Handled()
+}
