@@ -1276,9 +1276,9 @@ These checks also cover resolvers that apps write themselves:
 #### `oci`
 
 - **Manifests** (DL-215): the tag or digest is resolved to a manifest digest before anything else is read, and that
-  digest is the layer's identity. A manifest is capped at 4 MiB and verified against its digest. OCI image manifests and
-  Docker v2 schema 2 manifests are accepted; an image index or any other type is a `*ReferenceError` that asks for a
-  manifest.
+  digest is the layer's identity. A manifest is capped at 4 MiB, and a larger one is a `*TooLargeError`; it's verified
+  against its digest. OCI image manifests and Docker v2 schema 2 manifests are accepted; an image index or any other
+  type is a `*ReferenceError` that asks for a manifest.
 - **Two artifact forms.** An artifact pushed with `oras push` stores each file as its own blob, named by the
   `org.opencontainers.image.title` annotation. An image-style artifact stores files in tar layers. Both are supported
   (DL-215):
@@ -1290,8 +1290,9 @@ These checks also cover resolvers that apps write themselves:
   - **A layer without a title** is read as tar entries when its media type is a tar type (OCI or Docker, plain or gzip),
     and is ignored otherwise.
   - **zstd** layers are a `*ReferenceError` for now, because zstd needs a new dependency.
-- **No extraction to disk.** Layers are read as streams, and the requested file is found among them. Only the titled
-  blobs that match are downloaded; every tar layer is read in full, for the malformed-entry rule and for whiteouts.
+- **No extraction to disk.** Layers are read as streams, and the requested file is found among them. A titled file that
+  matches is downloaded only if no later layer replaces or whites it out. Only the titled blobs that match are
+  downloaded; every tar layer is read in full, for the malformed-entry rule and for whiteouts.
 - **Duplicates:** layers are taken in manifest order, and if the same path appears in several, the **last** wins, as in
   an image. Whiteouts work as in an image too: `.wh.<name>` in a later layer removes `<name>`, and anything below it,
   from earlier layers, and `.wh..wh..opq` hides what earlier layers put in its directory.
@@ -1317,9 +1318,9 @@ These checks also cover resolvers that apps write themselves:
   directories are rejected.
 - **Digests:** every blob's digest, and the manifest's, is verified as it streams.
 - **Errors** (DL-218): a missing repository, tag, digest or path is a `*NotFoundError`. An index, an unsupported layer
-  type, a malformed entry or a non-regular file is a `*ReferenceError`, so no stale copy stands in for it. A cap is a
-  `*TooLargeError`. Anything else, such as a network failure, a 401 or 403, a 5xx, a digest mismatch or an error from
-  the credentials function, is a `*FetchError`.
+  type, a malformed entry, a layer that isn't a valid tar or gzip stream (once its digest checks out) or a non-regular
+  file is a `*ReferenceError`, so no stale copy stands in for it. A cap is a `*TooLargeError`. Anything else, such as a
+  network failure, a 401 or 403, a 5xx, a digest mismatch or an error from the credentials function, is a `*FetchError`.
 
 #### `http` / `https`
 
