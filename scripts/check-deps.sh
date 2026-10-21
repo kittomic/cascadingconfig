@@ -16,6 +16,7 @@ setups=(
 	"minimal|2 2 2 2|${repo} ${repo}/format/toml"
 	"core-toml-yaml|3 3 3 3|${repo} ${repo}/format/toml ${repo}/format/yaml"
 	"core-oci|5 5 5 7|${repo} ${repo}/ociresolver"
+	"core-fsnotify|3 3 3 3|${repo} ${repo}/watch/fsnotify"
 )
 
 work="$(mktemp -d)"
@@ -26,6 +27,7 @@ module_of() {
 	case "$1" in
 	"${repo}/format/"*) echo "${repo}/format/$(echo "${1#"${repo}/format/"}" | cut -d/ -f1)" ;;
 	"${repo}/ociresolver"*) echo "${repo}/ociresolver" ;;
+	"${repo}/watch/"*) echo "${repo}/watch/$(echo "${1#"${repo}/watch/"}" | cut -d/ -f1)" ;;
 	*) echo "$repo" ;;
 	esac
 }

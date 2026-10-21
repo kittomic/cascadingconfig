@@ -93,6 +93,9 @@ type IncludeRef struct {
 	Version  string // git ref; oci tag, digest or tag@digest; sha256:<hex> from an integrity fragment
 	From     Layer  // the including file
 	MaxSize  int64  // the size limit the loader enforces on the content
+	// Validator is the validator from the last fetch of this reference, set only when the loader holds that content to
+	// fall back on; "" otherwise. A resolver that finds the source unchanged returns ErrNotModified (DL-229).
+	Validator string
 
 	// Check normalises another reference, such as a redirect target, and runs the scheme and allow-list checks this
 	// reference passed, under the same policy. It returns a *ReferenceError or a *PolicyError.

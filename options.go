@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+
+	"github.com/kittomic/cascadingconfig/internal/hooks"
 )
 
 // Option configures a loader. Options are sealed: only this package creates them, so the set can grow without
@@ -138,7 +140,9 @@ type config struct {
 	cacheDir        string        // WithIncludeCache; empty means the default
 	cacheTTL        time.Duration // WithIncludeCache
 	noCache         bool          // WithoutIncludeCache
-	now             func() time.Time
+	clock           hooks.Clock
+	noJitter        bool                     // cctest.WithClock: remote polls happen exactly on time
+	newNotifier     func() (Notifier, error) // WithNotifier
 
 	defaultPolicy *policyDef               // WithDefaultPolicy; nil means the engine default
 	scopePolicies map[ScopeName]*policyDef // WithScopePolicy
@@ -172,7 +176,7 @@ func newConfig(name string) *config {
 		host: osHost{}, fsys: osFileSystem{}, maxFileSize: defaultMaxFileSize,
 		includeTimeout: defaultIncludeTimeout, maxIncludeSize: defaultMaxIncludeSize,
 		maxIncludeDepth: defaultMaxIncludeDepth, maxIncludes: defaultMaxIncludes, cacheTTL: defaultCacheTTL,
-		now: time.Now,
+		clock: realClock{},
 	}
 	if err := checkName(name); err != nil {
 		c.fail("New", "invalid app name %q: %w", name, err)

@@ -184,6 +184,8 @@ func (ld *loading) readBootstrap() error {
 					if configRoot, ok := ld.scopeRoot(s, dir); ok {
 						ld.search(root, dir, configRoot, s.bootstrap, s, true)
 					}
+				} else {
+					ld.watchSearch(dir, s.bootstrap)
 				}
 			}
 		case walkKind:
@@ -192,6 +194,8 @@ func (ld *loading) readBootstrap() error {
 				for _, dir := range dirs {
 					if root, ok := ld.root(dir); ok {
 						ld.search(root, dir, dir, s.bootstrap, s, true)
+					} else {
+						ld.watchSearch(dir, s.bootstrap)
 					}
 				}
 				ld.walking = false

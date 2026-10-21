@@ -22,9 +22,15 @@ import (
 // A failed load still returns a non-nil *Result, whose report shows what was found and what broke, and whose Tree is
 // nil.
 func (l *Loader) Load(ctx context.Context) (*Result, error) {
+	return l.load(ctx, nil)
+}
+
+// load is Load, recording what a watcher needs in rec when it isn't nil.
+func (l *Loader) load(ctx context.Context, rec *watchRecord) (*Result, error) {
 	c := l.cfg
 	ld := &loading{
 		ctx: ctx, c: c, roots: map[string]Root{}, dirs: map[string][]fs.DirEntry{}, skipped: map[ScopeName]string{},
+		rec: rec,
 	}
 	ld.settings.mergeSearchPlaces = true
 	defer ld.closeRoots()
@@ -178,6 +184,8 @@ type loading struct {
 	platformEnvs []string             // the platform environments in use, lowest precedence first
 	skipped      map[ScopeName]string // why a selected scope wasn't searched
 	probes       []Probe              // with WithProbes
+
+	rec *watchRecord // what a watched load records; nil otherwise
 }
 
 // entry is one layer the load considered, or a problem that fails it.
@@ -411,6 +419,7 @@ func (ld *loading) expansions(patterns []Pattern) []expansion {
 // are named by their slash path. configRoot is the root of RootSearchDir patterns. follow says whether symlinks can be
 // followed through the loader's FileSystem.
 func (ld *loading) search(root Root, dir, configRoot string, patterns []Pattern, s *scopeDef, follow bool) {
+	ld.watchSearch(dir, patterns)
 	skip := ld.walking && ld.isHomeOrRoot(dir)
 	for _, x := range ld.expansions(patterns) {
 		if skip && x.p.SkipHomeAndRoot {
@@ -921,6 +930,7 @@ func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLeve
 			}
 		}
 		base := BaseError{Op: "load", Path: abs, Scope: string(scope)}
+		ld.watchFile(abs)
 		resolved, err := c.fsys.EvalSymlinks(abs)
 		if err != nil {
 			base.Err = err
@@ -972,6 +982,7 @@ func (ld *loading) loadExplicit(paths []string, scope ScopeName, trust TrustLeve
 			continue
 		}
 		e := &entry{layer: l, data: data, info: info, file: true, explicit: true, real: resolved}
+		ld.watchLoaded(abs, resolved)
 		if root, err := c.fsys.OpenRoot(filepath.Dir(resolved)); err == nil {
 			if di, err := root.Stat("."); err == nil {
 				e.dirInfo = di
@@ -993,6 +1004,7 @@ func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow
 	}
 	switch {
 	case typ&fs.ModeSymlink != 0 && follow:
+		ld.watchSymlink(l.Path)
 		target, err := c.fsys.EvalSymlinks(l.Path)
 		if err != nil {
 			ld.skip(l, LayerIgnored, WarnBrokenSymlink, fmt.Sprintf("the symlink is broken: %v", err))
@@ -1040,6 +1052,7 @@ func (ld *loading) read(root Root, name string, typ fs.FileMode, l Layer, follow
 		if resolved, err := c.fsys.EvalSymlinks(l.Path); err == nil {
 			e.real = resolved
 		}
+		ld.watchLoaded(l.Path, e.real)
 		if di, err := r.Stat(path.Dir(name)); err == nil {
 			e.dirInfo = di
 		}

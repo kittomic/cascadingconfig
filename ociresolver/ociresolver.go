@@ -156,6 +156,10 @@ func (f *fetch) run() (*cascadingconfig.Fetched, error) {
 	if err != nil {
 		return nil, f.mapErr("resolving "+ref.Version, err)
 	}
+	if ref.Validator != "" && ref.Validator == desc.Digest.String() {
+		// the validator is the manifest digest, so the same digest means nothing to download (DL-229)
+		return nil, cascadingconfig.ErrNotModified
+	}
 	switch desc.MediaType {
 	case ocispec.MediaTypeImageManifest, mediaTypeDocker:
 	case ocispec.MediaTypeImageIndex, "application/vnd.docker.distribution.manifest.list.v2+json":
@@ -183,7 +187,7 @@ func (f *fetch) run() (*cascadingconfig.Fetched, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &cascadingconfig.Fetched{Content: data, Identity: desc.Digest.String()}, nil
+	return &cascadingconfig.Fetched{Content: data, Identity: desc.Digest.String(), Validator: desc.Digest.String()}, nil
 }
 
 // credential answers oras's requests for credentials from WithCredentials, or with none.

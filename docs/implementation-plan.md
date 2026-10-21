@@ -66,7 +66,8 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M8a | Remote includes                   | core (`httpresolver`)                    | M7         |
 | M8b | git resolver                      | core (`gitresolver`)                     | M8a        |
 | M8c | OCI resolver                      | `ociresolver`                            | M8a        |
-| M9  | Hot reload                        | core, `watch/fsnotify`                   | M5, M7     |
+| M9  | Hot reload                        | core, `ociresolver`, `watch/fsnotify`    | M5, M7, M8 |
+| M9b | Custom scopes                     | core                                     | M9         |
 | M10 | Presets                           | `presets`                                | M6, M8b, M8c, M9 |
 | M11 | Release preparation               | all                                      | M10        |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
@@ -650,32 +651,64 @@ artifact forms, whiteouts, caps, credentials, plain HTTP, redirects and errors. 
 
 ## M9: Hot reload
 
-**Scope:** § [Hot reload](design.md#hot-reload) and DL-37 to DL-41:
+**Scope:** § [Hot reload](design.md#hot-reload), DL-37 to DL-41 and DL-219 to DL-232. M9 covers the built-in scope
+kinds; the custom `Scope` interface and `Watchable` are [M9b](#m9b-custom-scopes) (DL-219).
 
-- **Test helper:** `cctest.Notifier` ([M0](#m0-repository-and-tooling)).
-- **Watching:** `Watch[T]`, `w.Current()`, `w.Reload()` and the watch options.
-- **The watch set:** planning it, including the ancestors of missing dirs.
-- **Reloading:** debounced full reloads, with the last good snapshot kept on failure.
-- **Callbacks:** only on changes, and one at a time.
-- **Stat polling,** and opt-in remote polling.
-- **The `watch/fsnotify` module.**
+- **Test helpers** (DL-231): `cctest.Notifier`, and timers in `cctest.Clock`.
+- **Watching** (DL-220 to DL-223): `Watch[T]`, `Loader.Watch`, `Watcher`, `Change`, `KeyDiff` and the watch options.
+- **The watch set** (DL-224): recorded by each watched load, with ancestors of missing dirs, explicit files, local
+  includes and symlink targets.
+- **Reloading** (DL-222, DL-223, DL-228): debounced full reloads, with the last good snapshot kept on failure.
+- **Event sources and polling** (DL-225 to DL-227): `WithNotifier`, stat polling and the watcher's warnings.
+- **Conditional fetches** (DL-229) in the cache and all three remote resolvers, and remote polling per source (DL-230).
+- **The `watch/fsnotify` module** (DL-232), with a core-fsnotify setup in `check-deps.sh`.
 - **Options** (DL-94): this milestone settles `WithNotifier` and the watch options.
 
 **Acceptance tests,** with `cctest.Notifier` and `cctest.Clock`, so no real timers:
 
-- **Debounce:** one save gives one reload, and bursts respect the quiet period and the maximum delay.
+- **Debounce** (DL-228): one save gives one reload; bursts respect the quiet period and the maximum delay; a `quiet` of
+  0 reloads on every event; invalid values are `*OptionError`s.
+- **The watch set** (DL-224): `Watched()` holds the walk and pattern directories, the nearest existing ancestor of a
+  missing one, the directories of explicit files, local includes and symlink targets; events that don't pass a
+  directory's filter don't reload; a failed reload keeps the old set.
 - **New files:** creating a not-yet-existing candidate (`myapp.local.toml`, or a new `conf.d` folder) triggers a reload.
-- **Failures:** a half-written file keeps the last good config and reports `Change.Err`, and the next event retries.
+- **Failures** (DL-222): a half-written file keeps the last good config and reports `Change.Err`, with
+  `WarnReloadFailed`; the next event retries; the first good reload after a failure calls the handler even with no
+  change.
 - **Fresh on every reload** (DL-72): deleting a key from a file removes its value on the next reload, rather than
   keeping the old one, and defaults still apply.
-- **Callbacks:** a touch or comment-only edit doesn't fire one, and a changed bootstrap `env` re-plans the watch set.
-- **Lifecycle** (DL-77): cancelling `ctx` stops the watcher; `Close` twice is fine; `Close` from inside the handler
-  doesn't deadlock; a panicking handler is recovered and watching continues; a value moving to another file isn't a
-  change; `time.Time` values are compared as instants.
-- **`watch/fsnotify`,** against a real filesystem:
+- **Callbacks** (DL-40, DL-221, DL-234): a touch or comment-only edit doesn't fire one, unless `WithReloadOnAnyEvent`;
+  `Diff` is the leaf-set difference, with origins, and its `String()` holds no values; a changed bootstrap `env`
+  re-plans the watch set. `FuzzDiff` checks `Diff` against a reference model, with empty tables, and checks that it
+  replays and reverses.
+- **Lifecycle** (DL-77, DL-220, DL-223): a failed first load returns a nil watcher; a nil handler works; cancelling
+  `ctx` stops the watcher; `Close` twice is fine; `Close` and `Reload` from inside the handler don't deadlock; `Reload`
+  after `Close` is a 499; a panicking handler is recovered and watching continues; handler calls never overlap; a value
+  moving to another file isn't a change; the same instant written differently is a change (DL-233), and NaN equals NaN.
+- **Event sources** (DL-225, DL-227): the factory is called once per watcher; a factory error, a failed `Add`, an error
+  on `Errors` and a closed `Events` channel each behave as decided, with `WarnWatchFailed`.
+- **Polling** (DL-226): without a notifier, and with `WithPolling()`, edits, creations, removals and same-size edits are
+  seen at `WithPollInterval`'s pace.
+- **Conditional fetches** (DL-229):
+  - **http:** a server that counts conditional requests and answers 304, for an ETag and for `Last-Modified`
+  - **git:** a local repo whose branch moves, or doesn't
+  - **OCI:** the in-memory registry, with no blob requested when the digest is unchanged
+  - **cache:** revalidation after the TTL, `"revalidated"` in the report, the stale fallback on a `*FetchError`, and an
+    oversized or non-ASCII validator dropped
+- **Remote polling** (DL-230): matched references are polled at their own intervals, the most recent rule winning; 0
+  never polls; an unchanged poll doesn't reload, and a changed one does; failures back off up to 8 times; without the
+  cache, a poll is a full reload.
+- **`watch/fsnotify`** (DL-232), against a real filesystem:
   - an editor-style atomic rename
-  - a Kubernetes ConfigMap `..data` symlink swap
-  - falling back to polling, with a warning, when a watch fails
+  - a Kubernetes ConfigMap `..data` symlink swap, built as the kubelet does
+  - falling back to polling, with a warning, when a watch fails, using a mode 000 directory; skipped as root and on
+    Windows
+
+## M9b: Custom scopes
+
+**Scope:** the `Scope` interface, `Discovery`, `Source` and `Watchable` from
+[Extension interfaces](api.md#extension-interfaces) (DL-219), and how a custom scope joins the watch set. Its own gap
+list comes first.
 
 ## M10: Presets
 

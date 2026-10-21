@@ -1093,6 +1093,7 @@ type IncludeRef struct {
 	Version  string // git ref; oci tag, digest or tag@digest; sha256:<hex> from an integrity fragment
 	From     Layer  // the including file: path, scope, variant
 	MaxSize  int64  // the size limit the loader enforces
+	Validator string // the validator from the last fetch, when the loader holds that content; "" otherwise
 
 	// Check normalises another reference, such as a redirect target, and runs the scheme and allow-list checks this
 	// reference passed, under the same policy.
@@ -1103,7 +1104,11 @@ type Fetched struct {
 	Content   []byte
 	MediaType string // the media type the transport reports, if any, e.g. Content-Type
 	Identity  string // canonical identity, e.g. commit id or digest; shown in reports
+	Validator string // opaque; passed back in IncludeRef.Validator next time
 }
+
+// ErrNotModified is returned by a resolver when the source still matches IncludeRef.Validator.
+var ErrNotModified = errors.New("cascadingconfig: not modified")
 ```
 
 - **Registering** (DL-196): `WithIncludeResolver(r)` maps each of `r.Schemes()` to `r`, and the last registration of a
@@ -1122,6 +1127,11 @@ type Fetched struct {
 - **Timeouts** (DL-199): each fetch gets the load's context with a deadline, 30 seconds by default, set with
   `WithIncludeTimeout(d)`. Running out is a 504 `*FetchError`.
 - **One at a time** (DL-199): references are fetched one after another, in walk order, which keeps loads deterministic.
+- **Conditional fetches** (DL-229): a resolver may return a `Validator` with its content. The loader keeps it only if
+  it's printable ASCII and at most 1 KiB, so a hostile server can't inject headers through it, and passes it back in
+  `IncludeRef.Validator` only when it holds the content to fall back on. A resolver that finds the source unchanged
+  returns `ErrNotModified`, wrapped or not, and the loader uses its copy. A resolver may always ignore the validator and
+  fetch.
 
 The app can add a resolver for a new scheme or replace a built-in one with `WithIncludeResolver(r)`, and can remove one
 with `WithoutIncludeResolver("git")`.
@@ -1270,6 +1280,11 @@ These checks also cover resolvers that apps write themselves:
   `*TooLargeError`. Anything else is a `*FetchError` with the first line of git's error output, at most 200 characters.
   A timeout kills git and its ssh child.
 - **Identity:** the full commit id. There's no media type.
+- **Conditional fetches** (DL-229): the validator is the commit id. For a branch or tag with a validator,
+  `git ls-remote` runs first, with the same isolation and redirect rules as the fetch, and the same commit is
+  `ErrNotModified`. A commit id is pinned, so it's never rechecked. The ref is matched as `git fetch` matches it: as
+  given, then under `refs/`, `refs/tags/` and `refs/heads/`, with an annotated tag's commit taken from its peeled line.
+  A ref `ls-remote` doesn't list isn't `ErrNotModified`, so the fetch reports it.
 - **Protocols:** `gitresolver.WithProtocols(...)` changes the allowed transports. The default is `https` and `ssh`.
   Tests use it to allow `file` for repositories in temporary directories, and `http` for a test server.
 
@@ -1321,6 +1336,8 @@ These checks also cover resolvers that apps write themselves:
   type, a malformed entry, a layer that isn't a valid tar or gzip stream (once its digest checks out) or a non-regular
   file is a `*ReferenceError`, so no stale copy stands in for it. A cap is a `*TooLargeError`. Anything else, such as a
   network failure, a 401 or 403, a 5xx, a digest mismatch or an error from the credentials function, is a `*FetchError`.
+- **Conditional fetches** (DL-229): the validator is the manifest digest. The tag is resolved first anyway, so the same
+  digest is `ErrNotModified` before any blob is downloaded.
 
 #### `http` / `https`
 
@@ -1330,9 +1347,13 @@ These checks also cover resolvers that apps write themselves:
 - **Redirects:** at most 5 hops, and more is a 502 `*FetchError`. A redirect from `https` to `http` is a `*PolicyError`.
   Each hop goes through `IncludeRef.Check`, which normalises it and matches it against the allow-lists again. The final
   URL is what's fetched.
-- **Responses** (DL-208): only a 200 is content. A 404 or 410 is a `*NotFoundError`, and any other status, 204 and 304
-  included, a 502 `*FetchError`. A `Content-Length` over `MaxSize` is a 413 before the body is read. `MediaType` is the
-  `Content-Type` header, and `Identity` is `sha256:<hex>` of the body.
+- **Responses** (DL-208): only a 200 is content. A 404 or 410 is a `*NotFoundError`, and any other status, 204 included,
+  a 502 `*FetchError`. A 304 is `ErrNotModified` in answer to a conditional request, and a 502 otherwise. A
+  `Content-Length` over `MaxSize` is a 413 before the body is read. `MediaType` is the `Content-Type` header, and
+  `Identity` is `sha256:<hex>` of the body.
+- **Conditional fetches** (DL-229): the validator is the `ETag` header, weak or strong, or else `Last-Modified`,
+  recorded as `etag:<value>` or `last-modified:<value>`. The resolver sends it back as `If-None-Match` or
+  `If-Modified-Since`.
 - **No local schemes:** `file://` URLs never reach this resolver. They go to the `file` resolver, with its own
   confinement.
 - **Exact bytes:** the response body is the content, and no decompression beyond `Content-Encoding` is applied. A `.tar`
@@ -1448,6 +1469,9 @@ Remote files are cached under `{user cache dir}/{name}/includes`:
 
 - **The TTL** runs from the last successful fetch, by the loader's clock. Pinned entries are never fetched again. A TTL
   of 0 always fetches, so the cache is then only a fallback.
+- **Revalidation** (DL-229): the index entry also stores the fetch's validator. Once the TTL has passed, the loader
+  passes it to the resolver, and `ErrNotModified` restarts the TTL and uses the cached copy, shown as `revalidated` in
+  the report. A `*FetchError` while revalidating falls back to the stale copy, as for any fetch.
 - **Fetch failures:** only a `*FetchError` (a network or server failure, or a timeout) falls back to a cached copy,
   which is used with a `WarnStaleInclude` warning on the layer. A 404, a policy rejection or a bad reference fails the
   load, because they mean the config has changed. With no cached copy, the `*FetchError` fails the load.
@@ -1813,52 +1837,116 @@ defer w.Close()
 cfg := w.Current() // lock-free read of the latest good snapshot
 ```
 
-**Watch set:**
+**Watch set** (DL-224):
 
-- **Directories, not files.** The loader watches every directory where a candidate file *could* appear: each walk
-  directory, and each pattern's parent within it, such as `.config/{name}/` and `{name}/conf.d/`. It also watches the
-  user and system dirs, the bootstrap locations, and the directories of explicit config files.
-- **Missing directories:** for a directory that doesn't exist yet, the loader watches its nearest existing ancestor
-  within the same walk directory. Once the directory appears, the watch set is re-planned.
-- **Filtering:** an event is relevant only if its name matches a candidate pattern (including `conf.d` globs) or is a
-  directory on the path to one. Chmod events are ignored.
+- **Directories, not files.** A watched load records every directory it lists or tries to list: each walk directory,
+  each pattern's directory within it (such as `.config/{name}/` and `{name}/conf.d/`), glob directories, the user,
+  system and platform dirs, and the bootstrap locations. Each directory comes with a filter: the names searched for
+  there.
+- **Files named directly:** the directory of each explicit config file and of each local include is watched, filtered to
+  that file's name.
+- **Symlink targets:** for a symlinked file, the directory of its final target is watched too, filtered to the target's
+  name, so editing a target somewhere else, such as `~/dotfiles/myapp.toml`, is seen.
+- **Missing directories:** for a directory that doesn't exist yet, the loader watches its nearest existing ancestor,
+  filtered to the next path segment, however far up that is. A missing `/etc/myapp` watches `/etc` for `myapp`. Once the
+  directory appears, the reload re-plans the set.
+- **Filtering:** an event is relevant only if its name passes its directory's filter. Notifiers drop Chmod events.
 - **Symlink swaps:** for any event in a directory that holds a symlinked candidate, the symlink is resolved again, and a
   changed target counts as a change. This covers Kubernetes ConfigMap `..data` swaps, as Viper and koanf do.
 - **Re-planned after every reload,** because a reload can change the ceiling, the selected envs, the formats or the
-  folder fragments.
+  folder fragments. A failed reload re-plans from the previous set plus whatever it recorded, so a reload that fails in
+  bootstrap still watches everything the last one did.
+- **Custom scopes:** the `Scope` interface, and with it `Watchable`, comes in M9b (DL-219).
 
 **Reloading:**
 
-- **Debounced:** events are coalesced on the trailing edge, with a 100 ms quiet period and at most 1 s of delay, so one
-  save means one reload.
+- **Debounced** (DL-228): events are coalesced on the trailing edge, with a 100 ms quiet period and at most 1 s of
+  delay, so one save means one reload. Each event restarts the quiet period, but a burst reloads no later than the
+  maximum after its first event. `WithDebounce(quiet, maxWait)` changes both; a `quiet` of 0 reloads on every event.
 - **A reload works exactly like an initial load:** it decodes into a fresh value, never the previous snapshot, with
   defaults applied the same way ([api.md](api.md#defaults)).
 - **Full re-discovery,** not an incremental patch. Bootstrap, discovery, policies (permissions, confinement, trust),
   transforms and merging all run again. Precedence and dedup depend on the whole set of files, and config is small.
 - **Last good config wins:** if a reload fails (a parse error, a policy violation or a transform error), `Current()`
-  keeps the last good snapshot. The callback gets `Change.Err`, a warning is logged, and the next event retries. A
-  half-written file therefore never replaces good config. The loader never exits the process.
-- **Callbacks only on real change:** the callback runs only when the merged result changes. Touching a file or editing a
-  comment doesn't trigger it.
-- **One at a time:** callbacks are serialised, and events keep coalescing while a callback runs.
+  keeps the last good snapshot. The handler gets `Change.Err`, a `WarnReloadFailed` warning is logged, and the next
+  event retries. A half-written file therefore never replaces good config. The loader never exits the process.
+- **Callbacks only on real change:** the handler runs only when the merged result changes. Touching a file or editing a
+  comment doesn't trigger it. The exceptions (DL-222): every failed reload calls it, and so does the first good reload
+  after a failure, even with no change, so the app can clear its error state.
+- **One at a time** (DL-223): one goroutine runs a reload, then the handler, then the next reload. While the handler
+  runs, events keep coalescing, but the next reload waits for it to return. `Current()` is updated before the handler is
+  called.
 - **Manual reload:** `w.Reload(ctx)` forces one, for example on `SIGHUP`. It also re-reads env vars and `Values`
-  functions, which can't be watched.
+  functions, which can't be watched. It takes any pending events with it, cancelling the debounce timer.
 
 **What can't be watched by events:**
 
 | Source                                 | How it refreshes                                                                                       |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Remote includes                        | Pinned references never change. Unpinned ones are re-checked in the background only with `WithRemotePoll(interval)`, using ETags, `git ls-remote` or the OCI manifest digest. Otherwise they refresh on reloads, under the [cache rules](#caching). |
-| NFS, SMB and FUSE mounts; watcher limits reached | Built-in stat polling (mtime, size, inode, then a content hash), every 2 s by default. It's used with `WithPolling(interval)`, and automatically for any directory whose watch fails, with a warning.                                                     |
+| Remote includes                        | Pinned references never change. Unpinned ones are re-checked in the background only with `WithRemotePoll(d, matchers...)`, by a conditional fetch: an ETag, `git ls-remote` or the OCI manifest digest (DL-229, DL-230). Otherwise they refresh on reloads, under the [cache rules](#caching). |
+| NFS, SMB and FUSE mounts; watcher limits reached | Built-in stat polling, every 2 s by default (DL-226). `WithPolling()` polls everything, and any directory whose watch fails is polled automatically, with a `WarnWatchFailed` warning. |
 | Env vars, `Values`                     | Re-read on every reload, but changes to them never trigger one. Use a manual `Reload`.                  |
 | Embedded files, `embed.FS`             | Never; they're static.                                                                                  |
-| Custom `Scope` implementations         | An optional `Watchable` interface; without it, only on a manual `Reload`.                               |
+| Custom `Scope` implementations         | An optional `Watchable` interface, from M9b; without it, only on a manual `Reload`.                     |
 
-- **Event sources:** the core has no fsnotify dependency. Without a notifier, watching polls. The `watch/fsnotify`
-  module supplies file events through `WithNotifier`, which the ready-to-use presets register. Tests use
-  `cctest.Notifier` and `cctest.Clock`, so reload behaviour can be tested without real files or timers.
-- **Security on reload:** every check runs again. A file that becomes group-writable is ignored on the next reload, with
-  a warning, and a revoked trust approval takes effect there too.
+**Polling** (DL-226):
+
+- **What's compared:** at every interval, each polled directory is listed through the
+  [filesystem hook](#filesystem-hook), and each entry its filter matches is compared with the previous scan: type, size,
+  mode, modification time and identity (`FileSystem.SameFile`). Files that were loaded are also hashed with SHA-256,
+  which catches a same-size edit within the modification time's granularity. They're small, because `WithMaxFileSize`
+  caps them. The first scan is the baseline.
+- **Interval:** `WithPollInterval(d)` sets it for all polling, 2 s by default.
+- **Without a notifier,** everything is polled. That's the documented behaviour, so it's logged at debug level, not
+  warned.
+
+**Remote polling** (DL-230):
+
+- **Per source:** `WithRemotePoll(d, matchers...)` polls the unpinned remotes the matchers match, or every unpinned
+  remote with no matchers. The matchers are the allow-list ones, and see the normalised reference, so `Prefix("git::")`
+  selects every git include and `Prefix("oci::ghcr.io/")` one registry. When rules overlap, the most recently given
+  wins. A `d` of 0 means "don't poll these". Remote polling is off unless a rule turns it on.
+- **A poll** revalidates each matched remote the last good load used, ignoring the cache TTL. Changed content is stored
+  in the cache, and a reload is queued through the debounce. If nothing changed, nothing else happens. Without the cache
+  there's nowhere to keep validators, so each poll is a full reload instead.
+- **Gentle on servers:** each reference's next poll is jittered within ±10% of its interval, so instances started
+  together don't poll in step. A failed poll (a `*FetchError`, such as a 429 or 503) doubles that reference's interval,
+  up to 8 times the configured one, and the next success resets it. A reference used by several files is checked once
+  per poll.
+- **File events** still don't contact servers within the cache TTL.
+
+**Event sources** (DL-225):
+
+- **No fsnotify in the core.** `WithNotifier(func() (Notifier, error))` takes a factory, called once per watcher,
+  because a notifier's events have one reader. `Close` closes that watcher's notifier. A factory error makes everything
+  poll, with a warning, and `Watch` still succeeds.
+- **The contract:** `Events` carries the absolute path, in the `FileSystem`'s namespace, of any created, written,
+  removed or renamed entry. Chmod-only events are dropped by the notifier. Every error on `Errors` is a warning plus a
+  reload, because events may have been lost. A closed `Events` channel makes the whole set poll, with a warning. A
+  failed `Add` makes that one directory poll, with a warning.
+- **`watch/fsnotify`** (DL-232) supplies `fsnotify.New`, which the ready-to-use presets register.
+- **Tests** use `cctest.Notifier` and `cctest.Clock` (DL-231), so reload behaviour can be tested without real files or
+  timers.
+
+**Warnings** (DL-227): `WarnWatchFailed` (`"watch-failed"`) when a directory or the notifier falls back to polling, or
+the notifier reports an error, and `WarnReloadFailed` (`"reload-failed"`) for a failed reload. The watcher has no
+report, so they go to the logger, with the code as an attribute. A handler that panics is logged at error level.
+
+**Settled by the implementation** (DL-235):
+
+- **Everything goes through the debounce:** a change found by polling, a remote poll that found new content, and a
+  notifier error each count as an event.
+- **Directories that can't be opened** for any reason but not existing count as existing, so they're watched or polled
+  rather than skipped. That's how a directory a watch fails on is polled until it can be read.
+- **Glob directory segments** skip hidden directories, as discovery does.
+- **Polled directories are scanned again after every reload,** so the next poll compares against what the reload saw.
+  Beside a symlinked file, every entry is scanned, so a `..data` swap is seen.
+- **A notifier factory that returns nil** counts as one that failed.
+- **A remote poll** that gets new content with the same SHA-256 as the cached copy doesn't reload. One that fails with
+  any error but a `*FetchError`, or finds no cached copy, reloads, so the reload reports what's wrong.
+
+**Security on reload:** every check runs again. A file that becomes group-writable is ignored on the next reload, with a
+warning, and a revoked trust approval takes effect there too.
 
 ## Non-goals
 
@@ -2110,6 +2198,23 @@ There are no open questions.
 | 216 | OCI caps                                    | `WithMaxLayerSize(n)`, 64 MiB by default, caps each blob's declared size, download and decompressed layer; the matched file keeps the include size limit. This replaces capping decompression at the include size limit, which ruled out image-style artifacts with more than 1 MiB of files. |
 | 217 | ociresolver's API and network               | `New(WithCredentials, WithPlainHTTP, WithClient, WithMaxLayerSize)`, with the package's own `Credential` so oras types stay out; no Docker config is read. Registry redirects are followed without allow-list checks, at most 5 hops, never to http, since content is digest-verified. oras-go v2.6.4, measured by a new core-oci setup. |
 | 218 | ociresolver's errors and tests              | Missing things are `*NotFoundError`s; indexes, unsupported layers, malformed entries and non-regular files `*ReferenceError`s; caps `*TooLargeError`s; anything else `*FetchError`s. Tests use a hand-written in-memory registry; `FuzzTarEntries` fuzzes the layer reader. |
+| 219 | M9 and custom scopes                        | The `Scope` interface, and with it `Watchable`, was never scheduled. It gets its own part, M9b, after M9; until then a custom scope can't be written, and M9 watches only the built-in kinds. |
+| 220 | The watcher's API                           | `Watch[T]` and `Loader.Watch` return a `*Watcher[T]` with `Current`, `Reload` and `Close`; a failed first load returns a nil watcher and the error; a nil handler is allowed; `Close` returns the notifier's error, then nil; after `Close` or a cancelled `ctx`, `Reload` is a 499 `*BaseError` and `Current` keeps the last snapshot. Snapshots are shared and read-only, because a generic `T` can't be deep-copied cheaply. |
+| 221 | `KeyDiff`                                   | `{Path, Kind, Old, New, OldOrigin, NewOrigin}` with `DiffAdded`, `DiffRemoved` and `DiffChanged`; leaves only, an array is one leaf, and a table that becomes a scalar, or the reverse, is one `DiffChanged`; sorted by path; canonical values, deep-copied; `String()` shows no values. |
+| 222 | Failed reloads and recovery                 | A failed reload's `Change` has `Old` and `New` both the last good snapshot, the failed `Result` and `Err`. Every failed reload calls the handler, and so does the first good reload after one, even with no change. |
+| 223 | Handler calls                               | One goroutine runs a reload, then the handler, then the next reload; events keep coalescing while the handler runs; `Current` is updated first. Go has no goroutine identity, so `Close` and `Reload` recognise the handler's goroutine by its id from `runtime.Stack`: from inside, `Close` doesn't wait, and `Reload`'s handler call follows the current one. From outside, `Reload` waits for its handler call. A manual `Reload` cancels the debounce. |
+| 224 | The watch set                               | Recorded by each watched load: every directory it listed or tried to list, with a filter of the names searched there; the directories of explicit files, local includes and symlink targets, filtered to the file's name; for a missing directory, its nearest existing ancestor, filtered to the next segment, with no limit. A failed reload re-plans from the old set plus what it recorded. |
+| 225 | Notifiers                                   | `WithNotifier(func() (Notifier, error))`, a factory called once per watcher, because events have one reader. Events carry absolute paths in the `FileSystem`'s namespace; notifiers drop Chmod. An error is a warning and a reload; a closed `Events` channel polls everything; a failed `Add` polls that directory; a failed factory polls everything, and `Watch` still succeeds. |
+| 226 | Polling                                     | Each polled directory is listed, and matching entries compared by type, size, mode, modification time and `SameFile`; loaded files are also hashed. `WithPollInterval(d)` sets the interval, 2 s by default, and `WithPolling()` polls everything. This replaces DL-39's `WithPolling(interval)`, which left the fallback interval fixed. Polling without a notifier is logged at debug level. |
+| 227 | Watcher warnings                            | `WarnWatchFailed` (`"watch-failed"`) and `WarnReloadFailed` (`"reload-failed"`), logged with the code as an attribute, since the watcher has no report; a handler panic is logged at error level. |
+| 228 | Debounce rules                              | `WithDebounce(quiet, maxWait)`: each event restarts the quiet period, and a burst reloads no later than `maxWait` after its first event; `quiet` must be at least 0 and `maxWait` at least `quiet`, else an `*OptionError` from `Watch`; a `quiet` of 0 reloads on every event. |
+| 229 | Conditional fetches                         | `Fetched.Validator` and `IncludeRef.Validator`, with `ErrNotModified`: http uses the ETag, else `Last-Modified`; git runs `ls-remote` and compares the commit; OCI compares the manifest digest before any blob. The cache stores the validator and revalidates after the TTL (`"revalidated"` in the report). The loader keeps validators only if printable ASCII and at most 1 KiB. |
+| 230 | Remote polling                              | `WithRemotePoll(d, matchers...)`, per source: allow-list matchers on the normalised reference, the most recent rule winning, 0 meaning never, off by default. A poll revalidates the matched unpinned remotes, ignoring the TTL, and queues a reload only on a change; without the cache, it's a full reload. ±10% jitter, and failures back off up to 8 times the interval. This replaces DL-38's single interval. |
+| 231 | `cctest` timers and notifier                | The internal clock gains `AfterFunc`. `Clock.Advance` fires due timers in order and returns once the watcher has handled them, reload and handler call included. `cctest.NewNotifier()` has `Send`, which returns once the watcher has taken the event, `SendError`, `FailAdd`, `Watched` and `New`. Tests turn off remote-poll jitter through `cctest`. |
+| 232 | `watch/fsnotify`                            | `fsnotify.New() (cascadingconfig.Notifier, error)`, used as `WithNotifier(fsnotify.New)`; drops Chmod, reports `ErrEventOverflow`, idempotent `Close`. Requires the current `golang.org/x/sys`, not fsnotify's v0.13.0. Real-filesystem tests cover an editor's rename, a ConfigMap swap and the fallback; a core-fsnotify dependency setup is measured. |
+| 233 | Comparing values                            | A change is any difference in the canonical tree, strings compared exactly, and NaN equals NaN. Dates and times are RFC 3339 strings in the tree, so DL-77's "`time.Time` values are compared as instants" has nothing to apply to: the same instant written differently is a change, because a string field sees new text. |
+| 234 | The shape of a `Diff`                       | The pure difference of the two trees' leaves, where a leaf is a scalar, an array or an empty table: changed, removed or added by path, sorted segment by segment. It replaces DL-221's "a table that becomes a scalar is one `DiffChanged`", and it's the only rule tested in which every changed key has its own entry; entries nest when a value changes shape ([decision record 0003](decisions/0003-watch-diff-shape.md)). |
+| 235 | Details the M9 implementation settled      | Polls, remote polls with new content and notifier errors all count as events, through the debounce; notifier errors are `WarnWatchFailed`; a directory that can't be opened but exists is watched or polled; glob directory segments skip hidden directories; polled directories are rescanned after each reload; git's `ls-remote` matches a ref as `fetch` does; `cctest.Clock.Timers` reports the waiting timers. |
 
 ---
 

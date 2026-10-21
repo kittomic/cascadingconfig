@@ -2,6 +2,7 @@ package cascadingconfig
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -25,7 +26,14 @@ type Fetched struct {
 	Content   []byte
 	MediaType string // the media type the transport reports, if any, such as http's Content-Type
 	Identity  string // the canonical identity, such as a commit id or digest; empty means sha256:<hex> of Content
+	// Validator is an opaque value the resolver wants back in IncludeRef.Validator next time, such as an ETag
+	// (DL-229). The loader keeps it only if it's printable ASCII and at most 1 KiB.
+	Validator string
 }
+
+// ErrNotModified is returned by a resolver, wrapped or not, when the source still matches IncludeRef.Validator, so the
+// loader uses its copy (DL-229).
+var ErrNotModified = errors.New("cascadingconfig: not modified")
 
 // Remote describes a remote include in the report (DL-203).
 type Remote struct {
@@ -33,7 +41,7 @@ type Remote struct {
 	Ref      string `json:"ref"` // the normalised reference
 	Identity string `json:"identity,omitempty"`
 	Pinned   bool   `json:"pinned"`
-	Cache    string `json:"cache,omitempty"` // "" when fetched, "cached", or "stale"
+	Cache    string `json:"cache,omitempty"` // "" when fetched, "cached", "revalidated", or "stale"
 }
 
 // The defaults for remote includes (DL-198, DL-199, DL-207, DL-210).

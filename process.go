@@ -296,6 +296,7 @@ func (ld *loading) resolveInclude(from, root *entry, raw string, ancestors, foun
 		return fail(&ReferenceError{BaseError: about(fmt.Errorf("%q: %w", raw, err))}, "")
 	}
 	l.Path = abs
+	ld.watchFile(abs)
 	if !pol.usable(c, "file") {
 		return reject(fmt.Sprintf(`can't be included: the %s policy doesn't allow the scheme "file"`, name), `the scheme "file" isn't allowed`)
 	}
@@ -356,6 +357,7 @@ func (ld *loading) resolveInclude(from, root *entry, raw string, ancestors, foun
 		return fail(tooLarge(l, int64(len(data)), c.maxFileSize), "")
 	}
 	e.data = data
+	ld.watchLoaded(abs, target)
 	for _, f := range found {
 		if f.info != nil && c.fsys.SameFile(f.info, info) && f.layer.Trust > e.layer.Trust {
 			e.layer.Scope, e.layer.Trust = f.layer.Scope, f.layer.Trust
