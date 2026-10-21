@@ -5,6 +5,7 @@ decided or proposed. Names and signatures may still be refined while the API is 
 
 ## Overview
 
+<!-- example -->
 ```go
 loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset /*, opts... */)
 
@@ -90,6 +91,7 @@ So **layouts live in the core, and ready-to-use presets live in a separate modul
 
 ### Examples
 
+<!-- example -->
 ```go
 // Batteries included: everything mise does.
 import "github.com/kittomic/cascadingconfig/presets/mise"
@@ -97,6 +99,7 @@ import "github.com/kittomic/cascadingconfig/presets/mise"
 loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset)
 ```
 
+<!-- example -->
 ```go
 // Minimal: mise's layout, TOML only. Core layouts register no remotes and no fsnotify.
 // Module graph: cascadingconfig, mapstructure, cascadingconfig/format/toml, go-toml.
@@ -861,6 +864,7 @@ var Preset cascadingconfig.Preset
 
 ### Example
 
+<!-- example -->
 ```go
 import (
 	"github.com/kittomic/cascadingconfig"
@@ -1016,6 +1020,7 @@ type Change[T any] struct {
 
 Defaults are a **scope**: the lowest layer of every load. `WithDefaults` builds that scope from a Go value:
 
+<!-- example -->
 ```go
 cascadingconfig.WithDefaults(Config{
 	Port: 8080,
@@ -1262,6 +1267,7 @@ func RequireConfig(level Require, scopes ...ScopeName) Option
   means "a system config file must exist".
 - **Several requirements combine.** Each `RequireConfig` option adds a requirement, and all of them must hold:
 
+<!-- example -->
 ```go
 cascadingconfig.RequireConfig(cascadingconfig.RequireAny),                                  // something, anywhere
 cascadingconfig.RequireConfig(cascadingconfig.RequireFile|cascadingconfig.RequireNonEmpty,  // and a real system file

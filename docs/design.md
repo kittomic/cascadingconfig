@@ -165,6 +165,7 @@ Each preset declares its default set of scopes. Two modifiers change it, and the
 - **`WithScopes(...)`** *replaces* the current set with exactly the scopes listed.
 - **`WithoutScopes(...)`** *removes* the listed scopes from the current set.
 
+<!-- example -->
 ```go
 // a system daemon: only /etc/{name} (or %ProgramData%\{name})
 misehardened.Preset.Extend(
@@ -217,21 +218,22 @@ Modifiers apply **in order**, left to right, and across chained `Extend` calls. 
 Apps can define new scopes alongside `system`, `user`, `project` and `override`. Per-scope policies let each custom
 scope carry its own trust level.
 
+<!-- example -->
 ```go
 mise.Preset.Extend(
 	// Built-in defaults compiled into the binary, below everything else.
-	cascadingconfig.WithScope("defaults",
-		cascadingconfig.EmbeddedFS(defaultsFS, "{name}.toml"),
+	cascadingconfig.WithScope("builtin",
+		cascadingconfig.EmbeddedFS(defaultsFS, cascadingconfig.Pattern{Template: "{name}.toml"}),
 		cascadingconfig.Before(cascadingconfig.ScopeSystem),
 		cascadingconfig.Trust(cascadingconfig.TrustSystem),
 	),
 	// Kubernetes-mounted config, above user config.
 	cascadingconfig.WithScope("mounted",
-		cascadingconfig.FixedDir("/run/secrets/{name}", "config.{ext}"),
+		cascadingconfig.FixedDir("/run/secrets/{name}", cascadingconfig.Pattern{Template: "config.{ext}"}),
 		cascadingconfig.After(cascadingconfig.ScopeUser),
 	),
 	cascadingconfig.WithScopes(
-		"defaults", cascadingconfig.ScopeSystem, cascadingconfig.ScopeUser, "mounted",
+		"builtin", cascadingconfig.ScopeSystem, cascadingconfig.ScopeUser, "mounted",
 		cascadingconfig.ScopeProject, cascadingconfig.ScopeOverride,
 	),
 )
@@ -567,6 +569,7 @@ that several layers contributed to is `Merged` (see [`Origin`](api.md#result-rep
 
 #### Example: mise's section semantics as rules
 
+<!-- example -->
 ```go
 cascadingconfig.WithMergeRule("tools.*", cascadingconfig.Replace)   // nearest tool entry replaces it whole
 cascadingconfig.WithMergeRule("tasks.*", cascadingconfig.Replace)   // nearest task replaces it whole
@@ -868,6 +871,7 @@ defaults.
 Every file the loader decodes gets its format from rules (DL-141), so names without an extension, such as cosmiconfig's
 `.{name}rc`, can be read:
 
+<!-- example -->
 ```go
 cascadingconfig.WithFileFormat(cascadingconfig.FileName(".{name}rc"), "yaml", "json") // YAML if registered, else JSON
 cascadingconfig.WithFileFormat(cascadingconfig.Extension(".conf", ".cfg"), "toml")
@@ -1165,6 +1169,7 @@ with `WithoutIncludeResolver("git")`.
 
 Each resolver can have an allow-list. There is also an allow-list that applies to every scheme:
 
+<!-- example -->
 ```go
 cascadingconfig.WithDefaultPolicy(
 	cascadingconfig.Allow( // every scheme
@@ -1402,6 +1407,7 @@ All the resolver rules can differ by scope, so each scope can have its own trust
 - the file permission policy (`FilePermissions(...)`, see
   [Filesystem hook](#filesystem-hook))
 
+<!-- example -->
 ```go
 misehardened.Preset.Extend(
 	cascadingconfig.WithIncludeResolver(httpresolver.New()),
@@ -1679,6 +1685,7 @@ with every character outside `[A-Z0-9]` replaced by `_`.
 
 Like a CLI's `--config` flag, the app or the user can name files directly:
 
+<!-- example -->
 ```go
 cascadingconfig.WithConfigFiles(flagValues...) // usually fed from a --config flag
 ```
@@ -1739,6 +1746,7 @@ Single config values can be overridden from environment variables or command-lin
 **custom scope kinds**, not a built-in scope. No preset includes them, because how variable names map to keys depends on
 the app's schema.
 
+<!-- example -->
 ```go
 mise.Preset.Extend(
 	cascadingconfig.WithScope("env",
@@ -1798,6 +1806,7 @@ value outside the canonical types, is a code-500 `*BaseError` whose `Op` is `Val
 Apps can rewrite config trees with transform hooks, for example to expand templates such as `{{ config_root }}` or
 `${HOME}`. **No template language is built in.**
 
+<!-- example -->
 ```go
 cascadingconfig.WithLayerTransform(func(
 	ctx context.Context, l cascadingconfig.Layer, tree cascadingconfig.Tree,
@@ -1854,6 +1863,7 @@ Our case is harder than either library's: discovery spans many directories and m
 
 **API** (decided in [api.md](api.md#load-and-watch)):
 
+<!-- example -->
 ```go
 w, err := cascadingconfig.Watch[Config](ctx, loader, func(c cascadingconfig.Change[Config]) {
 	// c.Old, c.New: decoded snapshots; c.Diff: changed keys with provenance; c.Err: reload failure
@@ -2259,7 +2269,7 @@ There are no open questions.
 | 247 | Explicit-only loads keep value scopes       | Under `WithConfigFilesOnly()`, explicit files replace only scopes that search for files, at the place of the highest of them; `Values`, `ValuesFunc`, `EnvVars` and the defaults still take their places, as DL-153 and DL-154 say, so flags above them still beat the file. Until now they were dropped too. |
 | 248 | The ready-to-use presets                    | `mise.Preset` is `MiseLayout` with TOML, YAML, `httpresolver`, `gitresolver`, `ociresolver` and `WithNotifier(fsnotify.New)`; `misehardened.Preset` is `MiseHardenedLayout` with TOML, YAML and fsnotify; `cosmiconfig.Preset` is `CosmiconfigLayout` with YAML and fsnotify. Resolvers take their default options. Each is built with `ExtendAs` under its own name, a package variable that's never reassigned. |
 | 249 | The presets module                          | It requires the core, `format/toml`, `format/yaml`, `ociresolver` and `watch/fsnotify` through `replace` directives until the first release (DL-162). |
-| 250 | Doc examples                                | The usage snippets in design.md and api.md, 15 of their 45 Go blocks, are Go `Example` functions in the presets module, each holding its snippet unchanged plus its setup; a drift test checks every snippet appears in one. A wrong snippet is fixed in the doc. The 30 signature listings are checked against the API in M11. |
+| 250 | Doc examples                                | The usage snippets in design.md and api.md, 16 of their 46 Go blocks, each marked `<!-- example -->`, are Go `Example` functions in the presets module, each holding its snippet unchanged plus its setup; a drift test checks every snippet appears in one. A wrong snippet is fixed in the doc. Snippets' `import` lines are left out of the check, and a snippet with top-level declarations is a compiled `package main`. The 30 signature listings are checked against the API in M11. |
 | 251 | Checks on the presets                       | Each preset ranks a rich fixture exactly as its layout does; each registered format loads; in `mise.Preset`, `http` fetches end to end and `git` and `oci` reach their resolvers (a 502 for an unreachable host, not a 501); `misehardened.Preset` rejects remotes with a 501; each preset's default notifier reloads a real directory. |
 | 252 | The presets' dependency budget              | `check-deps.sh` gains a setup per preset package: `misehardened` 5/5/5/9 and `mise` 9/9/9/11 as measured in M6, and `cosmiconfig` 4/4/4 with its graph count measured. |
 
