@@ -131,6 +131,7 @@ stub blank-imports its real library. A small consumer app was then created for e
 | **Minimal: core + TOML**                        |  **2** |  **2** | **2** | **2** |
 | Core + TOML + YAML                              |      3 |      3 |     3 |     3 |
 | Core + OCI (`ociresolver`, measured in M8c)     |      5 |      5 |     5 |     7 |
+| Core + fsnotify (`watch/fsnotify`, measured in M9) |    3 |      3 |     3 |     3 |
 | `misehardened` (TOML, YAML, fsnotify)             |      5 |      5 |     5 |     5 |
 | `mise`, everything (adds OCI, http, git)        |      9 |      9 |     9 |    11 |
 | `misehardened`, imported from one `presets` module |     5 |      5 |     5 |     9 |
@@ -161,7 +162,8 @@ stub blank-imports its real library. A small consumer app was then created for e
   `oras-go`, `go-digest` and `image-spec` (9 instead of 5). So the cost of one module is limited to tools that read the
   full module graph.
 - **`golang.org/x/sys` resolves to v0.13.0,** because that's what fsnotify v1.10.1 requires. That version dates from
-  2023. `watch/fsnotify` should require a current `x/sys`, so that consumers get it through minimum version selection.
+  2023. `watch/fsnotify` requires a current `x/sys` (DL-232), so that consumers get it through minimum version
+  selection.
 - **The `git` and `http(s)` resolvers add nothing** to any count, because they use only the standard library and the
   `git` program.
 - **Caveat:** the stubs blank-import one or two packages from each library. Real code may import more packages from the

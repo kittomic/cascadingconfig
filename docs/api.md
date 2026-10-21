@@ -261,7 +261,7 @@ Options that only make sense in one place get their own type, so the compiler re
 | `ScopeOption`  | `WithScope(name, kind, …)`                   | `Before`, `After`, `Trust`                                                                  |
 | `PolicyOption` | `WithDefaultPolicy`, `WithScopePolicy`       | `InheritDefault`, `AllowResolvers`, `Allow`, `AllowFor`, `RequirePinned`, `Confine`, `RequireTrust`, `FilePermissions` |
 | `Matcher`      | `Allow`, `AllowFor`, `WithFileFormat`        | `Extension`, `FileName`, `Prefix`, `Glob`, `Regexp`, `MatchFunc`, and `MatchRef` (allow-lists only) |
-| `WatchOption`  | `Watch`, `Watch[T]`                          | `WithDebounce`, `WithPolling`, `WithRemotePoll`, `WithReloadOnAnyEvent`                     |
+| `WatchOption`  | `Watch`, `Watch[T]`                          | `WithDebounce`, `WithPolling`, `WithPollInterval`, `WithRemotePoll`, `WithReloadOnAnyEvent` |
 | `EnvVarsOption` | `EnvVars(prefix, …)`                        | `MapEnv`                                                                                    |
 
 - **Watch options go on the `Watch` call,** not on the loader, because watching is optional. A loader that's never
@@ -744,6 +744,70 @@ type Credential struct {
 }
 ```
 
+#### Settled in M9
+
+```go
+// Watching (DL-220 to DL-223)
+func Watch[T any](ctx context.Context, l *Loader, fn func(Change[T]), opts ...WatchOption) (*Watcher[T], error)
+func (l *Loader) Watch(ctx context.Context, fn func(Change[Tree]), opts ...WatchOption) (*Watcher[Tree], error)
+
+type Watcher[T any] struct { /* … */ }
+func (w *Watcher[T]) Current() T                     // the latest good snapshot, shared and read-only
+func (w *Watcher[T]) Reload(ctx context.Context) error
+func (w *Watcher[T]) Close() error                   // the notifier's Close error, then nil
+
+type Change[T any] struct {
+	Old, New T       // New is the last good config if Err != nil
+	Result   *Result // the reload's result; a failed one has a nil tree
+	Diff     []KeyDiff
+	Err      error
+}
+
+type KeyDiff struct {
+	Path                 Path
+	Kind                 DiffKind // DiffAdded, DiffRemoved, DiffChanged
+	Old, New             any      // canonical values, deep-copied; nil on the missing side
+	OldOrigin, NewOrigin Origin   // zero on the missing side
+}
+func (d KeyDiff) String() string // kind, path and the origins' files; never values
+
+// Watch options (DL-226, DL-228, DL-230)
+func WithDebounce(quiet, max time.Duration) WatchOption    // default 100 ms, 1 s
+func WithPollInterval(d time.Duration) WatchOption         // all polling; default 2 s
+func WithPolling() WatchOption                             // poll everything, without the notifier
+func WithRemotePoll(d time.Duration, m ...Matcher) WatchOption // the matched unpinned remotes; 0 means never
+func WithReloadOnAnyEvent() WatchOption
+
+// Event source (DL-225)
+func WithNotifier(newNotifier func() (Notifier, error)) Option
+
+// Conditional fetches (DL-229)
+//   Fetched.Validator string; IncludeRef.Validator string
+var ErrNotModified = errors.New("cascadingconfig: not modified")
+
+// Added to existing types:
+//   Remote.Cache gains "revalidated"
+//   WarnWatchFailed ("watch-failed"), WarnReloadFailed ("reload-failed")
+
+// cctest (DL-231)
+func NewNotifier() *Notifier
+func (n *Notifier) New() (cascadingconfig.Notifier, error) // pass to WithNotifier
+func (n *Notifier) Send(path string)                       // returns once the watcher has taken the event
+func (n *Notifier) SendError(err error)
+func (n *Notifier) FailAdd(dir string, err error)
+func (n *Notifier) Watched() []string
+//   Clock.Advance now fires due timers and returns once the watcher has handled them
+
+// watch/fsnotify (DL-232)
+func New() (cascadingconfig.Notifier, error)
+```
+
+- **Option errors:** from `Watch`, as `*OptionError`s: a negative `quiet`, a `max` below `quiet`, a poll interval that
+  isn't positive, and a negative remote poll interval. A nil notifier factory is an `*OptionError` from `New`.
+- **`Close` and `Reload` from the handler** (DL-223): `Close` returns without waiting, and `Reload` runs the reload and
+  returns, with its handler call after the current one. From any other goroutine, both wait.
+- **`Report.String()`** shows `(revalidated)` like `(cached)`.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
@@ -957,8 +1021,9 @@ cascadingconfig.WithDefaults(Config{
 
 - **`ctx` bounds the watcher.** Cancelling it stops watching, as `Close` does.
 - **`Close`** is idempotent. It waits for a running handler to return, and it's safe to call from inside the handler,
-  where it returns without waiting.
-- **`Reload(ctx)`** returns an `error`. It calls the handler only if the reload changed something or failed.
+  where it returns without waiting (DL-223).
+- **`Reload(ctx)`** returns an `error`. It calls the handler only if the reload changed something, failed, or is the
+  first good reload after a failure (DL-222).
 - **What counts as a change:** a difference in the merged values. `time.Time` values are compared as instants (`Equal`),
   and NaN equals NaN. A value that moves to another file with the same value isn't a change, unless
   `WithReloadOnAnyEvent` is set.
@@ -972,6 +1037,8 @@ cascadingconfig.WithDefaults(Config{
 - **The loader is safe for concurrent use.** Several goroutines can call `Load` at once, alongside a watcher.
 - **App callbacks must be too.** Transforms, matchers, `MergeFunc`s, `ValuesFunc`, `MapEnv`, permission policies, trust
   stores, and custom scopes, decoders and resolvers can all be called from several goroutines at once.
+- **Watch snapshots are the exception** (DL-220): `Current()` and `Change.Old` and `New` share one decoded value,
+  because a generic `T` can't be deep-copied cheaply. Treat them as read-only. `KeyDiff` values are copies.
 - **Callers own what they get.** Every callback receives its own deep copy of any tree, so it can modify it freely.
   `Result.Tree()` also returns a copy, so changing it can't affect the report, a watch snapshot or another caller.
 - **Transforms run only on layers that will merge.** Layers that are ignored, untrusted, empty, or not chosen by a
@@ -1483,7 +1550,8 @@ type Root interface {
 	Close() error
 }
 
-// Notifier supplies file-change events for watching. Implemented by watch/fsnotify.
+// Notifier supplies file-change events for watching. Implemented by watch/fsnotify. Settled in M9 (DL-225): events
+// carry absolute paths in the FileSystem's namespace, and Chmod-only events are dropped.
 type Notifier interface {
 	Add(dir string) error
 	Remove(dir string) error
@@ -1497,7 +1565,8 @@ type Scope interface {
 	Discover(ctx context.Context, d Discovery) ([]Source, error)
 }
 
-// Watchable is optionally implemented by a Scope that can report what to watch.
+// Watchable is optionally implemented by a Scope that can report what to watch. Scope and Watchable come in M9b
+// (DL-219).
 type Watchable interface {
 	WatchDirs(ctx context.Context, d Discovery) ([]string, error)
 }
@@ -1548,10 +1617,14 @@ exercise the loader without real files or timers:
   - **Methods:** `WriteFile`, `Mkdir`, `Symlink`, `Link` (a hard link), `Mkfifo`, `Chmod`, `Chown` and `Remove`. A file
     never given an owner with `Chown` reports none (`ok == false`), so owner checks are opt-in (DL-191).
   - **Safe for concurrent use,** so watch tests can change it while a watcher reads it.
-- **`cctest.Notifier`:** a fake `Notifier` whose events the test triggers.
+- **`cctest.Notifier`:** a fake `Notifier` whose events the test triggers (DL-231). `Send(path)` returns once the
+  watcher has taken the event, so a test's next `Advance` can't race it. `SendError`, `FailAdd` and `Watched` cover
+  errors, failed watches and the watch set, and `New` is the factory for `WithNotifier`.
 - **`cctest.Clock`:** a fake clock for debounce, TTLs and polling. The loader's clock is internal, and `cctest` is the
   only way to replace it, so the public API has no `WithClock` option. `cctest.NewClock(t)` starts one at `t`, with
-  `Now`, `Advance` and `Set`, and `cctest.WithClock(c)` gives it to a loader (DL-209). M9 adds timers.
+  `Now`, `Advance` and `Set`, and `cctest.WithClock(c)` gives it to a loader (DL-209). Since M9 (DL-231), `Advance`
+  fires the timers that fall due, in order, and returns once the watcher has handled them, including any reload and
+  handler call.
 - **`cctest.Host`:** a fake host: env vars, home dir, current dir, `GOOS`, `GOARCH` and the current user's UID. The
   loader reads all of these through an internal host interface, never from the process directly, and `cctest` is the
   only way to replace it. So tests can run in parallel, and Windows and platform-environment behaviour can be tested on
