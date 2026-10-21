@@ -1,7 +1,3 @@
-// The snippets below are the docs', unchanged (DL-250). They leave out error handling and name unused parameters for
-// readability, so those checks don't apply to this file.
-//
-//nolint:revive,ineffassign,staticcheck // verbatim doc snippets
 package mise_test
 
 import (
@@ -22,7 +18,8 @@ import (
 
 // The examples hold every usage snippet marked <!-- example --> in docs/design.md and docs/api.md (DL-250), each
 // unchanged but for its indentation, or a variable it's assigned to, with the setup it needs around it.
-// TestDocExamples checks that they do. Most run against a cctest.FS on a fake Linux host.
+// TestDocExamples checks that they do. Every example that loads runs against a cctest.FS on a fake Linux host, never
+// the real one. .golangci.yml exempts this file from the linters that the snippets' brevity trips.
 
 // Config is the app's config type the snippets decode into.
 type Config struct {
@@ -288,8 +285,11 @@ func Example_watch() {
 	// Output: 7
 }
 
-// api.md: Package layout, batteries included. It runs on the real host, building a loader only.
+// api.md: Package layout, batteries included. The local mise shadows the package, so the snippet's mise.Preset runs
+// on a cctest.FS.
 func Example_batteriesIncluded() {
+	mise := struct{ Preset cascadingconfig.Preset }{mise.Preset.Extend(world(nil, nil))}
+
 	// Batteries included: everything mise does.
 	loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset)
 
@@ -297,7 +297,7 @@ func Example_batteriesIncluded() {
 	// Output: true <nil>
 }
 
-// api.md: Package layout, minimal. It runs on the real host, building a loader only.
+// api.md: Package layout, minimal. It builds a loader on the real host, but never loads, so it reads no files there.
 func Example_minimal() {
 	// Minimal: mise's layout, TOML only. Core layouts register no remotes and no fsnotify.
 	// Module graph: cascadingconfig, mapstructure, cascadingconfig/format/toml, go-toml.
@@ -346,9 +346,14 @@ func Example_requireConfig() {
 	// 404
 }
 
-// api.md: Overview. The snippet builds its loader with no options, so it runs on the real host, where an app named
-// myapp has no config.
+// api.md: Overview. The local mise shadows the package, so the snippet's mise.Preset, which it uses with no options,
+// runs on a cctest.FS with a fake notifier.
 func Example_overview() {
+	mise := struct{ Preset cascadingconfig.Preset }{mise.Preset.Extend(
+		world(map[string]string{"/home/me/work/myapp.toml": "port = 5\n"}, nil),
+		cascadingconfig.WithNotifier(cctest.NewNotifier().New),
+	)}
+
 	loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset /*, opts... */)
 
 	// typed: the main use case
@@ -366,5 +371,5 @@ func Example_overview() {
 
 	_, _, _ = err, tree, report
 	fmt.Println(cfg.Port)
-	// Output: 0
+	// Output: 5
 }
