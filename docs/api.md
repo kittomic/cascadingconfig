@@ -885,12 +885,21 @@ func main() {
 		cascadingconfig.WithConfigFiles(flagConfigFiles...),
 		cascadingconfig.WithEnvs(flagEnvs...),
 	)
-	// …
+	if err != nil {
+		log.Fatal(err)
+	}
 	cfg, err := cascadingconfig.Load[Config](ctx, loader)
-	// …
+	if err != nil {
+		log.Fatal(err)
+	}
+	run(cfg)
 	w, err := cascadingconfig.Watch[Config](ctx, loader, onChange,
 		cascadingconfig.WithDebounce(200*time.Millisecond, 2*time.Second),
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer w.Close()
 }
 ```
 
