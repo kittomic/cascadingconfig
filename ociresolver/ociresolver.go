@@ -39,34 +39,38 @@ type Credential struct {
 	AccessToken        string // a registry token, used as it is
 }
 
-// Option configures the resolver.
-type Option func(*resolver)
+// Option configures the resolver. It's sealed: only this package's With functions make one (DL-258).
+type Option interface{ apply(r *resolver) }
+
+type optionFunc func(r *resolver)
+
+func (f optionFunc) apply(r *resolver) { f(r) }
 
 // WithCredentials supplies credentials for each registry, by host[:port]. By default none are sent, and
 // ~/.docker/config.json isn't read.
 func WithCredentials(f func(ctx context.Context, registry string) (Credential, error)) Option {
-	return func(r *resolver) { r.creds = f }
+	return optionFunc(func(r *resolver) { r.creds = f })
 }
 
 // WithPlainHTTP allows plain HTTP for the registries named, by host[:port], for tests and local registries only. Every
 // other registry uses https.
 func WithPlainHTTP(hosts ...string) Option {
-	return func(r *resolver) {
+	return optionFunc(func(r *resolver) {
 		for _, h := range hosts {
 			r.plain = append(r.plain, strings.ToLower(h))
 		}
-	}
+	})
 }
 
 // WithClient sets the HTTP client. The resolver copies it, so c isn't changed.
 func WithClient(c *http.Client) Option {
-	return func(r *resolver) { r.client = c }
+	return optionFunc(func(r *resolver) { r.client = c })
 }
 
 // WithMaxLayerSize caps each blob's declared size, each download and each decompressed layer; the default is 64 MiB
 // (DL-216).
 func WithMaxLayerSize(n int64) Option {
-	return func(r *resolver) { r.maxLayer = n }
+	return optionFunc(func(r *resolver) { r.maxLayer = n })
 }
 
 // New returns a resolver for oci includes (DL-215). It resolves the reference to a manifest digest, then finds the file
@@ -75,7 +79,7 @@ func WithMaxLayerSize(n int64) Option {
 func New(opts ...Option) cascadingconfig.IncludeResolver {
 	r := &resolver{maxLayer: defaultMaxLayer, cache: auth.NewCache()}
 	for _, o := range opts {
-		o(r)
+		o.apply(r)
 	}
 	if r.maxLayer <= 0 {
 		r.maxLayer = defaultMaxLayer

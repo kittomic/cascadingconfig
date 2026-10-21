@@ -28,34 +28,38 @@ var protocolVersion = "2"
 // maxRedirects is how many redirects the resolver follows for an http or https repo, as httpresolver does (DL-213).
 const maxRedirects = 5
 
-// Option configures the resolver.
-type Option func(*resolver)
+// Option configures the resolver. It's sealed: only this package's With functions make one (DL-258).
+type Option interface{ apply(r *resolver) }
+
+type optionFunc func(r *resolver)
+
+func (f optionFunc) apply(r *resolver) { f(r) }
 
 // WithProtocols sets the transports git may use, such as "https", "ssh", "http" or "file". The default is https and
 // ssh. A repo URL with any other scheme is a *PolicyError, before git runs (DL-212).
 func WithProtocols(protocols ...string) Option {
-	return func(r *resolver) {
+	return optionFunc(func(r *resolver) {
 		r.protocols = nil
 		for _, p := range protocols {
 			r.protocols = append(r.protocols, strings.ToLower(p))
 		}
-	}
+	})
 }
 
 // WithCredentialHelper sets git's credential.helper. By default there is none, and git never prompts.
 func WithCredentialHelper(helper string) Option {
-	return func(r *resolver) { r.helper = helper }
+	return optionFunc(func(r *resolver) { r.helper = helper })
 }
 
 // WithGit sets the git program. By default it's found on PATH.
 func WithGit(path string) Option {
-	return func(r *resolver) { r.git = path }
+	return optionFunc(func(r *resolver) { r.git = path })
 }
 
 // WithClient sets the HTTP client that follows an http or https repo URL's redirects before git runs (DL-213). The
 // resolver copies it, so c isn't changed.
 func WithClient(c *http.Client) Option {
-	return func(r *resolver) { r.client = c }
+	return optionFunc(func(r *resolver) { r.client = c })
 }
 
 // New returns a resolver for git includes (DL-211). It reads the file from the object database of a fresh bare repo,
@@ -64,7 +68,7 @@ func WithClient(c *http.Client) Option {
 func New(opts ...Option) cascadingconfig.IncludeResolver {
 	r := &resolver{protocols: []string{"https", "ssh"}}
 	for _, o := range opts {
-		o(r)
+		o.apply(r)
 	}
 	return r
 }

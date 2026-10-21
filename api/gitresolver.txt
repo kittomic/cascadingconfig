@@ -3,4 +3,5 @@ func WithClient(*http.Client) Option
 func WithCredentialHelper(string) Option
 func WithGit(string) Option
 func WithProtocols(...string) Option
-type Option func(*resolver)
+type Option interface
+type Option interface, unexported methods
