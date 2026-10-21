@@ -6,6 +6,12 @@ go 1.26.0
 // the repository's copy (DL-162). M11 replaces this with the released version.
 replace github.com/kittomic/cascadingconfig => ../../
 
-require github.com/kittomic/cascadingconfig v0.0.0-00010101000000-000000000000
+require (
+	github.com/fsnotify/fsnotify v1.10.1
+	github.com/kittomic/cascadingconfig v0.0.0-00010101000000-000000000000
+)
 
-require github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+require (
+	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+)
