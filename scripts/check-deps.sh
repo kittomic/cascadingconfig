@@ -17,20 +17,18 @@ setups=(
 	"core-toml-yaml|3 3 3 3|${repo} ${repo}/format/toml ${repo}/format/yaml"
 	"core-oci|5 5 5 7|${repo} ${repo}/ociresolver"
 	"core-fsnotify|3 3 3 3|${repo} ${repo}/watch/fsnotify"
+	"presets-mise|9 9 9 11|${repo}/presets/mise"
+	"presets-misehardened|5 5 5 9|${repo}/presets/misehardened"
+	"presets-cosmiconfig|4 4 4 9|${repo}/presets/cosmiconfig"
 )
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# module_of maps an imported package to its module in this repository.
-module_of() {
-	case "$1" in
-	"${repo}/format/"*) echo "${repo}/format/$(echo "${1#"${repo}/format/"}" | cut -d/ -f1)" ;;
-	"${repo}/ociresolver"*) echo "${repo}/ociresolver" ;;
-	"${repo}/watch/"*) echo "${repo}/watch/$(echo "${1#"${repo}/watch/"}" | cut -d/ -f1)" ;;
-	*) echo "$repo" ;;
-	esac
-}
+# modules lists every module in this repository, as "path dir", for the consumers' replace directives: a module
+# that requires its siblings, such as presets, needs them replaced in the consumer too, and an unused replace changes no
+# count.
+modules="$(cd "$root" && GOWORK="$root/go.work" go list -m -f '{{.Path}} {{.Dir}}')"
 
 # third_party filters out this repository's modules and the consumer itself.
 third_party() {
@@ -51,9 +49,9 @@ for setup in "${setups[@]}"; do
 		echo
 		echo "go 1.26.0"
 		echo
-		for m in $(for p in $pkgs; do module_of "$p"; done | sort -u); do
-			echo "replace $m => $root${m#"$repo"}"
-		done
+		while read -r path moddir; do
+			echo "replace $path => $moddir"
+		done <<<"$modules"
 	} >"$dir/go.mod"
 	{
 		echo "package main"

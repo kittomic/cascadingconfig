@@ -748,21 +748,27 @@ M10 is split into two parts (DL-242), each with its own gap list, test review, P
 
 ### M10b: Presets
 
-**Scope:** `mise.Preset`, `misehardened.Preset` and `cosmiconfig.Preset` in the `presets` module.
+**Scope:** `mise.Preset`, `misehardened.Preset` and `cosmiconfig.Preset` in the `presets` module, as decided in DL-248
+to DL-252.
 
 **Acceptance tests:**
 
-- **End to end:** every Go example in design.md and api.md runs as a test against `cctest.FS`.
-- **Composition:** each preset's layout and registered capabilities match
-  [Layouts vs presets](api.md#layouts-vs-presets).
-- **Order:** each preset ranks files exactly as its layout does in precedence.md.
-- **Dependency budget:** each preset matches the measured counts (5 for `misehardened`, 9 for `mise`).
+- **Doc examples** (DL-250): every usage snippet in design.md and api.md is an `Example` function that runs against
+  `cctest.FS`, and a drift test checks each snippet appears in one, unchanged.
+- **Composition** (DL-248, DL-251): each preset's name, layout and capabilities match
+  [Layouts vs presets](api.md#layouts-vs-presets): each format loads; `mise.Preset`'s `http` resolver fetches, and its
+  `git` and `oci` resolvers are registered; `misehardened.Preset` rejects remotes; each default notifier reloads a real
+  directory.
+- **Order** (DL-251): each preset ranks a rich fixture exactly as its layout does.
+- **Dependency budget** (DL-252): a `check-deps.sh` setup per preset package.
 
 ## M11: Release preparation
 
 Not test-first.
 
 - **Documentation:** a README with quick starts for each preset, and package documentation.
+- **API listings** (DL-250): the signature listings in api.md and design.md are checked against the packages' real APIs,
+  for example with `go/types`, so a renamed or changed function can't stay documented.
 - **Examples:** a `examples/` module, not released.
 - **Licences:** confirm that the licences of `mapstructure`, `go-toml`, `go-yaml`, `fsnotify` and `oras-go` are
   compatible with Apache-2.0, and check their maintenance status (an open item from

@@ -5,6 +5,7 @@ decided or proposed. Names and signatures may still be refined while the API is 
 
 ## Overview
 
+<!-- example -->
 ```go
 loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset /*, opts... */)
 
@@ -90,6 +91,7 @@ So **layouts live in the core, and ready-to-use presets live in a separate modul
 
 ### Examples
 
+<!-- example -->
 ```go
 // Batteries included: everything mise does.
 import "github.com/kittomic/cascadingconfig/presets/mise"
@@ -97,6 +99,7 @@ import "github.com/kittomic/cascadingconfig/presets/mise"
 loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset)
 ```
 
+<!-- example -->
 ```go
 // Minimal: mise's layout, TOML only. Core layouts register no remotes and no fsnotify.
 // Module graph: cascadingconfig, mapstructure, cascadingconfig/format/toml, go-toml.
@@ -832,6 +835,18 @@ type Watchable interface { // optional
   `Tree`, with an unregistered `Format` or with non-canonical values is a 500, as is an uncoded error from `Discover`. A
   missing `Path` is a `*NotFoundError`.
 
+#### Settled in M10b
+
+```go
+// presets/mise, presets/misehardened, presets/cosmiconfig (DL-248); never reassign them
+var Preset cascadingconfig.Preset
+```
+
+- **`mise.Preset`:** `MiseLayout` with TOML, YAML, `httpresolver`, `gitresolver`, `ociresolver` and fsnotify.
+- **`misehardened.Preset`:** `MiseHardenedLayout` with TOML, YAML and fsnotify.
+- **`cosmiconfig.Preset`:** `CosmiconfigLayout` with YAML and fsnotify.
+- **Names:** `Report.Preset` shows `mise.Preset`, `misehardened.Preset` or `cosmiconfig.Preset`.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |
@@ -849,6 +864,7 @@ type Watchable interface { // optional
 
 ### Example
 
+<!-- example -->
 ```go
 import (
 	"github.com/kittomic/cascadingconfig"
@@ -869,12 +885,21 @@ func main() {
 		cascadingconfig.WithConfigFiles(flagConfigFiles...),
 		cascadingconfig.WithEnvs(flagEnvs...),
 	)
-	// …
+	if err != nil {
+		log.Fatal(err)
+	}
 	cfg, err := cascadingconfig.Load[Config](ctx, loader)
-	// …
+	if err != nil {
+		log.Fatal(err)
+	}
+	run(cfg)
 	w, err := cascadingconfig.Watch[Config](ctx, loader, onChange,
 		cascadingconfig.WithDebounce(200*time.Millisecond, 2*time.Second),
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer w.Close()
 }
 ```
 
@@ -1004,6 +1029,7 @@ type Change[T any] struct {
 
 Defaults are a **scope**: the lowest layer of every load. `WithDefaults` builds that scope from a Go value:
 
+<!-- example -->
 ```go
 cascadingconfig.WithDefaults(Config{
 	Port: 8080,
@@ -1250,6 +1276,7 @@ func RequireConfig(level Require, scopes ...ScopeName) Option
   means "a system config file must exist".
 - **Several requirements combine.** Each `RequireConfig` option adds a requirement, and all of them must hold:
 
+<!-- example -->
 ```go
 cascadingconfig.RequireConfig(cascadingconfig.RequireAny),                                  // something, anywhere
 cascadingconfig.RequireConfig(cascadingconfig.RequireFile|cascadingconfig.RequireNonEmpty,  // and a real system file
