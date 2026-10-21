@@ -70,11 +70,15 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M9b | Custom scopes                     | core                                     | M9         |
 | M10a | Precedence                       | core                                     | M9b        |
 | M10b | Presets                          | `presets`                                | M6, M8b, M8c, M9, M10a |
-| M11 | Release preparation               | all                                      | M10        |
+| M11a | Documentation structure         | docs, tooling                            | M10        |
+| M11b | API audit and guard             | all released modules                     | M11a       |
+| M11c | Examples                        | `examples`                               | M11b       |
+| M11d | README and user guide           | docs                                     | M11c       |
+| —   | Release stage                     | all                                      | M11d, M12  |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
 
-M2 and M3 can be done in either order, as can M8b and M8c. M6 can run any time after M1. M12 comes last, but needs only
-M6.
+M2 and M3 can be done in either order, as can M8b and M8c. M6 can run any time after M1. M12 comes before the release
+stage, but needs only M6.
 
 ## M0: Repository and tooling
 
@@ -762,14 +766,57 @@ to DL-252.
 - **Order** (DL-251): each preset ranks a rich fixture exactly as its layout does.
 - **Dependency budget** (DL-252): a `check-deps.sh` setup per preset package.
 
-## M11: Release preparation
+## M11: Documentation, API and examples
 
-Not test-first.
+M11 is split into four stages (DL-253), each with its own gap list, review and PR. Releasing waits for a later stage.
 
-- **Documentation:** a README with quick starts for each preset, and package documentation.
-- **API listings** (DL-250): the signature listings in api.md and design.md are checked against the packages' real APIs,
-  for example with `go/types`, so a renamed or changed function can't stay documented.
-- **Examples:** a `examples/` module, not released.
+### M11a: Documentation structure
+
+**Scope:** DL-254 and DL-255, and [decision record 0004](decisions/0004-documentation-structure.md). Not test-first.
+
+- **Four homes:** user docs in `docs/`, design records in `docs/design/`, plans in `docs/planning/` and contributor docs
+  in `docs/contributing/`, moved with `git mv` and with their names unchanged. Each moved doc says which kind it is, and
+  `docs/README.md` indexes them.
+- **CONTRIBUTING.md:** setup, the hooks, commit style, tests first, decision records and the doc homes.
+- **Links:** pre-push runs `rumdl check .` on every markdown file, so a moved file or renamed heading can't leave a
+  broken link anywhere.
+- **Paths:** the doc-snippet test (a `test: revise` commit), `check-deps.sh`, `lefthook.yml` and `doc.go`.
+
+### M11b: API audit and guard
+
+**Scope:** decided in its own gap list.
+
+- **Audit, once:** every signature listing in api.md and design.md is checked against the packages' real APIs with
+  `go/types` (DL-250). Each difference is raised: a doc error is fixed in the doc, and a real change to the design is
+  decided first.
+- **Guard, from then on:** a file per released module listing its exported API, checked both ways, so an exported name
+  that isn't listed fails, as does one listed that's gone.
+
+### M11c: Examples
+
+**Scope:** decided in its own gap list, starting with the quality bar the examples must meet. They're how the library's
+overall quality is judged before the release stage.
+
+- **Programs:** small `main` programs in the `examples` module, never released, each running for real with `go run .`
+  from its own directory.
+- **Tests:** each program's work is a function its test runs against a `cctest` world, compared with golden output; no
+  test reads the real host.
+
+### M11d: README and user guide
+
+**Scope:** decided in its own gap list.
+
+- **README:** install commands, quick starts copied from the M11c examples, the modules and what each adds, and a
+  pre-1.0 note.
+- **User guide:** what a user needs that only the design records explain today, such as merging.
+- **Snippets:** the doc-snippet test covers the README and the guides, and moves out of `presets/mise`.
+
+## Release stage
+
+Not scheduled yet: nothing goes public, and `wip` doesn't go to `main`, until this stage starts. It has its own gap
+list.
+
+- **Package documentation:** each package's `doc.go` gives an overview that reads well on pkg.go.dev.
 - **Licences:** confirm that the licences of `mapstructure`, `go-toml`, `go-yaml`, `fsnotify` and `oras-go` are
   compatible with Apache-2.0, and check their maintenance status (an open item from
   [api.md](api.md#package-layout-decisions)).
@@ -808,7 +855,7 @@ conformance a measured number.
 | # | Question                  | Decision                                                                                                     |
 | - | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. |
-| 2 | CI                        | **Deferred** until M11, or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
+| 2 | CI                        | **Deferred** until the release stage, or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
 | 3 | Clock injection           | An internal clock interface, settable only through `cctest`. No public `WithClock` option.                    |
 | 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](api.md#test-helpers)). |
 | 5 | `internal/compat` module  | Yes, a test-only module for koanf parity tests, so koanf never enters the core `go.mod`.                     |
