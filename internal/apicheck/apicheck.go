@@ -4,14 +4,69 @@
 package apicheck
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"go/importer"
+	"go/token"
 	"go/types"
+	"io"
+	"os"
+	"os/exec"
+	"slices"
 )
 
 // Load type-checks the packages that patterns name from their export data, running go list in dir, and returns them
 // by import path.
 func Load(dir string, patterns ...string) (map[string]*types.Package, error) {
-	return nil, fmt.Errorf("apicheck: Load(%q, %q) not implemented", dir, patterns)
+	args := append([]string{"list", "-export", "-json", "-deps", "--"}, patterns...)
+	cmd := exec.Command("go", args...)
+	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("apicheck: go list: %w: %s", err, stderr.String())
+	}
+	exports := map[string]string{}
+	var wanted []string
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for {
+		var p struct {
+			ImportPath, Export string
+			DepOnly            bool
+			Error              *struct{ Err string }
+		}
+		if err := dec.Decode(&p); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("apicheck: reading go list's output: %w", err)
+		}
+		if p.Error != nil {
+			return nil, fmt.Errorf("apicheck: %s: %s", p.ImportPath, p.Error.Err)
+		}
+		exports[p.ImportPath] = p.Export
+		if !p.DepOnly {
+			wanted = append(wanted, p.ImportPath)
+		}
+	}
+	imp := importer.ForCompiler(token.NewFileSet(), "gc", func(path string) (io.ReadCloser, error) {
+		file, ok := exports[path]
+		if !ok || file == "" {
+			return nil, fmt.Errorf("no export data for %s", path)
+		}
+		return os.Open(file)
+	})
+	pkgs := map[string]*types.Package{}
+	for _, path := range wanted {
+		pkg, err := imp.Import(path)
+		if err != nil {
+			return nil, fmt.Errorf("apicheck: importing %s: %w", path, err)
+		}
+		pkgs[path] = pkg
+	}
+	return pkgs, nil
 }
 
 // Finding is one difference between a listing and the real API.
@@ -20,29 +75,25 @@ type Finding struct {
 	Line    int    // the doc's line holding the declaration, or the block's opening fence for a whole block
 	Package string // the import path the declaration was checked against; empty for a whole block
 	Name    string // the declaration, such as "WithScopes" or "Loader.Load"; empty for a whole block
-	Message string // starts with "missing", "differs", "kind", "unparsable" or "unknown package"
+	Message string // starts with "missing", "differs", "kind", "incomplete", "unparsable" or "unknown package"
 }
 
 func (f Finding) String() string {
 	return fmt.Sprintf("%s:%d: %s %s: %s", f.Doc, f.Line, f.Package, f.Name, f.Message)
 }
 
-// Listings checks the Go listings in doc, the markdown file called name, against pkgs. module is the import path that
-// package markers' paths are relative to, and "." names module itself.
-func Listings(module string, pkgs map[string]*types.Package, name string, doc []byte) []Finding {
-	_, _, _, _ = module, pkgs, name, doc // not implemented yet
-	return nil
-}
-
-// API renders pkg's exported API, one declaration per line, sorted (DL-257).
-func API(pkg *types.Package) []string {
-	_ = pkg // not implemented yet
-	return nil
-}
-
 // Diff compares an API file's lines with the rendered ones: missing are rendered lines the file lacks, and extra are
-// lines in the file that no longer render.
+// lines in the file that no longer render. Blank lines are ignored.
 func Diff(file, rendered []string) (missing, extra []string) {
-	_, _ = file, rendered // not implemented yet
-	return nil, nil
+	for _, l := range rendered {
+		if l != "" && !slices.Contains(file, l) {
+			missing = append(missing, l)
+		}
+	}
+	for _, l := range file {
+		if l != "" && !slices.Contains(rendered, l) {
+			extra = append(extra, l)
+		}
+	}
+	return missing, extra
 }
