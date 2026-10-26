@@ -10,7 +10,9 @@ import (
 
 // userDocNamesAllowed are backticked names in user docs that aren't in a released package and aren't caught by the
 // rules, each with the reason.
-var userDocNamesAllowed = []string{}
+var userDocNamesAllowed = []string{
+	"Config", // the reader's own config type, in the guide's snippets
+}
 
 // DL-267: every name in the user docs exists.
 func TestUserDocNames(t *testing.T) {
