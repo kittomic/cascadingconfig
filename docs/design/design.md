@@ -346,7 +346,16 @@ The loader reports every non-fatal problem as a warning. Each warning is recorde
   - for a watcher: each event, each reload started, each reload applied with its number of changed keys, the size of the
     watch set when it's planned, and polling used in place of a notifier
 
-Records carry `path` and `scope` where they apply, and a warning's `code`. Debug messages aren't API.
+Records carry `path` and `scope` where they apply, and a warning's `code`. Messages aren't API; a Debug record's `op`
+attribute says what it traces, and its other attributes are stable:
+
+- **`load`:** `loaded` and `skipped`, the numbers of layers, and `duration`.
+- **`layer`:** `status`, with `scope`, and `path` for a file.
+- **`remote`:** `ref`, and `cache`: `fetched`, `cached`, `revalidated` or `stale`.
+- **`not-a-dir`:** `path`, the directory that was searched.
+- **`event`:** `path`, from the notifier. **`reload`:** a reload starting. **`reloaded`:** `changes`, the number of
+  changed keys. **`watch-set`:** `dirs`, the number of directories watched or polled. **`polling`:** polling in place of
+  a notifier.
 
 **Quieter logging:**
 
@@ -2319,7 +2328,7 @@ There are no open questions.
 | 260 | The examples                                | Five programs in `examples/`, one user story each: `basic`, `cli`, `watch`, `secrets` and `trusted`. Each is `package main` with its work in `run(ctx, args, stdout, opts ...Option)`, ships the config it reads under an app name of its own (`ccx-…`), has a README, and is tested by running `run` in a `cctest` world built from its shipped files, against golden output. They use the standard library's `flag` and no third-party modules. |
 | 261 | Defining a scope selects it                 | `WithScope` adds the scope it defines to the current selection; `WithScopes` still replaces the selection and `WithoutScopes` removes from it, in order. A preset's optional, off-by-default scope is defined, then removed with `WithoutScopes`. It replaces "defining a scope doesn't select it", which made an app restate the layout's whole selection to add one scope; the examples found it (M11c). |
 | 262 | A non-directory on a search path            | When opening a scope's directory, or listing a directory on a pattern's path, fails with anything other than "doesn't exist", the loader checks the path: something there that isn't a directory is skipped like a missing directory, logged at Debug; any other failure stays an `unreadable` warning. A binary named after the app, or a legacy `~/.{name}` file, no longer warns on every load. |
-| 263 | Log levels                                  | Per warning code: Error for a watch handler's panic; Info for `untrusted`, `format-conflict` and `no-home`; Warn for the rest, including codes from other modules. Debug traces loads, files, remote includes and the watcher. `WithLogLevel(slog.Leveler)` drops records below a level before the logger, and custom scopes get the filtered logger; a nil level is an `*OptionError` (see [Warnings and logging](#warnings-and-logging)). |
+| 263 | Log levels                                  | Per warning code: Error for a watch handler's panic; Info for `untrusted`, `format-conflict` and `no-home`; Warn for the rest, including codes from other modules. Debug traces loads, files, remote includes and the watcher, each record with an `op` attribute and stable attributes for it, since messages aren't API. `WithLogLevel(slog.Leveler)` drops records below a level before the logger, and custom scopes get the filtered logger; a nil level is an `*OptionError` (see [Warnings and logging](#warnings-and-logging)). |
 | 264 | Empty value layers                          | A layer from `Values`, `ValuesFunc`, `EnvVars`, the defaults scope or a custom scope's tree that supplies no keys is `LayerEmpty`, not `LayerLoaded`, with its warnings kept; `RequireConfig` still never counts it. |
 
 ---
