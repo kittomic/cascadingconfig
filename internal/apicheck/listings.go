@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"go/types"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -614,10 +615,97 @@ func (s syntax) typeParams(tps *ast.FieldList) string {
 	return "[" + strings.Join(ps, ", ") + "]"
 }
 
+var (
+	inlineCode = regexp.MustCompile("`([^`]+)`")
+	identPath  = regexp.MustCompile(`^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$`)
+	allCaps    = regexp.MustCompile(`^[A-Z0-9_]+$`)
+)
+
 // Names checks the backticked Go identifiers in doc, the markdown file called name, against pkgs (DL-267): each must
 // name a package-level name, method or field of one of them, qualified by its package's name or not. All-capitals
 // names, names qualified by a package outside pkgs, and names in allow are skipped, as is everything in code blocks.
 func Names(pkgs map[string]*types.Package, name string, doc []byte, allow []string) []Finding {
-	_, _, _, _ = pkgs, name, doc, allow // not implemented yet
-	return nil
+	byName := map[string][]*types.Package{}
+	for _, p := range pkgs {
+		byName[p.Name()] = append(byName[p.Name()], p)
+	}
+	var findings []Finding
+	inBlock := false
+	for i, line := range strings.Split(string(doc), "\n") {
+		if fenceOpen.MatchString(line) || fenceClose.MatchString(line) {
+			inBlock = !inBlock
+			continue
+		}
+		if inBlock {
+			continue
+		}
+		for _, m := range inlineCode.FindAllStringSubmatch(line, -1) {
+			ident := m[1]
+			if j := strings.IndexAny(ident, "(["); j >= 0 { // a call's arguments, or type arguments
+				ident = ident[:j]
+			}
+			segs := strings.Split(ident, ".")
+			last := segs[len(segs)-1]
+			switch {
+			case !identPath.MatchString(ident), last == "" || last[0] < 'A' || last[0] > 'Z', allCaps.MatchString(ident),
+				slices.Contains(allow, ident):
+				continue
+			}
+			if !knownName(pkgs, byName, segs) {
+				findings = append(findings, Finding{Doc: name, Line: i + 1, Name: ident,
+					Message: "missing: no released package has " + ident})
+			}
+		}
+	}
+	return findings
+}
+
+// knownName reports whether segs name something in pkgs, or are qualified by a package outside them.
+func knownName(pkgs map[string]*types.Package, byName map[string][]*types.Package, segs []string) bool {
+	if ours, ok := byName[segs[0]]; ok && len(segs) > 1 {
+		for _, p := range ours {
+			if memberOf(p, segs[1:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if c := segs[0][0]; c >= 'a' && c <= 'z' {
+		return true // qualified by a package outside this repository, such as slog
+	}
+	for _, p := range pkgs {
+		if memberOf(p, segs) {
+			return true
+		}
+	}
+	if len(segs) == 1 { // a bare method or field name
+		for _, p := range pkgs {
+			for _, n := range p.Scope().Names() {
+				if tn, ok := p.Scope().Lookup(n).(*types.TypeName); ok && memberOf(p, []string{n, segs[0]}) && tn.Exported() {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// memberOf reports whether segs, a name or a type's name and one of its fields or methods, is in p.
+func memberOf(p *types.Package, segs []string) bool {
+	obj := p.Scope().Lookup(segs[0])
+	if obj == nil || !obj.Exported() {
+		return false
+	}
+	switch len(segs) {
+	case 1:
+		return true
+	case 2:
+		tn, ok := obj.(*types.TypeName)
+		if !ok {
+			return false
+		}
+		m, _, _ := types.LookupFieldOrMethod(tn.Type(), true, p, segs[1])
+		return m != nil && m.Exported()
+	}
+	return false
 }
