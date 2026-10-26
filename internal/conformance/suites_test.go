@@ -95,7 +95,11 @@ func decode(d cc.Decoder, data []byte) (cc.Document, error) {
 }
 
 // DL-270: toml-test's TOML 1.1 cases. A valid case must decode to its typed JSON, and an invalid one must fail.
-func TestTOML(t *testing.T) {
+func TestTOML(t *testing.T) { report(t, "toml-test", judge(t, "toml-test", tomlResults(t))) }
+
+// tomlResults runs every toml-test case.
+func tomlResults(t *testing.T) map[string]result {
+	t.Helper()
 	dir := filepath.Join("testdata", "toml-test", "tests")
 	list, err := os.ReadFile(filepath.Join(dir, "files-toml-1.1.0"))
 	if err != nil {
@@ -134,11 +138,17 @@ func TestTOML(t *testing.T) {
 		why := conformance.MatchTOML(got, want)
 		results[name] = result{pass: why == "", why: why}
 	}
-	report(t, "toml-test", judge(t, "toml-test", results))
+	return results
 }
 
 // DL-270: yaml-test-suite's cases. An error case must fail; any other must decode, to the tree its in.json holds.
 func TestYAML(t *testing.T) {
+	report(t, "yaml-test-suite", judge(t, "yaml-test-suite", yamlResults(t)))
+}
+
+// yamlResults runs every yaml-test-suite case.
+func yamlResults(t *testing.T) map[string]result {
+	t.Helper()
 	root := filepath.Join("testdata", "yaml-test-suite")
 	results := map[string]result{}
 	err := filepath.WalkDir(root, func(p string, de os.DirEntry, err error) error {
@@ -188,7 +198,7 @@ func TestYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report(t, "yaml-test-suite", judge(t, "yaml-test-suite", results))
+	return results
 }
 
 // jsonValues decodes every JSON value in data, in order.
@@ -209,7 +219,11 @@ func jsonValues(data []byte) ([]any, error) {
 
 // DL-270: JSONTestSuite's parsing cases, each as a document and wrapped as {"v": …}: y_ cases must decode, n_ cases
 // must fail, and i_ cases' outcomes are recorded. The core's built-in decoder must agree with format/json on each.
-func TestJSON(t *testing.T) {
+func TestJSON(t *testing.T) { report(t, "JSONTestSuite", judge(t, "JSONTestSuite", jsonResults(t))) }
+
+// jsonResults runs every JSONTestSuite case, in both forms.
+func jsonResults(t *testing.T) map[string]result {
+	t.Helper()
 	dir := filepath.Join("testdata", "JSONTestSuite", "test_parsing")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -247,7 +261,7 @@ func TestJSON(t *testing.T) {
 			}
 		}
 	}
-	report(t, "JSONTestSuite", judge(t, "JSONTestSuite", results))
+	return results
 }
 
 // loadBuiltin loads data as myapp.json with the core's built-in JSON decoder, through a loader, and returns the
