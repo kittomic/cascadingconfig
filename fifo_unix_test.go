@@ -3,6 +3,7 @@
 package cascadingconfig_test
 
 import (
+	"log/slog"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -33,8 +34,8 @@ func TestOSFIFODoesNotBlock(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if len(logs.got) != 1 || attrs(logs.got[0])["code"] != string(cc.WarnNotAFile) {
-			t.Errorf("logs = %v, want one not-a-file warning", logs.got)
+		if got := logs.from(slog.LevelInfo); len(got) != 1 || attrs(got[0])["code"] != string(cc.WarnNotAFile) {
+			t.Errorf("logs = %v, want one not-a-file warning", got)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Load blocked on a FIFO")

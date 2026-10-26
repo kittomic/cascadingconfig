@@ -30,7 +30,7 @@ api: https://api.example.com, token sha256:87f96588…
 ## What it shows
 
 - A custom scope: a type with `Discover`, returning a `Source` that holds a tree, and plugged in with
-  `WithScope("secrets", cascadingconfig.Custom(...))`.
+  `WithScope("secrets", cascadingconfig.Custom(...))`, which also selects it.
 - `Discovery`: the scope reads through `d.FS`, the loader's filesystem, so tests run it on an in-memory one.
 - `Watchable`: `WatchDirs` adds the directory to what a watch watches.
 - `Load[T]` for a one-shot typed load, and `Watch` with a typed handler.

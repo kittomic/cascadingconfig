@@ -181,6 +181,7 @@ func WithIncludeKey(string, IncludeNesting) Option
 func WithIncludeResolver(IncludeResolver) Option
 func WithIncludeTimeout(time.Duration) Option
 func WithLayerTransform(func(context.Context, Layer, Tree) (Tree, error)) Option
+func WithLogLevel(slog.Leveler) Option
 func WithLogger(*slog.Logger) Option
 func WithMaxFileSize(int64) Option
 func WithMaxIncludeDepth(int) Option

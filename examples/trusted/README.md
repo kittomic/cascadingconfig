@@ -17,7 +17,9 @@ $ go run .
 deploying to staging with 3 replicas
 ```
 
-The library also logs an `untrusted` warning to standard error for each skipped file.
+The library also logs an `untrusted` notice at Info for each skipped file, which the default logger prints to standard
+error. An app that reports skipped files itself, as this one does, can drop such notices with
+`cascadingconfig.WithLogLevel(slog.LevelWarn)`.
 
 ## Things to try
 

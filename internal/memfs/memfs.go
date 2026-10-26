@@ -192,6 +192,10 @@ func (f *FS) resolve(segs []string, followLast bool) (*node, []string, error) {
 	return f.resolveFrom(nil, segs, followLast, 0)
 }
 
+// errNotDir is the error for a path that goes through a file, which the OS reports as "not a directory" rather than
+// as missing.
+var errNotDir = errors.New("not a directory")
+
 func (f *FS) resolveFrom(done, rest []string, followLast bool, links int) (*node, []string, error) {
 	n := f.root
 	resolved := []string{}
@@ -205,7 +209,7 @@ func (f *FS) resolveFrom(done, rest []string, followLast bool, links int) (*node
 			continue
 		}
 		if !n.mode.IsDir() {
-			return nil, nil, fs.ErrNotExist
+			return nil, nil, errNotDir // as the OS reports a file partway along a path
 		}
 		child, ok := n.children[s]
 		if !ok {

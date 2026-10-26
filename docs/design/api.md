@@ -853,6 +853,18 @@ var Preset cascadingconfig.Preset
 - **`cosmiconfig.Preset`:** `CosmiconfigLayout` with YAML and fsnotify.
 - **Names:** `Report.Preset` shows `mise.Preset`, `misehardened.Preset` or `cosmiconfig.Preset`.
 
+#### Settled in M11c2
+
+```go
+func WithLogLevel(level slog.Leveler) Option // the lowest level the loader logs; by default, the logger decides
+```
+
+- **Selection** (DL-261): `WithScope` also selects the scope it defines.
+- **Log levels** (DL-263): each warning code has a level, and Debug traces loads, files, remotes and the watcher
+  ([Warnings and logging](design.md#warnings-and-logging)). A nil level is an `*OptionError`.
+- **Empty value layers** (DL-264): a value layer with no keys is `LayerEmpty`.
+- **Search paths** (DL-262): a non-directory where a directory is searched is skipped silently, logged at Debug.
+
 ### Option catalogue
 
 | Area          | Options                                                                                                                     |

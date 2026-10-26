@@ -102,6 +102,7 @@ type config struct {
 	fsys        FileSystem
 	maxFileSize int64
 	logger      *slog.Logger // nil means slog.Default(), looked up at each load
+	logLevel    slog.Leveler // nil: the logger decides
 	dirs        PlatformDirs // nil when not set
 
 	startDir string // WithStartDir; empty means the current directory

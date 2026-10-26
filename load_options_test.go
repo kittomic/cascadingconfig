@@ -85,6 +85,19 @@ func (r *records) Handle(_ context.Context, rec slog.Record) error {
 func (r *records) WithAttrs([]slog.Attr) slog.Handler { return r }
 func (r *records) WithGroup(string) slog.Handler      { return r }
 
+// from returns the records at level or above, leaving out the Debug tracing (DL-263) when level is Info.
+func (r *records) from(level slog.Level) []slog.Record {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []slog.Record
+	for _, rec := range r.got {
+		if rec.Level >= level {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
 // attrs returns a record's attributes as strings.
 func attrs(rec slog.Record) map[string]string {
 	out := map[string]string{}
@@ -111,10 +124,11 @@ func TestWarningsReachTheLogger(t *testing.T) {
 	if _, err := l.Load(t.Context()); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(logs.got) != 1 {
-		t.Fatalf("got %d log records, want 1", len(logs.got))
+	got := logs.from(slog.LevelInfo)
+	if len(got) != 1 {
+		t.Fatalf("got %d log records, want 1", len(got))
 	}
-	rec := logs.got[0]
+	rec := got[0]
 	if a := attrs(rec); rec.Level != slog.LevelWarn || a["code"] != string(cc.WarnNotAFile) || a["path"] != "/d/config.json" {
 		t.Errorf("record = %v %q %v, want a Warn with code %s and path /d/config.json", rec.Level, rec.Message, a, cc.WarnNotAFile)
 	}

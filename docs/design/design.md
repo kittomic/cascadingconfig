@@ -168,6 +168,8 @@ Each preset declares its default set of scopes. Two modifiers change it, and the
 - **`WithScopes(...)`** *replaces* the current set with exactly the scopes listed.
 - **`WithoutScopes(...)`** *removes* the listed scopes from the current set.
 
+Defining a [custom scope](#custom-scopes) with `WithScope` also *adds* it to the current set (DL-261).
+
 <!-- example -->
 ```go
 // a system daemon: only /etc/{name} (or %ProgramData%\{name})
@@ -268,8 +270,10 @@ mise.Preset.Extend(
   - **Neither:** the scope goes above every scope defined so far.
   - **Both** is an `*OptionError`.
 - **Names** must be unique. A clash with any scope, built-in or custom, is an error.
-- **Selection:** a custom scope is used only if `WithScopes(...)` lists it, as with the built-in scopes. Defining a
-  scope doesn't select it. The defaults scope is the one exception: it is always selected (DL-153).
+- **Selection** (DL-261): defining a scope selects it, so `Extend(WithScope("env", EnvVars("MYAPP_")))` is all an app
+  needs. Options apply in order, so a later `WithScopes(...)` that leaves the scope out deselects it, and a later
+  `WithoutScopes` removes it. A preset that offers an optional scope, off by default, defines it and then removes it
+  with `WithoutScopes`. The defaults scope is always selected (DL-153).
 - **Fully custom discovery** (DL-236 to DL-240): `Custom(s Scope)` turns an app's `Scope` into a kind for `WithScope`.
   The built-in kinds don't implement `Scope`: they stay sealed, because they need the loader's internals.
   - **The kind:** a nil `Scope` is an `*OptionError`. Its default trust is `TrustProject`, the lowest, since it can
@@ -321,17 +325,44 @@ are set by scope, not by trust level.
 
 ## Warnings and logging
 
-The loader reports every non-fatal problem as a warning through a `*slog.Logger`. The default is `slog.Default()`, and
-the app can set its own with `WithLogger(l)`. Examples:
+The loader reports every non-fatal problem as a warning. Each warning is recorded on the layer it concerns, so
+`Describe()` and tests can see it without capturing logs, and it is logged. Logging goes through a `*slog.Logger`:
+`slog.Default()`, unless the app sets its own with `WithLogger(l)`.
 
-- a config file ignored because of its permissions
-  ([`misehardened.Preset`](#misehardenedpreset))
-- a stale remote include used because the fetch failed
-  ([Caching](#caching))
-- the formats in a same-slot conflict, when the `FormatConflict` policy is `first`
-  ([File format precedence](#file-format-precedence))
+**Levels** (DL-263). A warning's code decides its level:
 
-Each warning is also recorded on the layer it concerns, so `Describe()` and tests can see it without capturing logs.
+- **Error:** a state that needs attention and that the app may not otherwise see: a watch handler that panicked.
+- **Warn:** something the user wrote or set up was ignored, or may be wrong: `unreadable`, `not-a-file`,
+  `broken-symlink`, `file-permissions`, `duplicate-key`, `reserved-key`, `unknown-key`, `env-var-skipped`,
+  `env-var-clash`, `bootstrap-unknown-key`, `bootstrap-key-dropped`, `stale-include`, `include-cache`, `watch-failed`
+  and `reload-failed`, and a format module's own codes, such as `format/yaml`'s `yaml-version`.
+- **Info:** expected behaviour worth knowing: `untrusted` (the trust store doing its job), `format-conflict` (a
+  first-match policy) and `no-home` (common in containers). `slog.Default()` prints Info, so these show by default.
+- **Debug:** tracing, for troubleshooting:
+  - each load's summary, with the layers loaded and skipped and how long it took
+  - each file loaded or skipped, with the reason
+  - each remote include's cache hit, revalidation or fetch
+  - a non-directory on a search path, which is skipped like a missing directory (DL-262)
+  - for a watcher: each event, each reload started, each reload applied with its number of changed keys, the size of the
+    watch set when it's planned, and polling used in place of a notifier
+
+Records carry `path` and `scope` where they apply, and a warning's `code`. Messages aren't API; a Debug record's `op`
+attribute says what it traces, and its other attributes are stable:
+
+- **`load`:** `loaded` and `skipped`, the numbers of layers, and `duration`.
+- **`layer`:** `status`, with `scope`, and `path` for a file.
+- **`remote`:** `ref`, and `cache`: `fetched`, `cached`, `revalidated` or `stale`.
+- **`not-a-dir`:** `path`, the directory that was searched.
+- **`event`:** `path`, from the notifier. **`reload`:** a reload starting. **`reloaded`:** `changes`, the number of
+  changed keys. **`watch-set`:** `dirs`, the number of directories watched or polled. **`polling`:** polling in place of
+  a notifier.
+
+**Quieter logging:**
+
+- **`WithLogLevel(level)`** drops records below `level` before they reach the logger. `WithLogLevel(slog.LevelWarn)`
+  drops Info and Debug, and a `*slog.LevelVar` changes the level at run time. Without it, the logger's handler decides.
+- **`WithLogger(slog.New(slog.DiscardHandler))`** silences the loader entirely.
+- **Custom scopes** get the same filtered logger, through `Discovery.Logger`.
 
 ## Patterns
 
@@ -1567,7 +1598,9 @@ the OS filesystem. An app or a test can supply its own with `WithFileSystem(fsys
   loop is skipped with a warning too. None of them is ever opened (DL-110).
 - **Unreadable files:** a searched file that can't be read, for example because of its permissions or an I/O error, is
   skipped with a warning and the status `LayerUnreadable` (D16). An explicit file that can't be read is an `*IOError`.
-- **Missing directories** load nothing, without a warning.
+- **Missing directories** load nothing, without a warning. So does a path that exists but isn't a directory, such as a
+  binary named after the app in the project directory, or a single-file `~/.{name}` where a pattern looks inside a
+  `.{name}` directory. It's logged at Debug (DL-262).
 - **Empty files** are kept in the layer list with the status `LayerEmpty`, and merge nothing.
 - **Errors:** an oversized file and a parse error fail the load. Every broken file is reported, joined, and the others
   are still read.
@@ -1809,6 +1842,10 @@ value outside the canonical types, is a code-500 `*BaseError` whose `Op` is `Val
 - **Provenance:** `Describe()` attributes each value to its source, for example "`server.port` set by
   `MYAPP_SERVER__PORT`". An `EnvVars` scope is one layer, and `Origin.EnvVar` names the variable behind each key
   (DL-152).
+- **No keys, no content** (DL-264): a value layer that supplies no keys, such as an `EnvVars` scope with no matching
+  variable, has the status `LayerEmpty`, as do the defaults scope and a custom scope's tree when they're empty. Its
+  warnings stay on it, and it never counts for `RequireConfig`. A file is empty when it holds no document, so a file
+  holding `{}` is `LayerLoaded`; a value scope has no document, so no keys is empty.
 
 ## Transform hooks
 
@@ -2289,6 +2326,10 @@ There are no open questions.
 | 258 | Plumbing kept out of the public API         | Found by reading the first `api/` files. `cctest.Clock` and `cctest.Notifier` hand the loader unexported adapters, through `WithClock` and `Notifier.New`, so the methods only the loader needs (`AfterFunc`, and the notifier's `Add`, `Remove`, `Events`, `Errors` and `Handled`) aren't methods of the public types. `Notifier.Close` stays public: a test calls it to simulate a notifier that stops (DL-225). The resolvers' `Option` becomes a sealed interface, like the core's and `format/yaml`'s, instead of a function of an unexported type. |
 | 259 | Uncached tests before a push                | go test's cache re-checks only files inside the tested module, so a test that reads another module's code, `docs/` or `api/` (`internal/apicheck`, the presets' doc examples) can pass from the cache after they change: removing six `cctest` methods showed as a cached pass. The pre-push hook's latest-Go run uses `-count=1`; the minimum-Go run stays cached, since it reruns whenever code changes. |
 | 260 | The examples                                | Five programs in `examples/`, one user story each: `basic`, `cli`, `watch`, `secrets` and `trusted`. Each is `package main` with its work in `run(ctx, args, stdout, opts ...Option)`, ships the config it reads under an app name of its own (`ccx-…`), has a README, and is tested by running `run` in a `cctest` world built from its shipped files, against golden output. They use the standard library's `flag` and no third-party modules. |
+| 261 | Defining a scope selects it                 | `WithScope` adds the scope it defines to the current selection; `WithScopes` still replaces the selection and `WithoutScopes` removes from it, in order. A preset's optional, off-by-default scope is defined, then removed with `WithoutScopes`. It replaces "defining a scope doesn't select it", which made an app restate the layout's whole selection to add one scope; the examples found it (M11c). |
+| 262 | A non-directory on a search path            | When opening a scope's directory, or listing a directory on a pattern's path, fails with anything other than "doesn't exist", the loader checks the path: something there that isn't a directory is skipped like a missing directory, logged at Debug; any other failure stays an `unreadable` warning. A binary named after the app, or a legacy `~/.{name}` file, no longer warns on every load. |
+| 263 | Log levels                                  | Per warning code: Error for a watch handler's panic; Info for `untrusted`, `format-conflict` and `no-home`; Warn for the rest, including codes from other modules. Debug traces loads, files, remote includes and the watcher, each record with an `op` attribute and stable attributes for it, since messages aren't API. `WithLogLevel(slog.Leveler)` drops records below a level before the logger, and custom scopes get the filtered logger; a nil level is an `*OptionError` (see [Warnings and logging](#warnings-and-logging)). |
+| 264 | Empty value layers                          | A layer from `Values`, `ValuesFunc`, `EnvVars`, the defaults scope or a custom scope's tree that supplies no keys is `LayerEmpty`, not `LayerLoaded`, with its warnings kept; `RequireConfig` still never counts it. |
 
 ---
 

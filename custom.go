@@ -114,10 +114,7 @@ func (ld *loading) discovery(s *scopeDef) Discovery {
 	c, h := ld.c, ld.c.host
 	d := Discovery{
 		Name: c.name, Scope: s.name, Envs: slices.Clone(ld.selectedEnvs), PlatformEnvs: slices.Clone(ld.platformEnvs),
-		FS: c.fsys, LookupEnv: h.LookupEnv, Logger: c.logger,
-	}
-	if d.Logger == nil {
-		d.Logger = slog.Default()
+		FS: c.fsys, LookupEnv: h.LookupEnv, Logger: c.log(),
 	}
 	if home, err := h.Home(); err == nil {
 		d.Home = home

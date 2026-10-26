@@ -34,12 +34,14 @@ func (l *Loader) load(ctx context.Context, rec *watchRecord) (*Result, error) {
 	}
 	ld.settings.mergeSearchPlaces = true
 	defer ld.closeRoots()
+	start := c.now()
 	res, err := ld.run()
 	ld.log()
 	if err != nil {
 		res = &Result{err: err}
 	}
 	res.cfg, res.report = c, ld.report()
+	ld.trace(res.report, c.now().Sub(start))
 	return res, err
 }
 
@@ -289,7 +291,11 @@ func (ld *loading) root(dir string) (Root, bool) {
 	}
 	r, err := ld.c.fsys.OpenRoot(dir)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case ld.underNonDir(dir):
+			ld.notADir(dir)
+		default:
 			ld.warnings = append(ld.warnings, Warning{
 				Code: WarnUnreadable, Path: dir, Message: fmt.Sprintf("%s can't be searched: %v", dir, err),
 			})
@@ -496,6 +502,47 @@ func typeOf(entries []fs.DirEntry, name string) fs.FileMode {
 	return 0
 }
 
+// underNonDir reports whether dir, which couldn't be opened, is or lies under something that isn't a directory, such as
+// a binary named after the app (DL-262). It checks the path itself, not the error, which differs between systems.
+func (ld *loading) underNonDir(dir string) bool {
+	for p := dir; ; {
+		parent := filepath.Dir(p)
+		if parent == p {
+			return false
+		}
+		r, err := ld.c.fsys.OpenRoot(parent)
+		if err != nil {
+			p = parent
+			continue
+		}
+		info, err := r.Stat(filepath.Base(p))
+		_ = r.Close()
+		return err == nil && !info.IsDir()
+	}
+}
+
+// underNonDirIn reports whether sub, a slash path in root that couldn't be listed, is or lies under something that
+// isn't a directory (DL-262).
+func underNonDirIn(root Root, sub string) bool {
+	parts := strings.Split(sub, "/")
+	for i := range parts {
+		info, err := root.Stat(strings.Join(parts[:i+1], "/"))
+		if err != nil {
+			return false
+		}
+		if !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+// notADir logs a directory skipped because something on its path isn't a directory, at Debug (DL-262).
+func (ld *loading) notADir(dir string) {
+	ld.c.log().LogAttrs(ld.ctx, slog.LevelDebug, dir+" isn't a directory, so it's skipped",
+		slog.String("op", "not-a-dir"), slog.String("path", dir))
+}
+
 // readDir lists sub, a slash path in root, once per load. A missing directory gives nil; any other failure is a
 // warning.
 func (ld *loading) readDir(root Root, dir, sub string) []fs.DirEntry {
@@ -505,8 +552,12 @@ func (ld *loading) readDir(root Root, dir, sub string) []fs.DirEntry {
 	}
 	entries, err := root.ReadDir(sub)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			where := ld.join(dir, sub)
+		where := ld.join(dir, sub)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case underNonDirIn(root, sub):
+			ld.notADir(where)
+		default:
 			ld.warnings = append(ld.warnings, Warning{
 				Code: WarnUnreadable, Path: where, Message: fmt.Sprintf("%s can't be searched: %v", where, err),
 			})
@@ -1230,12 +1281,9 @@ func (ld *loading) found() []Layer {
 
 // log sends every warning to the logger.
 func (ld *loading) log() {
-	logger := ld.c.logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+	logger := ld.c.log()
 	emit := func(w Warning) {
-		logger.LogAttrs(ld.ctx, slog.LevelWarn, w.Message, slog.String("code", string(w.Code)), slog.String("path", w.Path))
+		logger.LogAttrs(ld.ctx, levelOf(w.Code), w.Message, slog.String("code", string(w.Code)), slog.String("path", w.Path))
 	}
 	for _, e := range ld.boot {
 		for _, w := range e.layer.Warnings {
@@ -1257,7 +1305,7 @@ func (ld *loading) addValues(s *scopeDef, t Tree) {
 	ld.addValuesLayer(Layer{Scope: s.name, Trust: s.trust, Status: LayerLoaded}, t)
 }
 
-// addValuesLayer adds a value layer l with tree t, without the unset key.
+// addValuesLayer adds a value layer l with tree t, without the unset key. A tree with no keys is LayerEmpty (DL-264).
 func (ld *loading) addValuesLayer(l Layer, t Tree) {
 	s := l.Scope
 	if key := ld.c.merge.unsetKey; key != "" && dropKey(t, key) {
@@ -1265,6 +1313,9 @@ func (ld *loading) addValuesLayer(l Layer, t Tree) {
 			Code:    WarnReservedKey,
 			Message: fmt.Sprintf("the scope %q can't remove keys, so its %s keys were ignored", s, key),
 		})
+	}
+	if len(t) == 0 {
+		l.Status = LayerEmpty
 	}
 	ld.entries = append(ld.entries, &entry{layer: l, tree: t, value: true})
 }
@@ -1367,6 +1418,9 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 	by := make(map[string]string, len(sets))
 	for _, b := range sets {
 		by[b.key.String()] = b.name
+	}
+	if len(t) == 0 {
+		l.Status = LayerEmpty // no variable supplied a key (DL-264)
 	}
 	ld.entries = append(ld.entries, &entry{layer: l, tree: t, value: true, vars: by})
 }

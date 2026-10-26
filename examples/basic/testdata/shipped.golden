@@ -5,4 +5,3 @@ features: [search]
 layers, lowest first (environments: none):
   defaults  (built-in defaults)
   project   /home/me/project/ccx-basic.toml
-  env       (CCX_BASIC_* variables)
