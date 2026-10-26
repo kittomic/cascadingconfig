@@ -900,6 +900,10 @@ conformance a measured number.
 - **JSONTestSuite's arrays and scalars:** most of its cases aren't objects, so each runs twice: as a document, for the
   top-level rule, and wrapped as `{"v": …}`, for the value itself.
 - **Findings:** a bug found in a decoder approved in an earlier milestone is fixed in its own commit and raised first.
+- **Settled in its gap list** (DL-269 to DL-272): a test-only module, `internal/conformance`, with the suites vendored
+  at toml-test v2.2.0, yaml-test-suite `data-2022-01-17` and JSONTestSuite `1ef36fa`; the comparison rules for each
+  suite; an outcomes file per suite listing every case that doesn't simply pass; and `docs/conformance.md` with the
+  measured numbers. A first run feeds a findings gap list, whose rulings fill the outcomes files.
 
 ## Decisions
 
