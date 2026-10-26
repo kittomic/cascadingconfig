@@ -41,8 +41,8 @@ same place. Select environments with `MYAPP_ENV=dev`, or in code:
 loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset, cascadingconfig.WithEnvs("dev", "staging"))
 ```
 
-When several are selected, the later one wins. The platform's own environments, such as `linux` and `amd64`, are
-selected too, below the ones you choose.
+When several are selected, the later one wins. The platform's own environments, such as `unix`, `linux` and `linux-x64`
+on a 64-bit Linux machine, are selected too, below the ones you choose.
 
 ## Environment variables and flags
 
