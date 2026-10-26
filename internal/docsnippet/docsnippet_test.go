@@ -56,7 +56,7 @@ not go
 	}
 	for i, want := range []docsnippet.Snippet{
 		{Doc: "doc.md", Line: 4, Lines: []string{"a := 1"}},
-		{Doc: "doc.md", Line: 13, Lines: []string{"b()"}},
+		{Doc: "doc.md", Line: 14, Lines: []string{"b()"}},
 	} {
 		if g := got[i]; g.Doc != want.Doc || g.Line != want.Line || !slices.Equal(g.Lines, want.Lines) {
 			t.Errorf("snippet %d = %+v, want %+v", i, g, want)
@@ -104,9 +104,9 @@ func TestCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(problems) != 2 || !strings.Contains(problems[0]+problems[1], a+":6") ||
+	if len(problems) != 2 || !strings.Contains(problems[0]+problems[1], a+":7") ||
 		!strings.Contains(problems[0]+problems[1], "missing()") || !strings.Contains(problems[0]+problems[1], b) {
-		t.Errorf("problems %q, want one for %s:6 (missing()) and one for %s's count", problems, a, b)
+		t.Errorf("problems %q, want one for %s:7 (missing()) and one for %s's count", problems, a, b)
 	}
 	if problems, err := docsnippet.Check(map[string]int{a: 2}, []string{src, filepath.Join(dir, "nope.go")}); err == nil {
 		t.Errorf("an unreadable source gave no error, and problems %q", problems)
