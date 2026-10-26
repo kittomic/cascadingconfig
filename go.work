@@ -7,6 +7,7 @@ use (
 	./format/yaml
 	./internal/apicheck
 	./internal/compat
+	./internal/conformance
 	./ociresolver
 	./presets
 	./watch/fsnotify
