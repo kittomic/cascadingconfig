@@ -58,7 +58,7 @@ func WithMaxFileSize(n int64) Option {
 	})
 }
 
-// WithLogger sets the logger that warnings go to, at Warn level. The default is slog.Default().
+// WithLogger sets the logger the loader logs to. The default is slog.Default(), looked up at each load.
 func WithLogger(l *slog.Logger) Option {
 	return optionFunc(func(c *config) {
 		if l == nil {
@@ -74,7 +74,11 @@ func WithLogger(l *slog.Logger) Option {
 // logger's handler decides. A nil level is an *OptionError.
 func WithLogLevel(level slog.Leveler) Option {
 	return optionFunc(func(c *config) {
-		_, _ = c, level // not implemented yet
+		if level == nil {
+			c.fail("WithLogLevel", "a nil level")
+			return
+		}
+		c.logLevel = level
 	})
 }
 

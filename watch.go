@@ -107,10 +107,11 @@ func Watch[T any](ctx context.Context, l *Loader, fn func(Change[T]), opts ...Wa
 	switch {
 	case s.polling:
 		w.pollAll = true
-		w.logger().DebugContext(ctx, "watching by polling, as WithPolling asks")
+		w.logger().LogAttrs(ctx, slog.LevelDebug, "watching by polling, as WithPolling asks", slog.String("op", "polling"))
 	case w.c.newNotifier == nil:
 		w.pollAll = true
-		w.logger().DebugContext(ctx, "watching by polling, as no notifier is registered")
+		w.logger().LogAttrs(ctx, slog.LevelDebug, "watching by polling, as no notifier is registered",
+			slog.String("op", "polling"))
 	default:
 		n, err := w.c.newNotifier()
 		if err == nil && n == nil {
@@ -247,6 +248,7 @@ func (w *Watcher[T]) stopped() error {
 // reload loads again, decodes, re-plans the watch set and returns the change, and whether the handler should see it
 // (DL-222). The caller holds run.
 func (w *Watcher[T]) reload(ctx context.Context) (Change[T], bool, error) {
+	w.debug("reload", "reloading")
 	rec := newWatchRecord()
 	res, err := w.l.load(ctx, rec)
 	var v T
@@ -277,6 +279,7 @@ func (w *Watcher[T]) reload(ctx context.Context) (Change[T], bool, error) {
 	if changed {
 		ch.Diff = diffResults(old.res, res)
 	}
+	w.debug("reloaded", "reloaded", slog.Int("changes", len(ch.Diff)))
 	return ch, changed || recovered || w.s.anyEvent, nil
 }
 
@@ -366,6 +369,7 @@ func (w *Watcher[T]) event(p string) {
 	if w.ctx.Err() != nil {
 		return
 	}
+	w.debug("event", "file event", slog.String("path", p))
 	w.mu.Lock()
 	if w.closed || w.plan == nil || !w.plan.relevant(w.c.fsys, p) {
 		w.mu.Unlock()
@@ -493,6 +497,7 @@ func (w *Watcher[T]) applyPlan(pl *watchPlan) {
 		polled[dir] = pl.scan(w.c.fsys, dir, w.c.maxFileSize)
 	}
 	w.polled = polled
+	w.debug("watch-set", "watch set planned", slog.Int("dirs", len(pl.dirs)))
 	switch {
 	case len(w.polled) == 0 && w.pollT != nil:
 		w.pollT.Stop()
@@ -536,14 +541,14 @@ func (w *Watcher[T]) poll() {
 	}
 }
 
-func (w *Watcher[T]) logger() *slog.Logger {
-	if w.c.logger != nil {
-		return w.c.logger
-	}
-	return slog.Default()
+func (w *Watcher[T]) logger() *slog.Logger { return w.c.log() }
+
+// debug logs a watcher trace at Debug, with its op (DL-263).
+func (w *Watcher[T]) debug(op, msg string, attrs ...slog.Attr) {
+	w.logger().LogAttrs(w.ctx, slog.LevelDebug, msg, append([]slog.Attr{slog.String("op", op)}, attrs...)...)
 }
 
 // warn logs a watcher warning, with its code as an attribute, since the watcher has no report (DL-227).
 func (w *Watcher[T]) warn(code WarningCode, msg string) {
-	w.logger().LogAttrs(w.ctx, slog.LevelWarn, msg, slog.String("code", string(code)))
+	w.logger().LogAttrs(w.ctx, levelOf(code), msg, slog.String("code", string(code)))
 }

@@ -257,10 +257,7 @@ func (r *Result) unknown(at Path, names []string) []error {
 	}
 	names = r.leafKeys(at, names)
 	var errs []error
-	logger := r.cfg.logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+	logger := r.cfg.log()
 	for _, name := range names {
 		src := r.source(at, name)
 		if mode == UnknownKeysError {
