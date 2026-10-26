@@ -613,3 +613,11 @@ func (s syntax) typeParams(tps *ast.FieldList) string {
 	}
 	return "[" + strings.Join(ps, ", ") + "]"
 }
+
+// Names checks the backticked Go identifiers in doc, the markdown file called name, against pkgs (DL-267): each must
+// name a package-level name, method or field of one of them, qualified by its package's name or not. All-capitals
+// names, names qualified by a package outside pkgs, and names in allow are skipped, as is everything in code blocks.
+func Names(pkgs map[string]*types.Package, name string, doc []byte, allow []string) []Finding {
+	_, _, _, _ = pkgs, name, doc, allow // not implemented yet
+	return nil
+}
