@@ -76,7 +76,8 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M11a | Documentation structure         | docs, tooling                            | M10        |
 | M11b | API audit and guard             | all released modules                     | M11a       |
 | M11c | Examples                        | `examples`                               | M11b       |
-| M11d | README and user guide           | docs                                     | M11c       |
+| M11c2 | Fixes from the examples        | core, `examples`                         | M11c       |
+| M11d | README and user guide           | docs                                     | M11c2      |
 | —   | Release stage                     | all                                      | M11d, M12  |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
 
@@ -822,6 +823,24 @@ examples themselves, with their READMEs and golden output.
   `trusted` (project config applied only once approved).
 - **Tests:** each program's work is `run(ctx, args, stdout, opts...)`; its test runs it in a `cctest` world built from
   the example's own shipped files and compares the output with golden files. Nothing reads the real host.
+
+### M11c2: Fixes from the examples
+
+**Scope:** DL-261 to DL-264, what the M11c examples found in the library: defining a scope selects it, a non-directory
+on a search path is skipped silently, log levels per warning code with Debug tracing and `WithLogLevel`, and empty value
+layers are `LayerEmpty`. The examples are updated to match.
+
+**Acceptance tests:**
+
+- **Selection** (DL-261): defining selects; a later `WithScopes` that leaves a scope out deselects it; `WithScope` after
+  `WithScopes` adds; `WithoutScopes` after a definition removes.
+- **Search paths** (DL-262): a file where a walked or fixed directory is searched gives no warning and a Debug record; a
+  directory without read permission still warns.
+- **Logging** (DL-263): each code logs at its level; `WithLogLevel` filters, and a nil level is an `*OptionError`; the
+  discard handler silences everything; a load and a watcher emit their Debug events; a custom scope's `Discovery.Logger`
+  is filtered.
+- **Empty value layers** (DL-264): each kind of value layer with no keys is `LayerEmpty` and keeps its warnings;
+  `RequireAny` isn't satisfied by one.
 
 ### M11d: README and user guide
 
