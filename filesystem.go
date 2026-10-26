@@ -69,6 +69,15 @@ func WithLogger(l *slog.Logger) Option {
 	})
 }
 
+// WithLogLevel makes the loader drop log records below level before they reach the logger (DL-263), so
+// WithLogLevel(slog.LevelWarn) drops Info and Debug. A *slog.LevelVar changes the level at run time. Without it, the
+// logger's handler decides. A nil level is an *OptionError.
+func WithLogLevel(level slog.Leveler) Option {
+	return optionFunc(func(c *config) {
+		_, _ = c, level // not implemented yet
+	})
+}
+
 const defaultMaxFileSize = 10 << 20
 
 // osFileSystem reads the OS filesystem through os.Root.

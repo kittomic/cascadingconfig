@@ -274,7 +274,7 @@ func (r *Result) unknown(at Path, names []string) []error {
 			Code: WarnUnknownKey, Path: src.layer.Path, Key: src.key,
 			Message: fmt.Sprintf("%s (set by %s) matches no field", src.key, src.describe()),
 		}
-		logger.LogAttrs(context.Background(), slog.LevelWarn, w.Message,
+		logger.LogAttrs(context.Background(), levelOf(w.Code), w.Message,
 			slog.String("code", string(w.Code)), slog.String("path", src.describe()))
 		r.mu.Lock()
 		if !slices.ContainsFunc(r.unknownKeys, func(u Warning) bool { return slices.Equal(u.Key, w.Key) }) {

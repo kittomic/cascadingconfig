@@ -1235,7 +1235,7 @@ func (ld *loading) log() {
 		logger = slog.Default()
 	}
 	emit := func(w Warning) {
-		logger.LogAttrs(ld.ctx, slog.LevelWarn, w.Message, slog.String("code", string(w.Code)), slog.String("path", w.Path))
+		logger.LogAttrs(ld.ctx, levelOf(w.Code), w.Message, slog.String("code", string(w.Code)), slog.String("path", w.Path))
 	}
 	for _, e := range ld.boot {
 		for _, w := range e.layer.Warnings {
