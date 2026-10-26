@@ -72,7 +72,8 @@ func TestLogLevelsEndToEnd(t *testing.T) {
 		r := &records{}
 		h := cctest.Host{GOOS: "linux", GOARCH: "amd64", Cwd: work, Env: map[string]string{}}
 		l := newLoaderHost(t, cctest.NewFS(nil), h, cc.WithLogger(slog.New(r)),
-			cc.WithScope("u", cc.FixedDir("{user}", cc.Pattern{Template: "config.json"})), cc.WithScopes("u"))
+			cc.WithPlatformDirs(cc.XDGDirs), cc.WithScope("u", cc.FixedDir("{user}", cc.Pattern{Template: "config.json"})),
+			cc.WithScopes("u"))
 		if _, err := l.Load(t.Context()); err != nil {
 			t.Fatal(err)
 		}
