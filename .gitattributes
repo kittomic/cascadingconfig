@@ -1,0 +1,2 @@
+# The conformance suites are byte-exact test data: some cases test line endings, encodings and byte-order marks.
+internal/conformance/testdata/** -text

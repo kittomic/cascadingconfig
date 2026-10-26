@@ -117,6 +117,8 @@ Each module brings only its own dependencies, so you pay for what you use.
 
 - [The guide](docs/guide/): how to load, decode, merge, watch and secure config.
 - [Precedence](docs/precedence.md): exactly which files load, and in what order.
+- [Conformance](docs/conformance.md): how closely each decoder follows its format's spec, measured against the format's
+  test suite.
 - [Examples](examples/): five small programs, each a starting point for one kind of app.
 
 ## Contributing
