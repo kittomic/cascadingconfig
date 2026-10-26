@@ -74,8 +74,8 @@ func TestOSUnreadableFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, logs := loadReal(t, dir, "config.json")
-	if len(res.Tree()) != 0 || len(logs.got) != 1 || attrs(logs.got[0])["code"] != string(cc.WarnUnreadable) {
-		t.Errorf("Tree() = %#v, logs = %v; want nothing loaded and one unreadable warning", res.Tree(), logs.got)
+	if got := logs.from(slog.LevelInfo); len(res.Tree()) != 0 || len(got) != 1 || attrs(got[0])["code"] != string(cc.WarnUnreadable) {
+		t.Errorf("Tree() = %#v, logs = %v; want nothing loaded and one unreadable warning", res.Tree(), got)
 	}
 }
 
