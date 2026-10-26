@@ -7,6 +7,7 @@ The docs are kept in four places, by the reader they serve
 
 These always describe the library as it is.
 
+- [Guide](guide/): how to load, decode and secure config, task by task.
 - [Precedence](precedence.md): which config files are loaded, and in what order. It's normative: where another doc
   disagrees about order, this one decides.
 
