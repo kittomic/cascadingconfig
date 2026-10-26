@@ -53,7 +53,7 @@ func TestDecodeOptionErrors(t *testing.T) {
 		{name: "an unknown Require flag", opts: []cc.Option{scope, cc.RequireConfig(cc.Require(8))}, ops: []string{"RequireConfig"}},
 		{name: "an undefined required scope", opts: []cc.Option{scope, cc.RequireConfig(cc.RequireAny, "nope")}, ops: []string{"RequireConfig"}, contains: []string{"nope"}},
 		{
-			name: "an unselected required scope", opts: []cc.Option{scope, cc.WithScope("other", cc.Values(cc.Tree{})), cc.RequireConfig(cc.RequireAny, "other")},
+			name: "an unselected required scope", opts: []cc.Option{scope, cc.WithScope("other", cc.Values(cc.Tree{})), cc.WithoutScopes("other"), cc.RequireConfig(cc.RequireAny, "other")},
 			ops: []string{"RequireConfig"}, contains: []string{"other"},
 		},
 	})

@@ -50,7 +50,7 @@ func TestOptionsAppliedInOrder(t *testing.T) {
 }
 
 // design.md Choosing scopes: selecting doesn't reorder; precedence stays as the scopes were defined. Removing a scope
-// that isn't selected does nothing.
+// that isn't selected does nothing. A defined scope is left out once WithoutScopes removes it (DL-261).
 func TestScopeSelection(t *testing.T) {
 	c := cfgOf(t, "app", Preset{}, defineScopes("a", "b", "c"), WithScopes("c", "a"))
 	wantScopes(t, c, "a", "c")
@@ -58,7 +58,7 @@ func TestScopeSelection(t *testing.T) {
 	c = cfgOf(t, "app", Preset{}, defineScopes("a", "b", "c"), WithScopes("a", "c"), WithoutScopes("b"))
 	wantScopes(t, c, "a", "c")
 
-	c = cfgOf(t, "app", Preset{}, defineScopes("a"), WithScope("unselected", Values(Tree{})))
+	c = cfgOf(t, "app", Preset{}, defineScopes("a"), WithScope("unselected", Values(Tree{})), WithoutScopes("unselected"))
 	wantScopes(t, c, "a")
 }
 
