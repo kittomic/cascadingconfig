@@ -77,7 +77,8 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M11b | API audit and guard             | all released modules                     | M11a       |
 | M11c | Examples                        | `examples`                               | M11b       |
 | M11c2 | Fixes from the examples        | core, `examples`                         | M11c       |
-| M11d | README and user guide           | docs                                     | M11c2      |
+| M11d1 | README and guide, part 1       | docs, `examples`, `internal/apicheck`    | M11c2      |
+| M11d2 | Guide, part 2                  | docs, `examples`                         | M11d1      |
 | —   | Release stage                     | all                                      | M11d, M12  |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
 
@@ -842,14 +843,23 @@ layers are `LayerEmpty`. The examples are updated to match.
 - **Empty value layers** (DL-264): each kind of value layer with no keys is `LayerEmpty` and keeps its warnings;
   `RequireAny` isn't satisfied by one.
 
-### M11d: README and user guide
+### M11d1: README and guide, part 1
 
-**Scope:** decided in its own gap list.
+**Scope:** DL-265 to DL-268: the README, with a quick start that's a real program; the checks for user docs; the guide's
+index and its first three pages.
 
-- **README:** install commands, quick starts copied from the M11c examples, the modules and what each adds, and a
-  pre-1.0 note.
-- **User guide:** what a user needs that only the design records explain today, such as merging.
-- **Snippets:** the doc-snippet test covers the README and the guides, and moves out of `presets/mise`.
+- **README** (DL-265): what the library does, its features, install, a quick start, choosing a preset, the modules, a
+  pre-1.0 note, links and the licence. The quick start is `examples/quickstart/main.go`, embedded whole and checked to
+  match. No badges until the release stage.
+- **Checks, test-first:** a shared marked-snippet checker in `internal/docsnippet` with a snippet count per doc
+  (DL-266); the guide's snippets held in `Example` functions in `examples/guide`; the names in user docs checked against
+  the real API in `internal/apicheck` (DL-267).
+- **Guide pages:** the index, getting started, where config comes from, and decoding.
+
+### M11d2: Guide, part 2
+
+**Scope:** the remaining guide pages: merging, includes, security, watching, provenance and logging, testing your app,
+and errors, checked as in M11d1.
 
 ## Release stage
 
