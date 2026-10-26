@@ -66,7 +66,6 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 	})
 	preset := cosmiconfig.Preset.Extend(
 		cascadingconfig.WithScope("flags", cascadingconfig.Values(given)),
-		cascadingconfig.WithScopes(cascadingconfig.ScopeUser, cascadingconfig.ScopeProject, "meta", "flags"),
 	)
 	if *configFile != "" {
 		opts = append(opts, cascadingconfig.WithConfigFiles(*configFile))

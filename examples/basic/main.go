@@ -65,10 +65,8 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 	preset := mise.Preset.Extend(
 		cascadingconfig.WithDefaults(defaults()),
 		// CCX_BASIC_SERVER__PORT=9090 sets server.port: the prefix goes, and __ separates levels.
+		// The scope goes above every file, and defining it is enough to use it.
 		cascadingconfig.WithScope("env", cascadingconfig.EnvVars("CCX_BASIC_")),
-		// Defining a scope doesn't select it, so the selection lists the layout's scopes too.
-		cascadingconfig.WithScopes(cascadingconfig.ScopeSystem, cascadingconfig.ScopeUser,
-			cascadingconfig.ScopeProject, cascadingconfig.ScopeOverride, "env"),
 	)
 	loader, err := cascadingconfig.NewWithPreset("ccx-basic", preset, opts...)
 	if err != nil {

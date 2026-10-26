@@ -57,8 +57,6 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 	}
 	preset := mise.Preset.Extend(
 		cascadingconfig.WithScope("secrets", cascadingconfig.Custom(secretsDir{dir: *dir})),
-		cascadingconfig.WithScopes(cascadingconfig.ScopeSystem, cascadingconfig.ScopeUser,
-			cascadingconfig.ScopeProject, cascadingconfig.ScopeOverride, "secrets"),
 	)
 	loader, err := cascadingconfig.NewWithPreset("ccx-secrets", preset, opts...)
 	if err != nil {
