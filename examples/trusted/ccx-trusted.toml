@@ -1,0 +1,5 @@
+# Project config, applied only after you approve it with: go run . trust
+
+[deploy]
+target = "staging"
+replicas = 3

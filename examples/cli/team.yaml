@@ -1,0 +1,4 @@
+# A file to name with -config, which then replaces the files ccx-cli would find.
+greeting: Howdy
+name: team
+shout: true

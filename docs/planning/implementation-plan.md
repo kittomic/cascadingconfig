@@ -810,13 +810,18 @@ fixes, and the generated `api/` files for review.
 
 ### M11c: Examples
 
-**Scope:** decided in its own gap list, starting with the quality bar the examples must meet. They're how the library's
-overall quality is judged before the release stage.
+**Scope:** DL-260: five example programs in the `examples` module, never released, which are how the library's overall
+quality is judged before the release stage. Not test-first: the plan exempts example code, so the review gate is the
+examples themselves, with their READMEs and golden output.
 
-- **Programs:** small `main` programs in the `examples` module, never released, each running for real with `go run .`
-  from its own directory.
-- **Tests:** each program's work is a function its test runs against a `cctest` world, compared with golden output; no
-  test reads the real host.
+- **The quality bar:** each is a realistic small app with one user story, in idiomatic Go with the standard library's
+  `flag` only; it explains itself in a doc comment and a README; it shows where values came from; `go run .` works in
+  its directory with the config it ships; and it's about 150 lines or fewer, lint-clean with no exemptions.
+- **The set:** `basic` (layered config with defaults and env-var overrides), `cli` (flags above files, and `-explain`
+  for a key's origin), `watch` (a service that reloads), `secrets` (a custom scope for a mounted secrets directory) and
+  `trusted` (project config applied only once approved).
+- **Tests:** each program's work is `run(ctx, args, stdout, opts...)`; its test runs it in a `cctest` world built from
+  the example's own shipped files and compares the output with golden files. Nothing reads the real host.
 
 ### M11d: README and user guide
 

@@ -1,0 +1,8 @@
+# The project's config, found because ccx-basic runs in this directory.
+features = ["search"]
+
+[server]
+port = 8080
+
+[log]
+level = "info"

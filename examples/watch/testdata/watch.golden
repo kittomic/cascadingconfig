@@ -1,0 +1,10 @@
+serving with port 8080, 100 requests/s, burst 20
+watching for changes; press Ctrl-C to stop
+  - limits.burst (was 20)
+  ~ limits.requests_per_second: 100 → 250
+now serving with port 8080, 250 requests/s, burst 0
+reload failed, keeping the last good config: cascadingconfig: decode /home/me/project/ccx-watch.toml:5:24: toml: array is incomplete
+  + limits.burst = 50
+  ~ server.port: 8080 → 9090
+now serving with port 9090, 250 requests/s, burst 50
+stopped

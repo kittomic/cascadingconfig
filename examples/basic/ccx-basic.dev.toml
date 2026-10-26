@@ -1,0 +1,6 @@
+# Read only in the dev environment: CCX_BASIC_ENV=dev.
+features = ["search", "debug-toolbar"]
+
+[log]
+level = "debug"
+format = "pretty"
