@@ -64,24 +64,24 @@ type DecodeHook func(from, to reflect.Type, data any) (any, error)
 // day-suffix durations and encoding.TextUnmarshaler. A nil hook is an *OptionError.
 func WithDecodeHook(h DecodeHook) Option {
 	return optionFunc(func(c *config) {
-		_, _ = c, h // not implemented yet
+		if h == nil {
+			c.fail("WithDecodeHook", "a nil hook")
+			return
+		}
+		c.hooks = append(c.hooks, h)
 	})
 }
 
 // WithZeroFields makes a null clear a value already set in Go, such as a field of the value being decoded into or a
 // map entry, as mapstructure's ZeroFields does. Without it, a null leaves the field as it was, as koanf does.
 func WithZeroFields() Option {
-	return optionFunc(func(c *config) {
-		_ = c // not implemented yet
-	})
+	return optionFunc(func(c *config) { c.zeroFields = true })
 }
 
 // WithoutWeakTyping turns off the conversions koanf makes while decoding, such as a string "8080" into an int, so a
 // value must already have the field's type.
 func WithoutWeakTyping() Option {
-	return optionFunc(func(c *config) {
-		_ = c // not implemented yet
-	})
+	return optionFunc(func(c *config) { c.strictTypes = true })
 }
 
 // WithTag sets the struct tag that decoding and WithDefaults read, instead of koanf. An empty tag is an *OptionError.
@@ -134,7 +134,15 @@ func (c *config) tagName() string {
 
 // decoderConfig returns a fresh decoder config for one decode into v, as koanf builds it.
 func (c *config) decoderConfig(v any, md *mapstructure.Metadata) *mapstructure.DecoderConfig {
-	dc := mapstructure.DecoderConfig{DecodeHook: defaultHooks(), WeaklyTypedInput: true}
+	hooks := make([]mapstructure.DecodeHookFunc, 0, len(c.hooks)+1)
+	for _, h := range c.hooks {
+		hooks = append(hooks, mapstructure.DecodeHookFuncType(h))
+	}
+	dc := mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.ComposeDecodeHookFunc(append(hooks, defaultHooks())...),
+		WeaklyTypedInput: !c.strictTypes,
+		ZeroFields:       c.zeroFields,
+	}
 	dc.Result, dc.TagName, dc.Metadata = v, c.tagName(), md
 	return &dc
 }

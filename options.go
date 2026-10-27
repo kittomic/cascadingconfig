@@ -115,9 +115,12 @@ type config struct {
 	markers         []string // WithRootMarker
 	configFilesOnly bool     // WithConfigFilesOnly
 
-	tag         string // WithTag; empty means the decoder config's, or koanf
+	tag         string // WithTag; empty means koanf
 	flatPaths   bool
 	unknownKeys UnknownKeys
+	hooks       []DecodeHook  // WithDecodeHook, in order, before the default hooks
+	zeroFields  bool          // WithZeroFields
+	strictTypes bool          // WithoutWeakTyping
 	requires    []requirement // RequireConfig, in order
 	probes      bool          // WithProbes
 
