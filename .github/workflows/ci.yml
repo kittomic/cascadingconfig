@@ -1,0 +1,70 @@
+# CI runs the same scripts as lefthook's pre-push (DL-283), so a check passes or fails the same way in both places.
+name: CI
+
+on:
+  pull_request:
+    branches: [wip, main]
+  push:
+    branches: [wip, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans the whole history
+          persist-credentials: false
+      # Installs the tools pinned in .config/mise.toml.
+      - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+      - name: Tests on the latest and the minimum Go
+        run: scripts/check-go-versions.sh
+      - name: Each module without go.work
+        run: scripts/check-gowork-off.sh
+      - name: Lint
+        run: scripts/each-module.sh golangci-lint run ./...
+      - name: Vulnerabilities
+        run: scripts/each-module.sh govulncheck ./...
+      - name: Licence files
+        run: scripts/check-licenses.sh
+      - name: Dependency budget and licences
+        run: scripts/check-deps.sh
+      - name: Markdown
+        run: rumdl check .
+      - name: Secrets
+        run: gitleaks git --redact --no-banner
+
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        with:
+          install_args: go
+      # The race detector needs cgo, which the Windows runner doesn't set up, so it runs on macOS only.
+      - name: Tests
+        run: |
+          race=""
+          if [[ "$RUNNER_OS" == "macOS" ]]; then race="-race"; fi
+          scripts/each-module.sh go test $race -count=1 ./...
