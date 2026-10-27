@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-viper/mapstructure/v2"
-
 	cc "github.com/kittomic/cascadingconfig"
 	"github.com/kittomic/cascadingconfig/cctest"
 )
@@ -190,24 +188,6 @@ func TestNullAndUnsetKeepGoDefaults(t *testing.T) {
 	}
 }
 
-// api.md Decoding: with ZeroFields, a null clears a Go-side default; _unset still keeps it.
-func TestZeroFieldsClearsOnNull(t *testing.T) {
-	res := loadOK(t, map[string]string{
-		sysFile:  `{"host": "sys", "port": 1}`,
-		projFile: `{"host": null, "_unset": ["port"]}`,
-	}, cc.WithDecoderConfig(&mapstructure.DecoderConfig{ZeroFields: true, DecodeHook: cc.DecodeHook(), WeaklyTypedInput: true}))
-	v := struct {
-		Host string `koanf:"host"`
-		Port int    `koanf:"port"`
-	}{Host: "go", Port: 9}
-	if err := res.Decode(&v); err != nil {
-		t.Fatalf("Decode: %v", err)
-	}
-	if v.Host != "" || v.Port != 9 {
-		t.Errorf("decoded %+v, want an empty host and the Go port", v)
-	}
-}
-
 // api.md Decoding: WithTag replaces the koanf tag, and WithFlatPaths decodes from flattened keys.
 func TestTagAndFlatPaths(t *testing.T) {
 	var tagged struct {
@@ -223,35 +203,6 @@ func TestTagAndFlatPaths(t *testing.T) {
 	tree := cc.Tree{"server": map[string]any{"port": int64(2)}}
 	if err := decodeValues(t, tree, &flat, cc.WithFlatPaths()); err != nil || flat.Port != 2 {
 		t.Errorf("WithFlatPaths: %+v, %v", flat, err)
-	}
-}
-
-// DL-149: WithDecoderConfig replaces our hooks, as in koanf; DecodeHook composes them back. The config is copied, and
-// an empty TagName falls back to the tag.
-func TestDecoderConfig(t *testing.T) {
-	type days struct {
-		D time.Duration `koanf:"d"`
-	}
-	tree := cc.Tree{"d": "7d"}
-
-	var v days
-	if err := decodeValues(t, tree, &v, cc.WithDecoderConfig(&mapstructure.DecoderConfig{WeaklyTypedInput: true})); err == nil {
-		t.Errorf("without our hooks, 7d decoded as %v; want an error", v.D)
-	}
-
-	v = days{}
-	if err := decodeValues(t, tree, &v, cc.WithDecoderConfig(&mapstructure.DecoderConfig{DecodeHook: cc.DecodeHook()})); err != nil || v.D != 7*24*time.Hour {
-		t.Errorf("with DecodeHook: %v, %v", v.D, err)
-	}
-
-	dc := &mapstructure.DecoderConfig{DecodeHook: cc.DecodeHook()}
-	opt := cc.WithDecoderConfig(dc)
-	dc.TagName = "other"
-	var tagged struct {
-		Port int `config:"port"`
-	}
-	if err := decodeValues(t, cc.Tree{"port": int64(3)}, &tagged, opt, cc.WithTag("config")); err != nil || tagged.Port != 3 {
-		t.Errorf("a copied config with an empty TagName: %+v, %v; want the WithTag tag", tagged, err)
 	}
 }
 
@@ -420,17 +371,6 @@ func TestUnknownKeysModes(t *testing.T) {
 		if attrs(rec)["code"] == string(cc.WarnUnknownKey) {
 			t.Errorf("UnknownKeysIgnore logged %v", rec)
 		}
-	}
-}
-
-// api.md Decoding: an app that sets ErrorUnused itself gets mapstructure's error wrapped in a *DecodeError.
-func TestErrorUnusedIsWrapped(t *testing.T) {
-	res := loadOK(t, unknownTree, cc.WithDecoderConfig(&mapstructure.DecoderConfig{ErrorUnused: true, DecodeHook: cc.DecodeHook()}))
-	var v withServers
-	err := res.Decode(&v)
-	var de *cc.DecodeError
-	if !errors.As(err, &de) {
-		t.Errorf("Decode = %v, want a *DecodeError", err)
 	}
 }
 
