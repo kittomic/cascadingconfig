@@ -17,4 +17,7 @@ go get github.com/kittomic/cascadingconfig/presets
 See the [README](https://github.com/kittomic/cascadingconfig#quick-start) for a quick start, and the
 [guide](https://github.com/kittomic/cascadingconfig/blob/main/docs/guide/).
 
+cascadingconfig isn't affiliated with or endorsed by mise or cosmiconfig; the names say whose search each layout
+follows.
+
 Part of [cascadingconfig](https://github.com/kittomic/cascadingconfig), under the [Apache License 2.0](LICENSE).
