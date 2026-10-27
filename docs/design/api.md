@@ -1723,4 +1723,5 @@ exercise the loader without real files or timers:
   `USERPROFILE` instead of `HOME` for a real host, and case-insensitive env-var prefixes. Paths are still joined with
   the real OS's rules, so a Windows test checks where a directory came from, not its separators.
 - **`cctest.Golden(t, file, got)`** compares `got` with a file under `testdata`, and rewrites the file when the test
-  runs with `-update`. It's used for reports and discovery orders.
+  runs with an `-update` flag its package defines, or with `CCTEST_UPDATE=1`; cctest registers no flags (DL-274). It's
+  used for reports and discovery orders.

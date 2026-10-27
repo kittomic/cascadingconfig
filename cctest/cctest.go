@@ -78,7 +78,8 @@ func WithHost(h Host) cascadingconfig.Option {
 	return hooks.WithHost(hooks.Host(h)).(cascadingconfig.Option)
 }
 
-// Golden compares got with the file testdata/file, and rewrites the file instead when the test runs with -update.
+// Golden compares got with the file testdata/file, and rewrites the file instead when the test runs with an -update
+// flag it defines itself, or with CCTEST_UPDATE=1. cctest registers no flags.
 func Golden(t testing.TB, file string, got []byte) {
 	t.Helper()
 	golden.Check(t, file, got)
