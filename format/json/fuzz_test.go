@@ -8,7 +8,7 @@ import (
 	ccjson "github.com/kittomic/cascadingconfig/format/json"
 )
 
-// Plan M1: the JSON decoder never panics, and only ever returns canonical value types or a *ParseError.
+// The JSON decoder never panics, and only ever returns canonical value types or a *ParseError.
 func FuzzDecode(f *testing.F) {
 	for _, seed := range []string{
 		``, `null`, `{}`, `[]`, `{"a": 1}`, `{"a": 1, "a": 2}`, `{"a": [1, 2.5, "x", null, true, {"b": {}}]}`,

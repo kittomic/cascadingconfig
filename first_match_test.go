@@ -11,6 +11,7 @@ import (
 // DL-154: first-match resolution chooses between files only. A Values scope above the chosen file still merges, and the
 // defaults sit below it; with no file, both still apply.
 func TestFirstMatchKeepsValueLayers(t *testing.T) {
+	t.Parallel()
 	load := func(files map[string]string) cc.Tree {
 		t.Helper()
 		l, err := cc.NewWithPreset("myapp", cc.CosmiconfigLayout,

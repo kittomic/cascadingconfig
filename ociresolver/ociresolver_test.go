@@ -21,6 +21,7 @@ func plain(r *registry, opts ...ociresolver.Option) cc.IncludeResolver {
 
 // DL-215: the resolver handles oci.
 func TestSchemes(t *testing.T) {
+	t.Parallel()
 	if got := ociresolver.New().Schemes(); !slices.Equal(got, []string{"oci"}) {
 		t.Errorf("Schemes() = %q, want oci", got)
 	}
@@ -29,6 +30,7 @@ func TestSchemes(t *testing.T) {
 // DL-215, design.md oci, "Manifests": a tag, a digest, and a tag with a digest each resolve to the manifest, whose
 // digest is the identity.
 func TestManifests(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	d := r.push("acme/cfg", "1.0", fileLayer("a.json", `{"v": 1}`))
 	for _, version := range []string{":1.0", "@" + d, ":1.0@" + d} {
@@ -47,6 +49,7 @@ func TestManifests(t *testing.T) {
 
 // DL-215: a Docker v2 schema 2 manifest with a Docker layer loads; an image index is a *ReferenceError.
 func TestManifestTypes(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	r.pushAs("acme/docker", "1", mtDocker, "application/vnd.docker.container.image.v1+json",
 		layer{mediaType: mtDockerLayer, data: gzipBytes(tarBytes(file("a.json", `{"v": 1}`)))})
@@ -64,6 +67,7 @@ func TestManifestTypes(t *testing.T) {
 // unpack annotation marks a directory tar; an untitled tar layer, plain or gzip, is read as entries; an untitled
 // non-tar layer is ignored.
 func TestArtifactForms(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	r.push("acme/files", "1",
 		fileLayer("a.json", `{"a": 1}`),
@@ -92,6 +96,7 @@ func TestArtifactForms(t *testing.T) {
 
 // DL-60, DL-215: layers are taken in manifest order, and the last match wins.
 func TestLastLayerWins(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	r.push("acme/cfg", "1",
 		tarLayer(false, file("a.json", `{"v": 1}`)),
@@ -104,6 +109,7 @@ func TestLastLayerWins(t *testing.T) {
 
 // DL-215, design.md oci, "Duplicates": whiteouts work as in an image.
 func TestWhiteouts(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	base := tarLayer(false, file("a.json", `{"v": 1}`), file("dir/b.json", `{"v": 1}`), file("dir/sub/c.json", `{"v": 1}`))
 	r.push("acme/file", "1", base, tarLayer(false, file(".wh.a.json", "")))
@@ -142,6 +148,7 @@ func TestWhiteouts(t *testing.T) {
 // DL-215, design.md oci, "Entry matching": an entry or title with an absolute name, a .. segment or a \ fails the whole
 // fetch, even when it isn't the requested file; a leading ./ is fine. This is an attack suite.
 func TestMalformedEntries(t *testing.T) {
+	t.Parallel()
 	good := file("a.json", `{"v": 1}`)
 	for _, tc := range []struct {
 		name string
@@ -177,6 +184,7 @@ func TestMalformedEntries(t *testing.T) {
 // DL-215, design.md oci, "Regular files only": a symlink, a hard link, a directory or a FIFO is a *ReferenceError;
 // zstd layers are a *ReferenceError for now.
 func TestNonRegular(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		e    tarEntry
@@ -203,6 +211,7 @@ func TestNonRegular(t *testing.T) {
 
 // DL-215, design.md oci, "Digests": a blob or manifest whose bytes don't match its digest fails, as a *FetchError.
 func TestDigests(t *testing.T) {
+	t.Parallel()
 	t.Run("blob", func(t *testing.T) {
 		r := newRegistry(t, false)
 		r.push("acme/cfg", "1", fileLayer("a.json", `{"v": 1}`))
@@ -225,6 +234,7 @@ func TestDigests(t *testing.T) {
 // DL-216, design.md oci, "Caps": a blob declared over WithMaxLayerSize is never downloaded; a layer that decompresses
 // past it, a file over the include size limit, and a manifest over 4 MiB are *TooLargeErrors.
 func TestCaps(t *testing.T) {
+	t.Parallel()
 	t.Run("declared size", func(t *testing.T) {
 		r := newRegistry(t, false)
 		l := fileLayer("a.json", `{"v": 1}`)
@@ -263,6 +273,7 @@ func TestCaps(t *testing.T) {
 // DL-217, design.md oci, "Options" and "Auth": credentials come only from WithCredentials, by registry; a registry
 // that hands out anonymous tokens needs none; an error from the credentials function is a *FetchError.
 func TestCredentials(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	r.user, r.pass = "u", "p"
 	r.push("acme/cfg", "1", fileLayer("a.json", `{"v": 1}`))
@@ -317,6 +328,7 @@ func TestNoDockerConfig(t *testing.T) {
 // DL-217, design.md oci, "Options": plain HTTP only for the registries WithPlainHTTP names; a TLS registry works
 // through WithClient.
 func TestPlainHTTP(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	r.push("acme/cfg", "1", fileLayer("a.json", `{"v": 1}`))
 	_, err := load(t, ociresolver.New(), []string{r.ociRef("acme/cfg", ":1", "a.json")})
@@ -332,6 +344,7 @@ func TestPlainHTTP(t *testing.T) {
 // DL-217, design.md oci, "Redirects": blob downloads redirected to another host are followed without allow-list
 // checks, but never from https to http; the app's client isn't changed.
 func TestRedirects(t *testing.T) {
+	t.Parallel()
 	t.Run("to a CDN", func(t *testing.T) {
 		r := newRegistry(t, false)
 		r.redirect = r.cdn.URL
@@ -366,6 +379,7 @@ func TestRedirects(t *testing.T) {
 
 // DL-218: a missing repository, tag, digest or path is a *NotFoundError.
 func TestNotFound(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	r.push("acme/cfg", "1", fileLayer("a.json", `{}`))
 	for _, ref := range []string{
@@ -383,6 +397,7 @@ func TestNotFound(t *testing.T) {
 
 // DL-218: a server error is a *FetchError.
 func TestServerError(t *testing.T) {
+	t.Parallel()
 	srv := newRegistry(t, false)
 	srv.fail = true
 	_, err := load(t, plain(srv), []string{srv.ociRef("acme/cfg", ":1", "a.json")})

@@ -11,6 +11,7 @@ import (
 // not: a package-level name, a method or a field, with a call's arguments or type arguments ignored. All-capitals
 // names, other libraries' names, allowed names, lowercase words, other inline code and code blocks are skipped.
 func TestNames(t *testing.T) {
+	t.Parallel()
 	doc := md(`# Fixture
 
 Build a ` + "`Loader`" + ` with ` + "`New`" + ` or ` + "`m.New`" + `, then call ` + "`Loader.Load`" + ` or ` + "`Load`" + `.

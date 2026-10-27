@@ -16,6 +16,7 @@ func typed(typ, value string) any { return map[string]any{"type": typ, "value": 
 // exactly, offset date-times as instants with the same offset, local date-times, dates and times as values, and
 // tables and arrays element by element.
 func TestMatchTOML(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name  string
 		got   any
@@ -73,6 +74,7 @@ func TestMatchTOML(t *testing.T) {
 
 // DL-270: a tree matches yaml-test-suite's JSON with numbers compared by value, and everything else exactly.
 func TestMatchJSON(t *testing.T) {
+	t.Parallel()
 	n := func(s string) any { return json.Number(s) }
 	for _, c := range []struct {
 		name  string
@@ -110,6 +112,7 @@ func TestMatchJSON(t *testing.T) {
 // DL-271: an outcomes file lists cases with a category and a reason; blank lines and comments are skipped, and a bad
 // category, a missing reason or a case listed twice is an error.
 func TestReadOutcomes(t *testing.T) {
+	t.Parallel()
 	got, err := conformance.ReadOutcomes([]byte(`# toml-test
 valid/a.toml  deviation  the top level must be a table (DL-53)
 

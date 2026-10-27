@@ -10,8 +10,9 @@ import (
 	"github.com/kittomic/cascadingconfig/format/yaml"
 )
 
-// implementation-plan.md M6: the same document in TOML, YAML and JSON gives an identical tree.
+// The same document in TOML, YAML and JSON gives an identical tree.
 func TestAcrossFormats(t *testing.T) {
+	t.Parallel()
 	docs := []struct {
 		dec cc.Decoder
 		src string

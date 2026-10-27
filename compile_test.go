@@ -13,6 +13,7 @@ import (
 // them anywhere else, and Option is sealed. Each program under testdata/compile must fail to build with the type error
 // its first line names; ok must build, so that a failure is always the misuse and never the setup.
 func TestOptionKindsDontCompileInTheWrongPlace(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("builds programs with the go tool")
 	}

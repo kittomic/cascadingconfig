@@ -54,8 +54,8 @@ func WithoutScopes(names ...ScopeName) Option {
 	})
 }
 
-// WithScope defines a scope and selects it (DL-261); a later WithScopes or WithoutScopes can deselect it. Without
-// Before or After, it goes above every scope defined so far. A name already in use is an *OptionError.
+// WithScope defines a scope and selects it; a later WithScopes or WithoutScopes can deselect it. Without Before or
+// After, it goes above every scope defined so far. A name already in use is an *OptionError.
 func WithScope(name ScopeName, kind ScopeKind, opts ...ScopeOption) Option {
 	opts = append([]ScopeOption(nil), opts...)
 	return optionFunc(func(c *config) {

@@ -40,6 +40,7 @@ func tarOf(t testing.TB, entries ...[3]string) []byte {
 
 // DL-215: applyTar finds the requested file, lets a later layer replace it, and removes it on a whiteout.
 func TestApplyTar(t *testing.T) {
+	t.Parallel()
 	s := &layerState{want: "dir/a.json"}
 	if err := s.applyTar(bytes.NewReader(tarOf(t, [3]string{"./dir/a.json", "one", ""})), 1<<20, 1<<10); err != nil || !s.found || string(s.content) != "one" {
 		t.Fatalf("after the first layer: found %v, content %q, err %v; want one", s.found, s.content, err)

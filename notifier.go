@@ -1,6 +1,6 @@
 package cascadingconfig
 
-// Notifier supplies file-change events for watching. Implemented by watch/fsnotify (DL-225).
+// Notifier supplies file-change events for watching. Implemented by watch/fsnotify.
 type Notifier interface {
 	// Add watches dir. A failure makes the watcher poll dir instead, with a warning.
 	Add(dir string) error
@@ -14,9 +14,9 @@ type Notifier interface {
 	Close() error
 }
 
-// WithNotifier sets where file-change events come from (DL-225). newNotifier is called once per watcher, because a
-// notifier's events have one reader, and the watcher closes what it returns. If it fails, the watcher polls everything,
-// with a warning. Without a notifier, watching polls. A nil function is an *OptionError.
+// WithNotifier sets where file-change events come from. newNotifier is called once per watcher, because a notifier's
+// events have one reader, and the watcher closes what it returns. If it fails, the watcher polls everything, with a
+// warning. Without a notifier, watching polls. A nil function is an *OptionError.
 func WithNotifier(newNotifier func() (Notifier, error)) Option {
 	return optionFunc(func(c *config) {
 		if newNotifier == nil {

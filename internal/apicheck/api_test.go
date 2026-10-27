@@ -13,6 +13,7 @@ import (
 // exported field or method, embedded fields marked, sealed interfaces marked, constraint interfaces whole, aliases,
 // and variables with types. Unexported names don't appear.
 func TestAPIRender(t *testing.T) {
+	t.Parallel()
 	want := []string{
 		`const CodeNotFound Code = 404`,
 		`const MaxDepth = 8`,
@@ -60,6 +61,7 @@ func TestAPIRender(t *testing.T) {
 
 // DL-257: another package's types are qualified by its name.
 func TestAPIRenderQualifies(t *testing.T) {
+	t.Parallel()
 	want := []string{
 		`func New(...Option) m.Decoder`,
 		`type Option interface`,
@@ -74,6 +76,7 @@ func TestAPIRenderQualifies(t *testing.T) {
 
 // DL-257: Diff reports rendered lines the file lacks and file lines that no longer render, ignoring blank lines.
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name                 string
 		file, rendered       []string

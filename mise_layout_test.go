@@ -22,6 +22,7 @@ func under(dir string, names ...string) []string {
 
 // DL-124: MiseLayout defines system, user, project and override, lowest first, and selects them all.
 func TestMiseLayoutScopes(t *testing.T) {
+	t.Parallel()
 	c := cfgOf(t, "myapp", MiseLayout)
 	want := []ScopeName{ScopeSystem, ScopeUser, ScopeProject, ScopeOverride}
 	if got := c.scopeOrder(); !reflect.DeepEqual(got, want) {
@@ -38,6 +39,7 @@ func TestMiseLayoutScopes(t *testing.T) {
 
 // DL-129, design.md Environments: the worked example, on Linux x64 with MYAPP_ENV=dev.
 func TestGoldenWorkedExample(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(under(app,
 		"myapp.toml", "myapp.unix.toml", "myapp.linux.toml", "myapp.linux-x64.toml", "myapp.dev.toml",
 		"myapp.local.toml", "myapp.unix.local.toml", "myapp.linux.local.toml", "myapp.linux-x64.local.toml",
@@ -51,6 +53,7 @@ func TestGoldenWorkedExample(t *testing.T) {
 // DL-124, DL-129, config-locations.md 3.2: one project directory with a file for every pattern in layers A–D, for env
 // dev. The files are created in alphabetical order, so the golden order comes only from the layout.
 func TestGoldenFullProjectDirectory(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(under(app,
 		".config/myapp/conf.d/a.dev.local.toml", ".config/myapp/conf.d/a.dev.toml", ".config/myapp/conf.d/a.toml",
 		".config/myapp/conf.d/f/myapp.dev.local.toml", ".config/myapp/conf.d/f/myapp.dev.toml",
@@ -74,6 +77,7 @@ func TestGoldenFullProjectDirectory(t *testing.T) {
 // DL-124, DL-129, config-locations.md 3.4–3.6: the system, user and override scopes, from outside ~ so the walk
 // finds none of them.
 func TestGoldenUserAndOverrideScopes(t *testing.T) {
+	t.Parallel()
 	user := "/home/me/.config/myapp"
 	files := under(user,
 		"conf.d/a.dev.local.toml", "conf.d/a.dev.toml", "conf.d/a.toml", "conf.d/f/myapp.dev.local.toml",
@@ -89,6 +93,7 @@ func TestGoldenUserAndOverrideScopes(t *testing.T) {
 // DL-61, DL-110: when the start dir is under ~, the user's config.toml is also a project file of ~. It loads once, at
 // the project position, with the user scope and trust.
 func TestUserFileFoundByTheWalk(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/home/me/.config/myapp/config.toml", app+"/myapp.toml"))
 	res := miseLoad(t, fsys, inDir(app, nil))
 	if len(res.found) != 2 {
@@ -102,6 +107,7 @@ func TestUserFileFoundByTheWalk(t *testing.T) {
 
 // DL-128: when MYAPP_CONFIG_DIR moves the user directory, the walk drops files under the default one.
 func TestMovedUserDirectory(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/home/me/.config/myapp/config.toml", "/custom/config.toml"))
 	res := miseLoad(t, fsys, inDir(app, setEnv("MYAPP_CONFIG_DIR", "/custom")))
 	wantPaths(t, res, "/custom/config.toml")
@@ -110,6 +116,7 @@ func TestMovedUserDirectory(t *testing.T) {
 // DL-125: MYAPP_GLOBAL_CONFIG_FILE makes one file the whole user scope and turns override off; MYAPP_SYSTEM_CONFIG_FILE
 // makes one file the whole system scope. A missing one is a 404.
 func TestSingleFileBindings(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(
 		"/etc/myapp/config.toml", "/home/me/.config/myapp/config.toml", "/home/me/.config/myapp/config.override.toml",
 		"/opt/global.toml", "/opt/system.toml",
@@ -129,6 +136,7 @@ func TestSingleFileBindings(t *testing.T) {
 // DL-125, config-locations.md 3.2: MYAPP_OVERRIDE_CONFIG_FILENAMES replaces the walk's shared names and removes its
 // local files; env and env-local files still load.
 func TestOverrideConfigFilenames(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(under(app,
 		"myapp.toml", "custom.toml", "custom.json", "other.toml", "myapp.dev.toml", "myapp.local.toml", "myapp.dev.local.toml",
 	)...))
@@ -139,6 +147,7 @@ func TestOverrideConfigFilenames(t *testing.T) {
 // DL-127: ignored paths, from WithIgnoredPaths and MYAPP_IGNORED_CONFIG_PATHS together, match a file or every file
 // below a directory, after resolving symlinks. Matches are LayerIgnored, without a warning.
 func TestIgnoredPaths(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(under(app, "myapp.toml", ".myapp.toml", "myapp/config.toml", ".config/myapp.toml")...))
 	fsys.Symlink(app+"/.config", "/home/me/linked")
 	res := miseLoad(t, fsys, inDir(app, setEnv("MYAPP_IGNORED_CONFIG_PATHS", app+"/myapp")),
@@ -159,6 +168,7 @@ func TestIgnoredPaths(t *testing.T) {
 // DL-126, design.md Explicit config files: WithConfigFiles replaces only the project scope, at its position, and the
 // files load in order with any registered decoder, even one the format order leaves out, and without variants.
 func TestExplicitConfigFiles(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(
 		"/etc/myapp/config.json", "/home/me/.config/myapp/config.override.json", app+"/myapp.json",
 		"/x/a.toml", "/x/a.local.toml", "/x/b.json",
@@ -178,6 +188,7 @@ func TestExplicitConfigFiles(t *testing.T) {
 // DL-126: MYAPP_CONFIG_FILE is a path list, beaten by WithConfigFiles; relative paths resolve against the current
 // directory; the files load even when project isn't selected; and they're never ignored.
 func TestConfigFileBinding(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/x/a.toml", "/x/b.toml", app+"/rel.toml", app+"/myapp.toml"))
 	res := miseLoad(t, fsys, inDir(app, setEnv("MYAPP_CONFIG_FILE", "/x/a.toml:rel.toml")), WithIgnoredPaths("/x"))
 	wantPaths(t, res, "/x/a.toml", app+"/rel.toml")
@@ -192,6 +203,7 @@ func TestConfigFileBinding(t *testing.T) {
 // DL-126: an explicit file that's missing is a 404, one with no registered decoder a 415, and a directory an
 // *IOError.
 func TestExplicitFileErrors(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/x/a.ini"))
 	fsys.Mkdir("/x/dir.toml", 0o755)
 	tests := []struct {
@@ -222,6 +234,7 @@ func TestExplicitFileErrors(t *testing.T) {
 
 // DL-126: the ExplicitFile kind loads files as given, in order, with the scope's trust.
 func TestExplicitFileKind(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/x/a.json", "/x/b.json"))
 	res := mustLoad(t, fsys, WithScope("files", ExplicitFile("/x/b.json", "/x/a.json"), Trust(TrustSystem)), WithScopes("files"))
 	wantPaths(t, res, "/x/b.json", "/x/a.json")
@@ -239,6 +252,7 @@ func TestExplicitFileKind(t *testing.T) {
 
 // DL-125: DisabledBy skips a scope while its binding is set.
 func TestDisabledBy(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/d/config.json"))
 	res := mustLoad(t, fsys, hostWith(map[string]string{"MYAPP_OFF": "1"}, nil), WithBinding("OFF", ""),
 		WithScope("s", FixedDir("/d", Pattern{Template: "config.json"}), DisabledBy("OFF")), WithScopes("s"))

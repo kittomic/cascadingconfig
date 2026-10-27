@@ -14,6 +14,7 @@ import (
 
 // DL-107, DL-111: a FixedDir's patterns apply lowest precedence first, and scopes apply in their order.
 func TestLoadFixedDir(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{
 		"/etc/myapp/base.json": `{"a": "base", "b": "base"}`,
 		"/etc/myapp/top.json":  `{"b": "top"}`,
@@ -33,6 +34,7 @@ func TestLoadFixedDir(t *testing.T) {
 
 // DL-110: a missing directory loads nothing, without a warning.
 func TestLoadMissingDir(t *testing.T) {
+	t.Parallel()
 	res := mustLoad(t, memfs.New(nil), fixed("s", "/nope/{name}", "config.json"), WithScopes("s"))
 	wantTree(t, res, `{}`)
 	wantFound(t, res)
@@ -45,6 +47,7 @@ func TestLoadMissingDir(t *testing.T) {
 // slot's files load in format order, so the highest-ranked format wins. A file whose extension has no decoder, or
 // isn't searched, is never found.
 func TestLoadExtensions(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		"/d/config.json":  `{"a": "json", "j": true}`,
 		"/d/config.yaml":  `{"a": "yaml", "y": true}`,
@@ -70,6 +73,7 @@ func TestLoadExtensions(t *testing.T) {
 
 // DL-93: the conflict policies apply to a slot's files.
 func TestLoadSlotPolicies(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{"/d/config.json": `{"a": "json"}`, "/d/config.toml": `{"a": "toml"}`}
 	opts := []Option{WithDecoder(tomlAsJSON), fixed("s", "/d", "config.{ext}"), WithScopes("s"), WithFormats("toml", "json")}
 
@@ -87,6 +91,7 @@ func TestLoadSlotPolicies(t *testing.T) {
 // DL-116: the golden discovery order for FixedDir scopes, with every layer's status: format order within a slot,
 // patterns in order, a subdirectory pattern, an empty file and a FIFO.
 func TestGoldenFixedDirOrder(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{
 		"/etc/myapp/config.json":             `{"a": "system-json"}`,
 		"/etc/myapp/config.toml":             `{"a": "system-toml"}`,
@@ -109,6 +114,7 @@ func TestGoldenFixedDirOrder(t *testing.T) {
 // DL-66, DL-110: a file reached twice, through two patterns by a symlink, or through a hard link, loads once, at its
 // higher position.
 func TestDedup(t *testing.T) {
+	t.Parallel()
 	t.Run("symlink, real name higher", func(t *testing.T) {
 		fsys := memfs.New(map[string]string{"/d/config.json": `{"a": 1}`, "/d/middle.json": `{"a": 2}`})
 		fsys.Symlink("config.json", "/d/alias.json")
@@ -134,6 +140,7 @@ func TestDedup(t *testing.T) {
 // DL-110: a file reached through two scopes loads once at its higher position, with the scope and trust of its most
 // trusted route.
 func TestDedupTakesMostTrustedRoute(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{"/shared/config.json": `{"a": "shared"}`, "/mid/config.json": `{"a": "mid"}`})
 	fsys.Symlink("/shared/config.json", "/link/config.json")
 	res := mustLoad(t, fsys,
@@ -156,6 +163,7 @@ func TestDedupTakesMostTrustedRoute(t *testing.T) {
 // DL-62, DL-110, design.md Filesystem hook: symlinks are followed, even out of the searched directory, and broken
 // symlinks and loops are skipped with a warning.
 func TestSymlinks(t *testing.T) {
+	t.Parallel()
 	t.Run("a file leaving the directory", func(t *testing.T) {
 		fsys := memfs.New(map[string]string{"/srv/shared/real.json": `{"a": 1}`})
 		fsys.Symlink("/srv/shared/real.json", "/etc/myapp/config.json")
@@ -185,6 +193,7 @@ func TestSymlinks(t *testing.T) {
 
 // DL-63, DL-110: a FIFO, a directory, or a symlink to either, named like a candidate, is skipped with a warning.
 func TestSpecialFiles(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{"/d/ok.json": `{"a": 1}`})
 	fsys.Mkfifo("/d/fifo.json")
 	fsys.Mkdir("/d/dir.json", 0o755)
@@ -208,6 +217,7 @@ func TestSpecialFiles(t *testing.T) {
 
 // DL-64: a local file over the size limit is a *TooLargeError (413); one at the limit loads.
 func TestFileSizeLimit(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{"/d/ok.json": `{"a": 12}`, "/d/big.json": `{"a": 123}`}) // 9 and 10 bytes
 	res := mustLoad(t, fsys, fixed("s", "/d", "ok.json"), WithScopes("s"), WithMaxFileSize(9))
 	wantTree(t, res, `{"a": 12}`)
@@ -225,6 +235,7 @@ func TestFileSizeLimit(t *testing.T) {
 
 // DL-66: names match the directory listing case-sensitively, so MyApp.JSON doesn't match myapp.json.
 func TestNameMatchingIsCaseSensitive(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{"/d/MyApp.JSON": `{"a": 1}`, "/d/Config.json": `{"b": 1}`})
 	res := mustLoad(t, fsys, fixed("s", "/d", "{name}.{ext}", "config.{ext}"), WithScopes("s"))
 	wantTree(t, res, `{}`)
@@ -233,6 +244,7 @@ func TestNameMatchingIsCaseSensitive(t *testing.T) {
 
 // D16, DL-110: a searched file that can't be read is skipped with a warning, as LayerUnreadable.
 func TestUnreadableFile(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{"/d/secret.json": `{"a": 1}`, "/d/ok.json": `{"b": 1}`})
 	fsys.Chmod("/d/secret.json", 0)
 	res := mustLoad(t, fsys, fixed("s", "/d", "secret.json", "ok.json"), WithScopes("s"))
@@ -245,6 +257,7 @@ func TestUnreadableFile(t *testing.T) {
 
 // DL-110, api.md Errors: every broken file is reported, joined.
 func TestEveryBrokenFileIsReported(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{
 		"/a/config.json": `{"a": `,
 		"/b/config.json": `{"b": 1}`,
@@ -277,6 +290,7 @@ func TestEveryBrokenFileIsReported(t *testing.T) {
 
 // DL-110: empty files are kept as LayerEmpty and merge nothing.
 func TestEmptyFiles(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{
 		"/d/a.json": ``, "/d/b.json": "  \n", "/d/c.json": `null`, "/d/d.json": `{"d": 1}`,
 	})
@@ -287,6 +301,7 @@ func TestEmptyFiles(t *testing.T) {
 
 // DL-75: a cancelled load keeps errors.Is(err, context.Canceled), with code 499.
 func TestCancelledLoad(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	l := loader(t, memfs.New(map[string]string{"/d/a.json": `{}`}), fixed("s", "/d", "a.json"), WithScopes("s"))
@@ -299,6 +314,7 @@ func TestCancelledLoad(t *testing.T) {
 
 // api.md Concurrency and ownership: a loader is safe for concurrent loads, which agree.
 func TestParallelLoads(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(map[string]string{"/d/a.json": `{"a": [1, 2], "t": {"x": 1}}`, "/d/b.json": `{"b": 2}`})
 	l := loader(t, fsys, fixed("s", "/d", "a.json", "b.json"), WithScopes("s"))
 	var wg sync.WaitGroup

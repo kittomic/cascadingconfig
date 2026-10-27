@@ -28,6 +28,7 @@ func levelHook(_, to reflect.Type, data any) (any, error) {
 
 // DL-278: a hook added with WithDecodeHook fills an app's own type, and its error is the key's *DecodeError.
 func TestWithDecodeHook(t *testing.T) {
+	t.Parallel()
 	var v struct {
 		Lvl level `koanf:"lvl"`
 	}
@@ -42,6 +43,7 @@ func TestWithDecodeHook(t *testing.T) {
 
 // DL-278: added hooks run before the default hooks, which still apply, and run in the order they were added.
 func TestDecodeHookOrder(t *testing.T) {
+	t.Parallel()
 	forever := func(_, to reflect.Type, data any) (any, error) {
 		if to == reflect.TypeFor[time.Duration]() && data == "forever" {
 			return time.Duration(1 << 62), nil
@@ -76,6 +78,7 @@ func TestDecodeHookOrder(t *testing.T) {
 
 // DL-278: by default a string fills a number, as koanf does; WithoutWeakTyping makes that a *DecodeError.
 func TestWithoutWeakTyping(t *testing.T) {
+	t.Parallel()
 	var v struct {
 		Port int `koanf:"port"`
 	}
@@ -92,6 +95,7 @@ func TestWithoutWeakTyping(t *testing.T) {
 // DL-278: with WithZeroFields, a null clears a value set in Go; _unset still keeps it, because the key is absent.
 // Without it, a null leaves the value as it was.
 func TestWithZeroFields(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		sysFile:  `{"host": "sys", "port": 1}`,
 		projFile: `{"host": null, "_unset": ["port"]}`,
@@ -119,6 +123,7 @@ func TestWithZeroFields(t *testing.T) {
 
 // DL-278: a nil hook is an *OptionError from WithDecodeHook.
 func TestWithDecodeHookNil(t *testing.T) {
+	t.Parallel()
 	_, err := cc.NewWithPreset("myapp", cc.MiseLayout, cc.WithDecodeHook(nil))
 	for _, e := range cc.Errors(err) {
 		var oe *cc.OptionError

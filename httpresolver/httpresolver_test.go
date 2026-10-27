@@ -148,6 +148,7 @@ func redirects(w http.ResponseWriter, r *http.Request) {
 
 // DL-208: the resolver handles http and https.
 func TestSchemes(t *testing.T) {
+	t.Parallel()
 	got := slices.Sorted(slices.Values(httpresolver.New().Schemes()))
 	if !slices.Equal(got, []string{"http", "https"}) {
 		t.Errorf("Schemes() = %q, want http and https", got)
@@ -156,6 +157,7 @@ func TestSchemes(t *testing.T) {
 
 // DL-198, DL-208: the body is the content, Content-Type is the media type, and the identity is the body's SHA-256.
 func TestFetch(t *testing.T) {
+	t.Parallel()
 	srv := newServer(t, false, files(map[string]string{"/a.json": `{"a": 1}`, "/config": `{"c": 1}`}))
 	res := loadOK(t, httpresolver.New(), []string{srv.URL + "/a.json", srv.URL + "/config"})
 	got, want := res.Tree(), cc.Tree{"root": int64(1), "a": int64(1), "c": int64(1)}
@@ -170,6 +172,7 @@ func TestFetch(t *testing.T) {
 
 // DL-208: WithClient supplies the client, so a TLS test server's client reaches it, and the default client doesn't.
 func TestTLS(t *testing.T) {
+	t.Parallel()
 	srv := newServer(t, true, files(map[string]string{"/a.json": `{"a": 1}`}))
 	loadOK(t, httpresolver.New(httpresolver.WithClient(srv.Client())), []string{srv.URL + "/a.json"})
 	_, err := load(t, httpresolver.New(), []string{srv.URL + "/a.json"})
@@ -178,6 +181,7 @@ func TestTLS(t *testing.T) {
 
 // DL-55, DL-201: an integrity fragment is never sent to the server.
 func TestFragmentNotSent(t *testing.T) {
+	t.Parallel()
 	srv := newServer(t, false, files(map[string]string{"/a.json": `{"a": 1}`}))
 	loadOK(t, httpresolver.New(), []string{srv.URL + "/a.json?v=2#sha256=" + sum(`{"a": 1}`)})
 	if got := srv.requested(); !slices.Equal(got, []string{"/a.json?v=2"}) {
@@ -187,6 +191,7 @@ func TestFragmentNotSent(t *testing.T) {
 
 // DL-208: at most 5 redirects are followed.
 func TestRedirectLimit(t *testing.T) {
+	t.Parallel()
 	srv := newServer(t, false, redirects)
 	loadOK(t, httpresolver.New(), []string{srv.URL + "/r/5"})
 	_, err := load(t, httpresolver.New(), []string{srv.URL + "/r/6"})
@@ -195,6 +200,7 @@ func TestRedirectLimit(t *testing.T) {
 
 // DL-208: a redirect from https to http is a *PolicyError, and the plain-http target is never requested.
 func TestRedirectDowngrade(t *testing.T) {
+	t.Parallel()
 	plain := newServer(t, false, files(map[string]string{"/a.json": `{"a": 1}`}))
 	secure := newServer(t, true, redirects)
 	_, err := load(t, httpresolver.New(httpresolver.WithClient(secure.Client())),
@@ -208,6 +214,7 @@ func TestRedirectDowngrade(t *testing.T) {
 // DL-198, DL-208, design.md Allow-lists, "Redirects": every redirect target is normalised and matched against the
 // including file's scope's allow-lists; one that fails is never requested.
 func TestRedirectAllowList(t *testing.T) {
+	t.Parallel()
 	srv := newServer(t, false, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/start/ok":
@@ -238,6 +245,7 @@ func srvURL(r *http.Request) string { return "http://" + r.Host }
 
 // DL-208: only a 200 is content; a 404 or 410 is a *NotFoundError, and any other status a 502.
 func TestStatuses(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		status int
 		code   cc.Code
@@ -265,6 +273,7 @@ func TestStatuses(t *testing.T) {
 // DL-198, DL-208: a Content-Length over the limit is a 413 before the body is read, and a body over the limit without
 // one is a 413 too.
 func TestSizeLimit(t *testing.T) {
+	t.Parallel()
 	t.Run("Content-Length", func(t *testing.T) {
 		srv := newServer(t, false, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Length", strconv.Itoa(2<<20))
@@ -293,6 +302,7 @@ func TestSizeLimit(t *testing.T) {
 
 // DL-199: the per-fetch timeout reaches the request.
 func TestTimeout(t *testing.T) {
+	t.Parallel()
 	srv := newServer(t, false, func(_ http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
@@ -319,6 +329,7 @@ func (c *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // DL-208: WithClient's client carries the requests, its own redirect check runs after the resolver's, and the client
 // isn't changed.
 func TestWithClient(t *testing.T) {
+	t.Parallel()
 	srv := newServer(t, false, redirects)
 	rt := &countingTransport{}
 	var appChecks int

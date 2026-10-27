@@ -19,6 +19,7 @@ import (
 
 // DL-211: the resolver handles git.
 func TestSchemes(t *testing.T) {
+	t.Parallel()
 	if got := gitresolver.New().Schemes(); !slices.Equal(got, []string{"git"}) {
 		t.Errorf("Schemes() = %q, want git", got)
 	}
@@ -38,6 +39,7 @@ func history(t *testing.T, format string) (r *repo, first, second string) {
 // DL-211: a branch, an annotated tag, a lightweight tag, a full commit id and no ref each fetch the file at that
 // commit, and the identity is the commit id.
 func TestFetchRefs(t *testing.T) {
+	t.Parallel()
 	for _, format := range []string{"sha1", "sha256"} {
 		t.Run(format, func(t *testing.T) {
 			r, first, second := history(t, format)
@@ -70,6 +72,7 @@ func TestFetchRefs(t *testing.T) {
 // DL-211, design.md git, "Regular files only": a symlink, a submodule or a directory is a *ReferenceError, and an
 // executable file loads.
 func TestModes(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("dir/a.json", `{"a": 1}`).write("exec.json", `{"x": 1}`)
 	if err := os.Chmod(filepath.Join(r.dir, "exec.json"), 0o755); err != nil {
@@ -93,6 +96,7 @@ func TestModes(t *testing.T) {
 // DL-214: a ref the remote doesn't have, or a path the commit doesn't have, is a *NotFoundError; a file over the size
 // limit is a *TooLargeError.
 func TestFetchErrors(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{"a": "`+strings.Repeat("x", 100)+`"}`).commit("one")
 	t.Run("missing ref", func(t *testing.T) {
@@ -116,6 +120,7 @@ func TestFetchErrors(t *testing.T) {
 // DL-212, design.md git, "Transports": by default only https and ssh are allowed; a file:// or http repo is a
 // *PolicyError, and git never runs.
 func TestTransports(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{}`).commit("one")
 	ran := marker(t, "ran")
@@ -133,6 +138,7 @@ func TestTransports(t *testing.T) {
 
 // DL-212: a ref that starts with - never reaches git.
 func TestNoOptionInjection(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{}`).commit("one")
 	ran := marker(t, "ran")
@@ -190,6 +196,7 @@ func TestIsolation(t *testing.T) {
 
 // DL-214: an old or missing git is a *FetchError that says so.
 func TestGitProgram(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{}`).commit("one")
 	ref := gitRef(r.url(), "a.json", "main")
@@ -208,6 +215,7 @@ func TestGitProgram(t *testing.T) {
 
 // DL-199, DL-214: the include timeout stops git.
 func TestTimeout(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{}`).commit("one")
 	slow := wrapper(t, `[ "$1" = version ] || sleep 30`)
@@ -223,6 +231,7 @@ func TestTimeout(t *testing.T) {
 // DL-212, DL-214, design.md git, "Isolated environment": without a credential helper, a repo that asks for
 // credentials fails at once, with no prompt; WithCredentialHelper supplies them.
 func TestCredentialHelper(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{"a": 1}`).commit("one")
 	b := newBackend(t, filepath.Dir(r.dir), func(h http.Handler) http.Handler {
@@ -279,6 +288,7 @@ func redirector(t *testing.T, tls bool, target string) *httptest.Server {
 // allow-lists, and git fetches from the final URL; a redirect the allow-list rejects, one from https to http, and more
 // than 5 hops never reach the target.
 func TestRedirects(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1")
 	r.write("a.json", `{"a": 1}`).commit("one")
 	b := newBackend(t, filepath.Dir(r.dir), nil)

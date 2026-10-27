@@ -21,6 +21,7 @@ func (e *watchEnv) wantWatched(when string, want ...string) {
 
 // DL-224: each scope's directory is watched, and nothing else.
 func TestWatchSetScopeDirs(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`, sysFile: `{"b": 1}`})
 	e.watch(nil)
 	e.wantWatched("after Watch", sysDir, work)
@@ -28,6 +29,7 @@ func TestWatchSetScopeDirs(t *testing.T) {
 
 // DL-224: an event whose name the directory's filter doesn't pass doesn't reload; one it passes does.
 func TestWatchSetFilter(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`, sysFile: `{"b": 1}`})
 	e.watch(nil)
 	e.save(work+"/notes.txt", "hello")
@@ -43,6 +45,7 @@ func TestWatchSetFilter(t *testing.T) {
 // DL-224: a missing directory is watched through its nearest existing ancestor, for the next path segment only; once
 // it appears, the reload re-plans the set.
 func TestWatchSetMissingDir(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	e.wantWatched("with no /etc/myapp", "/etc", work)
@@ -60,6 +63,7 @@ func TestWatchSetMissingDir(t *testing.T) {
 
 // DL-224: an ancestor several levels up is watched when the directories between are missing too.
 func TestWatchSetDistantAncestor(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{}`})
 	l := newLoaderFS(t, e.fs, nil, e.options(
 		cc.WithScope("deep", cc.FixedDir("/srv/a/b/c", cc.Pattern{Template: "config.json"})),
@@ -82,6 +86,7 @@ func TestWatchSetDistantAncestor(t *testing.T) {
 
 // DL-224: an explicit config file's directory is watched, filtered to that file's name.
 func TestWatchSetExplicitFile(t *testing.T) {
+	t.Parallel()
 	const explicit = "/srv/conf/app.json"
 	e := newWatchEnv(t, map[string]string{rootCfg: `{}`, explicit: `{"x": 1}`})
 	w := e.watch(nil, cc.WithConfigFiles(explicit))
@@ -98,6 +103,7 @@ func TestWatchSetExplicitFile(t *testing.T) {
 
 // DL-224: a local include's directory is watched, filtered to the included file's name.
 func TestWatchSetLocalInclude(t *testing.T) {
+	t.Parallel()
 	const inc = work + "/inc/base.json"
 	e := newWatchEnv(t, map[string]string{rootCfg: includeOf(`"a": 1`, "inc/base.json"), inc: `{"b": 1}`})
 	w := e.watch(nil)
@@ -112,6 +118,7 @@ func TestWatchSetLocalInclude(t *testing.T) {
 
 // DL-224: a symlinked config file's target directory is watched too, filtered to the target's name.
 func TestWatchSetSymlinkTarget(t *testing.T) {
+	t.Parallel()
 	const target = "/home/me/dotfiles/myapp.json"
 	e := newWatchEnv(t, map[string]string{target: `{"a": 1}`, sysFile: `{}`})
 	e.fs.Symlink(target, rootCfg)
@@ -128,6 +135,7 @@ func TestWatchSetSymlinkTarget(t *testing.T) {
 // design.md Hot reload, "Symlink swaps": an event for any name in a directory holding a symlinked candidate resolves
 // the symlink again, so a Kubernetes ConfigMap ..data swap is a change.
 func TestWatchSetSymlinkSwap(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{
 		sysDir + "/..2026_10_21_1/config.json": `{"v": 1}`,
 		sysDir + "/..2026_10_21_2/config.json": `{"v": 2}`,
@@ -147,6 +155,7 @@ func TestWatchSetSymlinkSwap(t *testing.T) {
 // DL-224: a failed reload re-plans from the previous set plus what it recorded, and the next good reload drops what's
 // no longer needed.
 func TestWatchSetFailedReload(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.watch(nil)
 	e.wantWatched("with no /etc/myapp", "/etc", work)
@@ -162,9 +171,10 @@ func TestWatchSetFailedReload(t *testing.T) {
 	e.wantWatched("after the good reload", sysDir, work)
 }
 
-// DL-224, plan M9: a changed bootstrap env re-plans the watch set, so an env file that was filtered out before is
+// DL-224: a changed bootstrap env re-plans the watch set, so an env file that was filtered out before is
 // watched after.
 func TestWatchSetBootstrapEnv(t *testing.T) {
+	t.Parallel()
 	const rc, prod = work + "/.myapprc.json", work + "/myapp.prod.json"
 	fsys := cctest.NewFS(map[string]string{rc: `{"env": ["dev"]}`, rootCfg: `{"a": 1}`})
 	n := cctest.NewNotifier()

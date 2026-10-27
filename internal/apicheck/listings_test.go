@@ -13,6 +13,7 @@ func md(s string) string { return strings.ReplaceAll(s, "'''", "```") }
 // DL-256: a listing that matches the code has no findings, whatever its parameter names, grouping, comments, method
 // bodies or partial structs.
 func TestListingsMatch(t *testing.T) {
+	t.Parallel()
 	doc := md(`# Fixture
 
 Prose with ` + "`Nothing`" + ` in it isn't checked.
@@ -74,6 +75,7 @@ func helper() // unexported, so not checked
 
 // DL-256: each kind of difference is a finding at the declaration's line, naming the declaration.
 func TestListingsDiffer(t *testing.T) {
+	t.Parallel()
 	doc := md(`'''go
 func Nope() Option
 func New(name int, opts ...Option) (*Loader, error)
@@ -136,6 +138,7 @@ type Watcher[T comparable] struct{}
 
 // DL-256: an interface listing names every exported method, and only methods the interface has.
 func TestListingsInterfaces(t *testing.T) {
+	t.Parallel()
 	doc := md(`'''go
 type Decoder interface {
 	Decode(data []byte) (Tree, error)
@@ -156,6 +159,7 @@ type Option interface {
 // DL-256: a "// package" line sends what follows to each package it names, relative to the module, with "." for the
 // core and an optional note in parentheses; an unknown package is a finding, and what follows it isn't checked.
 func TestListingsPackageMarkers(t *testing.T) {
+	t.Parallel()
 	doc := md(`'''go
 func Open(fsys fs.FS) error
 
@@ -187,6 +191,7 @@ func Open(fsys fs.FS) error // a new block starts in the core again
 // DL-256: a block that doesn't parse is a finding at its opening fence, superseded and example blocks are skipped, and
 // so is any fence that isn't Go.
 func TestListingsBlocks(t *testing.T) {
+	t.Parallel()
 	doc := md(`'''go
 func Open(fsys fs.FS) error
 Open(nil)

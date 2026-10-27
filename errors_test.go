@@ -62,6 +62,7 @@ func errorCases() []errorCase {
 // api.md Errors, DL-84: every error type has its documented code and sentinel, matches with errors.Is and errors.As,
 // and unwraps to its cause, even when wrapped again by the caller.
 func TestErrorTypes(t *testing.T) {
+	t.Parallel()
 	cases := errorCases()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -94,6 +95,7 @@ func TestErrorTypes(t *testing.T) {
 
 // api.md Errors: the message format of the base error and of a ParseError with a position.
 func TestErrorMessages(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		err  error
@@ -126,6 +128,7 @@ func TestErrorMessages(t *testing.T) {
 
 // api.md Errors: NewError builds base errors with any code, for situations with no specific type.
 func TestNewError(t *testing.T) {
+	t.Parallel()
 	err := cc.NewError(cc.CodeInternal, "trust", "app.json", errCause)
 	if got := cc.CodeOf(err); got != cc.CodeInternal {
 		t.Errorf("CodeOf = %d, want %d", got, cc.CodeInternal)
@@ -141,6 +144,7 @@ func TestNewError(t *testing.T) {
 // DL-75: a cancelled or timed-out load keeps errors.Is(err, context.Canceled) and context.DeadlineExceeded working,
 // with codes 499 and 504.
 func TestContextErrors(t *testing.T) {
+	t.Parallel()
 	canceled := cc.NewError(cc.CodeCanceled, "load", "", context.Canceled)
 	if !errors.Is(canceled, context.Canceled) {
 		t.Errorf("errors.Is(err, context.Canceled) = false, want true")
@@ -160,6 +164,7 @@ func TestContextErrors(t *testing.T) {
 
 // api.md Errors: the code constants have their documented values.
 func TestCodeConstants(t *testing.T) {
+	t.Parallel()
 	want := map[cc.Code]int{
 		cc.CodeBadRequest:           400,
 		cc.CodeForbidden:            403,
@@ -184,6 +189,7 @@ func TestCodeConstants(t *testing.T) {
 
 // api.md Errors: CodeOf with no cascadingconfig error in the chain.
 func TestCodeOfWithoutCascadingconfigError(t *testing.T) {
+	t.Parallel()
 	if got := cc.CodeOf(nil); got != 0 {
 		t.Errorf("CodeOf(nil) = %d, want 0", got)
 	}
@@ -195,6 +201,7 @@ func TestCodeOfWithoutCascadingconfigError(t *testing.T) {
 // api.md Errors, "Several errors in one load": joined errors keep working with errors.Is, errors.As and CodeOf, and
 // Errors splits them.
 func TestJoinedErrors(t *testing.T) {
+	t.Parallel()
 	parse := &cc.ParseError{BaseError: base()}
 	fetch := &cc.FetchError{BaseError: base()}
 	joined := errors.Join(parse, fetch)
@@ -215,6 +222,7 @@ func TestJoinedErrors(t *testing.T) {
 
 // api.md Errors: Errors splits recursively, and handles single and nil errors.
 func TestErrorsSplitting(t *testing.T) {
+	t.Parallel()
 	a, b, c := errors.New("a"), errors.New("b"), errors.New("c")
 	tests := []struct {
 		name string

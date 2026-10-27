@@ -77,9 +77,10 @@ var allBindings = map[Binding]string{
 	BindConfigFormats:           "MYAPP_CONFIG_FORMATS",
 }
 
-// DL-94, DL-98, DL-105, design.md: what each layout has so far. Until M4a the layouts have no scopes, so the tests add
-// one.
+// DL-94, DL-98, DL-105, design.md: what each layout has. The tests select one Values scope in place of the layout's
+// scopes.
 func TestLayouts(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		layout   Preset
 		name     string
@@ -132,6 +133,7 @@ func TestLayouts(t *testing.T) {
 
 // DL-95: every layout registers a JSON decoder that decodes as format/json does.
 func TestLayoutsRegisterJSON(t *testing.T) {
+	t.Parallel()
 	for _, layout := range []Preset{MiseLayout, MiseHardenedLayout, CosmiconfigLayout} {
 		t.Run(layout.Name(), func(t *testing.T) {
 			d := cfgOf(t, "myapp", layout, oneScope).decoder("json")

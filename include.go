@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// IncludeNesting says whether an included file can include others (DL-178).
+// IncludeNesting says whether an included file can include others.
 type IncludeNesting int
 
 const (
@@ -16,8 +16,8 @@ const (
 	IncludeNested
 )
 
-// WithIncludeKey sets the include key, read at the top level of each file that can include (DL-178, DL-187). An empty
-// key, or one equal to the unset key, is an *OptionError.
+// WithIncludeKey sets the include key, read at the top level of each file that can include. An empty key, or one equal
+// to the unset key, is an *OptionError.
 func WithIncludeKey(key string, n IncludeNesting) Option {
 	return optionFunc(func(c *config) {
 		switch {
@@ -37,9 +37,9 @@ func WithoutIncludeKey() Option {
 	return optionFunc(func(c *config) { c.includeKey = "" })
 }
 
-// WithoutIncludeResolver removes the resolver for scheme, even from a resolver that handles others too (DL-196).
-// Removing the built-in "file" resolver while an include key is set is an *OptionError (DL-177); a policy whose
-// AllowResolvers leaves out "file" forbids local includes instead.
+// WithoutIncludeResolver removes the resolver for scheme, even from a resolver that handles others too. Removing the
+// built-in "file" resolver while an include key is set is an *OptionError; a policy whose AllowResolvers leaves out
+// "file" forbids local includes instead.
 func WithoutIncludeResolver(scheme string) Option {
 	return optionFunc(func(c *config) {
 		switch s := strings.ToLower(scheme); s {
@@ -83,7 +83,7 @@ func (c *config) resolverSchemes() []string {
 	return slices.Sorted(slices.Values(append(out, slices.Collect(maps.Keys(c.resolvers))...)))
 }
 
-// IncludeRef is an include reference, as a resolver and a MatchRef matcher see it (DL-198).
+// IncludeRef is an include reference, as a resolver and a MatchRef matcher see it.
 type IncludeRef struct {
 	Raw      string // as written in the config file
 	Scheme   string // "file", "https", "git", "oci", …
@@ -94,7 +94,7 @@ type IncludeRef struct {
 	From     Layer  // the including file
 	MaxSize  int64  // the size limit the loader enforces on the content
 	// Validator is the validator from the last fetch of this reference, set only when the loader holds that content to
-	// fall back on; "" otherwise. A resolver that finds the source unchanged returns ErrNotModified (DL-229).
+	// fall back on; "" otherwise. A resolver that finds the source unchanged returns ErrNotModified.
 	Validator string
 
 	// Check normalises another reference, such as a redirect target, and runs the scheme and allow-list checks this
@@ -102,8 +102,8 @@ type IncludeRef struct {
 	Check func(ref string) error
 }
 
-// WithMaxIncludeDepth limits how deep includes nest: an include more than n levels below its root file is a
-// *CycleError (508). The default is 16 (DL-210). A limit that isn't positive is an *OptionError.
+// WithMaxIncludeDepth limits how deep includes nest: an include more than n levels below its root file is a *CycleError
+// (508). The default is 16. A limit that isn't positive is an *OptionError.
 func WithMaxIncludeDepth(n int) Option {
 	return optionFunc(func(c *config) {
 		if n <= 0 {
@@ -114,8 +114,8 @@ func WithMaxIncludeDepth(n int) Option {
 	})
 }
 
-// WithMaxIncludes limits how many include references one load follows, a reference listed twice counting twice; more
-// is a *TooLargeError (413). The default is 1000 (DL-210). A limit that isn't positive is an *OptionError.
+// WithMaxIncludes limits how many include references one load follows, a reference listed twice counting twice; more is
+// a *TooLargeError (413). The default is 1000. A limit that isn't positive is an *OptionError.
 func WithMaxIncludes(n int) Option {
 	return optionFunc(func(c *config) {
 		if n <= 0 {

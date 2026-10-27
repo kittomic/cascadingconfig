@@ -27,6 +27,7 @@ type appConfig struct {
 
 // api.md Decoding, DL-148: Load decodes the merged tree into a fresh T, with koanf's weak typing and hooks.
 func TestLoadDecodes(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		sysFile:  `{"server": {"host": "a", "port": 80}, "tags": ["x"]}`,
 		projFile: `{"server": {"port": "8080", "timeout": "7d"}, "debug": "true"}`,
@@ -55,6 +56,7 @@ func TestLoadDecodes(t *testing.T) {
 
 // DL-72: every load decodes into a fresh value, so a key deleted from a file loses its value on the next load.
 func TestLoadDecodesFresh(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{projFile: `{"server": {"host": "a", "port": 80}}`})
 	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), cc.WithDecoder(jsonDecoder()), twoScopes)
 	if err != nil {
@@ -71,6 +73,7 @@ func TestLoadDecodesFresh(t *testing.T) {
 
 // api.md Errors: Load returns the zero T with any error, a load error or a decode error.
 func TestLoadFailsWithZeroT(t *testing.T) {
+	t.Parallel()
 	l := newLoader(t, map[string]string{projFile: `{"server": {"host": "a", "port": "x"}}`}, nil, twoScopes)
 	got, err := cc.Load[appConfig](t.Context(), l)
 	if err == nil || got.Server.Host != "" {
@@ -93,6 +96,7 @@ func (u *upper) UnmarshalText(b []byte) error {
 
 // api.md Decoding, DL-148: koanf's three hooks, in its order, with weak typing.
 func TestDecodeHooks(t *testing.T) {
+	t.Parallel()
 	var v struct {
 		Days     time.Duration `koanf:"days"`
 		Fraction time.Duration `koanf:"fraction"`
@@ -138,6 +142,7 @@ func TestDecodeHooks(t *testing.T) {
 // DL-48, DL-148: an RFC 3339 string decodes into time.Time and into string. A date-only or local date-time string
 // into time.Time is a *DecodeError.
 func TestDates(t *testing.T) {
+	t.Parallel()
 	var v struct {
 		At     time.Time `koanf:"at"`
 		Offset time.Time `koanf:"offset"`
@@ -170,6 +175,7 @@ func TestDates(t *testing.T) {
 
 // api.md Decoding: null and _unset leave Go-side defaults untouched, and a pointer stays nil.
 func TestNullAndUnsetKeepGoDefaults(t *testing.T) {
+	t.Parallel()
 	res := loadOK(t, map[string]string{
 		sysFile:  `{"host": "sys", "port": 1, "ptr": 2}`,
 		projFile: `{"host": null, "ptr": null, "_unset": ["port"], "name": "proj"}`,
@@ -190,6 +196,7 @@ func TestNullAndUnsetKeepGoDefaults(t *testing.T) {
 
 // api.md Decoding: WithTag replaces the koanf tag, and WithFlatPaths decodes from flattened keys.
 func TestTagAndFlatPaths(t *testing.T) {
+	t.Parallel()
 	var tagged struct {
 		Port int `config:"port"`
 	}
@@ -208,6 +215,7 @@ func TestTagAndFlatPaths(t *testing.T) {
 
 // DL-150: each key that fails is its own *DecodeError, naming the key and the file that set it, never the value.
 func TestDecodeErrors(t *testing.T) {
+	t.Parallel()
 	res := loadOK(t, map[string]string{
 		sysFile:  `{"server": {"port": "SECRET-80a"}}`,
 		projFile: `{"debug": "SECRET-maybe"}`,
@@ -248,6 +256,7 @@ func TestDecodeErrors(t *testing.T) {
 // DL-150: the layer blamed is the value's own: an array element's, a merged table's latest, the defaults, or the
 // variable.
 func TestDecodeErrorBlame(t *testing.T) {
+	t.Parallel()
 	t.Run("an appended element", func(t *testing.T) {
 		res := loadOK(t, map[string]string{sysFile: `{"ports": [1]}`, projFile: `{"ports": ["SECRET-x"]}`}, cc.WithArrayMerge(cc.Append))
 		var v struct {
@@ -310,6 +319,7 @@ type withServers struct {
 // DL-151: unknown keys warn by default: each is logged and recorded in the report with its file, once each however
 // many decodes find it.
 func TestUnknownKeysWarn(t *testing.T) {
+	t.Parallel()
 	logs := &records{}
 	res := loadOK(t, unknownTree, cc.WithLogger(slogFor(logs)))
 	var v withServers
@@ -345,6 +355,7 @@ func TestUnknownKeysWarn(t *testing.T) {
 
 // DL-151: in strict mode each unknown key is a *DecodeError with Unknown set; UnknownKeysIgnore is silent.
 func TestUnknownKeysModes(t *testing.T) {
+	t.Parallel()
 	res := loadOK(t, unknownTree, cc.WithUnknownKeys(cc.UnknownKeysError))
 	var v withServers
 	errs := decodeErrors(t, res.Decode(&v))
@@ -377,6 +388,7 @@ func TestUnknownKeysModes(t *testing.T) {
 // DL-160: DecodeAt decodes a subtree; a missing path leaves v untouched; a bad path or v is a 400. Unknown keys are
 // named from the root.
 func TestDecodeAt(t *testing.T) {
+	t.Parallel()
 	res := loadOK(t, map[string]string{projFile: `{"server": {"host": "a", "sever": 1}}`})
 	var s server
 	if err := cc.DecodeAt(res, "server", &s); err != nil || s.Host != "a" {
@@ -411,6 +423,7 @@ func TestDecodeAt(t *testing.T) {
 
 // DL-156: decoding a failed result returns the load's error again.
 func TestDecodeFailedResult(t *testing.T) {
+	t.Parallel()
 	res, err := newLoader(t, map[string]string{projFile: `{`}, nil, twoScopes).Load(t.Context())
 	if err == nil || res == nil {
 		t.Fatalf("Load = %v, %v; want a result and an error", res, err)
@@ -426,6 +439,7 @@ func TestDecodeFailedResult(t *testing.T) {
 
 // DL-160: KoanfProvider's Read runs a load and returns a copy of the tree, defaults included; ReadBytes is an error.
 func TestKoanfProvider(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{projFile: `{"a": 1}`})
 	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), cc.WithDecoder(jsonDecoder()),
 		twoScopes, cc.WithDefaults(map[string]any{"b": "d"}))

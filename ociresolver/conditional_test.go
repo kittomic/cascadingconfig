@@ -26,6 +26,7 @@ func blobRequests(requests []string) int {
 // DL-229: the validator is the manifest digest. Once the TTL has passed, an unchanged tag is revalidated without
 // downloading any blob; a moved tag is fetched.
 func TestRevalidateTag(t *testing.T) {
+	t.Parallel()
 	r := newRegistry(t, false)
 	first := r.push("acme/cfg", "1", fileLayer("a.json", `{"v": 1}`))
 	ref := r.ociRef("acme/cfg", ":1", "a.json")

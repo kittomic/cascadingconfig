@@ -87,6 +87,7 @@ func warned(logs *records, code cc.WarningCode) bool {
 
 // DL-239: a Path source is watched like an explicit file, without Watchable: its directory, for its name.
 func TestCustomWatchPathSources(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/a.json": `{"v": 1}`})
 	w, n, _ := custWatch(t, fsys, sources(cc.Source{Path: "/srv/a.json"}))
 	if got := n.Watched(); !slices.Equal(got, []string{"/srv"}) {
@@ -100,6 +101,7 @@ func TestCustomWatchPathSources(t *testing.T) {
 // DL-239: WatchDirs directories are watched with no name filter, so a new file there is found; the set is re-planned
 // on every reload.
 func TestCustomWatchDirs(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/drop/a.json": `{"a": 1}`, "/srv/other/x": ""})
 	s := &watchScope{fsys: fsys, dirs: []string{"/srv/drop"}}
 	w, n, _ := custWatch(t, fsys, s)
@@ -125,6 +127,7 @@ func TestCustomWatchDirs(t *testing.T) {
 
 // DL-239: a missing WatchDirs directory is watched through its nearest existing ancestor.
 func TestCustomWatchMissingDir(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/x": ""})
 	s := &watchScope{fsys: fsys, dirs: []string{"/srv/drop"}}
 	w, n, _ := custWatch(t, fsys, s)
@@ -141,6 +144,7 @@ func TestCustomWatchMissingDir(t *testing.T) {
 
 // DL-239: a relative WatchDirs directory, or an error, is a WarnWatchFailed warning, and the rest is still watched.
 func TestCustomWatchDirsProblems(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/drop/a.json": `{}`, "/srv/other/x": ""})
 	s := &watchScope{fsys: fsys, dirs: []string{"relative/dir", "/srv/other"}}
 	_, n, logs := custWatch(t, fsys, s)
@@ -164,6 +168,7 @@ func TestCustomWatchDirsProblems(t *testing.T) {
 
 // DL-239: a plain Load never calls WatchDirs; a watched load calls it after Discover.
 func TestCustomWatchDirsOnlyWhenWatched(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/drop/a.json": `{}`})
 	s := &watchScope{fsys: fsys, dirs: []string{"/srv/drop"}}
 	custOK(t, fsys, s)

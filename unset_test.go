@@ -22,6 +22,7 @@ func runUnsetCases(t *testing.T, cfg mergeConfig, tests []unsetCase) {
 // DL-11, design.md Unsetting keys: the documented example. The layer unsets proxy and server.tls, then its own values
 // merge on top, so the rest of server is still inherited.
 func TestUnset(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, defaultMergeConfig(), ly(t,
 		"low.json", `{"proxy": "p", "server": {"host": "h", "tls": {"cert": "c"}}}`,
 		"high.json", `{"_unset": ["proxy", "server.tls"], "server": {"port": 8080}}`,
@@ -32,6 +33,7 @@ func TestUnset(t *testing.T) {
 // design.md Unsetting keys, "Value and placement": dotted strings, lists of segments for keys with dots, quoted
 // segments, and _unset in nested tables, relative to the table that contains it.
 func TestUnsetPathForms(t *testing.T) {
+	t.Parallel()
 	runUnsetCases(t, defaultMergeConfig(), []unsetCase{
 		{
 			"dotted string",
@@ -62,6 +64,7 @@ func TestUnsetPathForms(t *testing.T) {
 // design.md Unsetting keys, "Merge order": removal comes before the layer's own values, so unsetting and redefining a
 // key is a one-off Replace.
 func TestUnsetBeforeOwnValues(t *testing.T) {
+	t.Parallel()
 	runUnsetCases(t, defaultMergeConfig(), []unsetCase{
 		{
 			"one-off replace",
@@ -75,6 +78,7 @@ func TestUnsetBeforeOwnValues(t *testing.T) {
 // design.md Unsetting keys: only lower layers are affected. A higher layer can set the key again, and an unset can't
 // reach up into higher layers.
 func TestUnsetOnlyLowerLayers(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, defaultMergeConfig(), ly(t,
 		"a.json", `{"a": 1}`,
 		"b.json", `{"_unset": ["a"]}`,
@@ -89,6 +93,7 @@ func TestUnsetOnlyLowerLayers(t *testing.T) {
 // design.md Unsetting keys, "Missing keys": unsetting a key no lower layer set does nothing and isn't an error, even
 // through a scalar or an array.
 func TestUnsetMissingKey(t *testing.T) {
+	t.Parallel()
 	runUnsetCases(t, defaultMergeConfig(), []unsetCase{
 		{
 			"missing keys",
@@ -103,6 +108,7 @@ func TestUnsetMissingKey(t *testing.T) {
 
 // design.md Unsetting keys, "Arrays": unsetting removes the whole array.
 func TestUnsetRemovesWholeArray(t *testing.T) {
+	t.Parallel()
 	runUnsetCases(t, defaultMergeConfig(), []unsetCase{
 		{"array", `{"list": [1, 2], "keep": 1}`, `{"_unset": ["list"]}`, `{"keep": 1}`},
 	})
@@ -110,6 +116,7 @@ func TestUnsetRemovesWholeArray(t *testing.T) {
 
 // design.md Unsetting keys, "Never in the result": _unset is stripped at every depth, including from the lowest layer.
 func TestUnsetKeyIsStripped(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, defaultMergeConfig(), ly(t, "a.json", `{"_unset": ["x"], "b": {"_unset": ["c"], "d": 1}}`))
 	wantTree(t, res, `{"b": {"d": 1}}`)
 }
@@ -117,6 +124,7 @@ func TestUnsetKeyIsStripped(t *testing.T) {
 // design.md Unsetting keys, "Merge rules": removal happens before rules run, and rules, including functions, only run
 // when both sides still have the path.
 func TestUnsetBeforeRules(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	fn := func(Path, any, any) (any, error) {
 		calls++
@@ -135,6 +143,7 @@ func TestUnsetBeforeRules(t *testing.T) {
 
 // design.md Unsetting keys, "Configuration": the key can be renamed, and _unset is then plain data.
 func TestUnsetKeyRenamed(t *testing.T) {
+	t.Parallel()
 	cfg := defaultMergeConfig()
 	cfg.unsetKey = "$unset"
 	runUnsetCases(t, cfg, []unsetCase{
@@ -147,6 +156,7 @@ func TestUnsetKeyRenamed(t *testing.T) {
 
 // design.md Unsetting keys, "Configuration": with unsetting turned off, _unset is plain data, even inside arrays.
 func TestUnsetTurnedOff(t *testing.T) {
+	t.Parallel()
 	cfg := defaultMergeConfig()
 	cfg.unsetKey = ""
 	runUnsetCases(t, cfg, []unsetCase{
@@ -158,6 +168,7 @@ func TestUnsetTurnedOff(t *testing.T) {
 
 // DL-92, api.md Errors: a malformed _unset is a *ParseError naming the file.
 func TestUnsetMalformed(t *testing.T) {
+	t.Parallel()
 	for _, data := range []string{
 		`{"_unset": 5}`,
 		`{"_unset": "a"}`,
@@ -182,6 +193,7 @@ func TestUnsetMalformed(t *testing.T) {
 
 // DL-92: _unset in a table inside an array is a *ParseError, because arrays are never merged.
 func TestUnsetInsideArray(t *testing.T) {
+	t.Parallel()
 	for _, data := range []string{
 		`{"list": [{"_unset": ["x"]}]}`,
 		`{"a": [[{"b": {"_unset": ["x"]}}]]}`,
@@ -196,6 +208,7 @@ func TestUnsetInsideArray(t *testing.T) {
 // DL-92, design.md Unsetting keys: a table holding only _unset doesn't count as setting its key, recursively. It still
 // unsets. An explicitly empty table does count.
 func TestTableHoldingOnlyUnset(t *testing.T) {
+	t.Parallel()
 	runUnsetCases(t, defaultMergeConfig(), []unsetCase{
 		{"over a scalar", `{"server": 5}`, `{"server": {"_unset": ["tls"]}}`, `{"server": 5}`},
 		{"over nothing", `{}`, `{"server": {"_unset": ["tls"]}}`, `{}`},

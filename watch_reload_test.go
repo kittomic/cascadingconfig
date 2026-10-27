@@ -12,9 +12,10 @@ import (
 	"github.com/kittomic/cascadingconfig/cctest"
 )
 
-// plan M9, "New files": creating a candidate that didn't exist, myapp.local.json or a file in a new conf.d folder,
-// reloads with it.
+// implementation-plan.md, "New files": creating a candidate that didn't exist, myapp.local.json or a file in a new
+// conf.d folder, reloads with it.
 func TestWatchNewFiles(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{rootCfg: `{"a": 1}`})
 	n := cctest.NewNotifier()
 	l, err := cc.NewWithPreset("myapp", cc.MiseLayout,
@@ -46,6 +47,7 @@ func TestWatchNewFiles(t *testing.T) {
 // DL-37, DL-222, DL-227: a half-written file keeps the last good config; the handler gets Err, with Old and New the
 // last good snapshot and the failed Result; the failure is logged as WarnReloadFailed; the next event retries.
 func TestWatchFailedReload(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	e.save(rootCfg, `{"a": 2, "b": `)
@@ -81,6 +83,7 @@ func TestWatchFailedReload(t *testing.T) {
 // DL-222: every failed reload calls the handler, and so does the first good reload after a failure, even when it brings
 // back the same values.
 func TestWatchRecovery(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.watch(nil)
 	e.save(rootCfg, `{"a": `)
@@ -113,6 +116,7 @@ type watchCfg struct {
 // DL-72: every reload decodes into a fresh value, so a key deleted from a file loses its value, and defaults still
 // apply.
 func TestWatchFreshValue(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"port": 9000, "name": "svc"}`})
 	l := e.loader(cc.WithDefaults(watchCfg{Port: 8080}))
 	var got calls[cc.Change[watchCfg]]
@@ -136,6 +140,7 @@ func TestWatchFreshValue(t *testing.T) {
 
 // DL-222, api.md Load and Watch: a decode failure during a reload is a failed reload.
 func TestWatchDecodeFailure(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"port": 9000}`})
 	var got calls[cc.Change[watchCfg]]
 	w, err := cc.Watch[watchCfg](t.Context(), e.loader(), got.handle)
@@ -161,6 +166,7 @@ func TestWatchDecodeFailure(t *testing.T) {
 // DL-40, DL-233: a touch, or an edit that changes no value, doesn't call the handler; WithReloadOnAnyEvent calls it
 // after every reload.
 func TestWatchNoChange(t *testing.T) {
+	t.Parallel()
 	const content = `{"a": 1, "b": [1, 2]}`
 	for _, anyEvent := range []bool{false, true} {
 		e := newWatchEnv(t, map[string]string{rootCfg: content})
@@ -188,6 +194,7 @@ func TestWatchNoChange(t *testing.T) {
 
 // DL-77, DL-40: a value that moves to another file isn't a change, though its origin changed.
 func TestWatchValueMoves(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`, sysFile: `{}`})
 	e.watch(nil)
 	e.fs.WriteFile(sysFile, []byte(`{"a": 1}`), 0o644)
@@ -200,6 +207,7 @@ func TestWatchValueMoves(t *testing.T) {
 
 // DL-233: values are compared exactly: the same instant written differently is a change, and NaN equals NaN.
 func TestWatchCompare(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"at": "2026-01-01T00:00:00Z"}`})
 	e.setVals(cc.Tree{"x": math.NaN()})
 	w := e.watch(nil)
@@ -228,6 +236,7 @@ func diffLines(d []cc.KeyDiff) []string {
 // table, sorted by path segment by segment, with origins; a table that becomes a scalar is its leaves removed and the
 // scalar added; values are canonical.
 func TestWatchDiff(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{
 		rootCfg: `{"keep": 1, "gone": 1, "num": 1, "list": [1, 2], "tbl": {"x": 1, "y": 2}, "deep": {"a": {"b": 1}}, "emptied": {"z": 1}}`,
 		sysFile: `{"sys": "s"}`,
@@ -282,6 +291,7 @@ func TestWatchDiff(t *testing.T) {
 
 // DL-221: Diff values are copies, so changing one can't reach the snapshots.
 func TestWatchDiffCopies(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"list": [1]}`})
 	w := e.watch(nil)
 	e.save(rootCfg, `{"list": [2]}`)
@@ -297,6 +307,7 @@ func TestWatchDiffCopies(t *testing.T) {
 // api.md Results, "No config values in the report": KeyDiff.String shows the kind, the path and the files, never a
 // value.
 func TestWatchDiffString(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"token": "s3cr3t-old", "port": 1}`})
 	e.watch(nil)
 	e.save(rootCfg, `{"token": "s3cr3t-new", "port": 31337}`)

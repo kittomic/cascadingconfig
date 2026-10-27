@@ -15,6 +15,7 @@ import (
 
 // DL-63: on a real filesystem, a FIFO named like a candidate is skipped with a warning, without blocking.
 func TestOSFIFODoesNotBlock(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := syscall.Mkfifo(filepath.Join(dir, "config.json"), 0o644); err != nil {
 		t.Skipf("mkfifo: %v", err)

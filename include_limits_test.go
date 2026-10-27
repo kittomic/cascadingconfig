@@ -26,6 +26,7 @@ func chainFiles(n int) map[string]string {
 // DL-210: an include more than WithMaxIncludeDepth levels below its root file, 16 by default, is a *CycleError naming
 // the including file.
 func TestIncludeDepth(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		depth int
@@ -57,6 +58,7 @@ func TestIncludeDepth(t *testing.T) {
 // DL-210: the depth limit stops a remote server that answers every fetch with another relative include, after as many
 // fetches as the limit allows.
 func TestRemoteIncludeDepth(t *testing.T) {
+	t.Parallel()
 	f := newFake("https")
 	f.fetch = anyFile(includeOf("", "sub/a.json"), "application/json")
 	_, err := remFails(t, f, []string{"https://h.example/a.json"}, nested)
@@ -69,6 +71,7 @@ func TestRemoteIncludeDepth(t *testing.T) {
 // DL-210: more than WithMaxIncludes include references in one load, 1000 by default and a reference listed twice
 // counting twice, is a *TooLargeError naming the including file.
 func TestMaxIncludes(t *testing.T) {
+	t.Parallel()
 	refs := func(n int) []string {
 		out := make([]string, n)
 		for i := range out {
@@ -122,6 +125,7 @@ func TestMaxIncludes(t *testing.T) {
 
 // DL-210: a limit that isn't positive is an *OptionError.
 func TestIncludeLimitErrors(t *testing.T) {
+	t.Parallel()
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "zero depth", opts: []cc.Option{scope, cc.WithMaxIncludeDepth(0)}, ops: []string{"WithMaxIncludeDepth"}},
 		{name: "negative depth", opts: []cc.Option{scope, cc.WithMaxIncludeDepth(-1)}, ops: []string{"WithMaxIncludeDepth"}},

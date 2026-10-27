@@ -11,6 +11,7 @@ import (
 // DL-175: a document of directives belongs to the document after it. %YAML 1.2 is accepted, other 1.x versions are
 // parsed as 1.2 with a warning, and 2.x is a *ParseError.
 func TestYAMLDirective(t *testing.T) {
+	t.Parallel()
 	doc, err := decode(t, "%YAML 1.2\n---\na: 1\n")
 	if err != nil || !reflect.DeepEqual(doc.Tree, cc.Tree{"a": int64(1)}) || len(doc.Warnings) != 0 {
 		t.Errorf("%%YAML 1.2: %#v, %v; want the tree, no warnings", doc, err)
@@ -28,11 +29,12 @@ func TestYAMLDirective(t *testing.T) {
 	wantParseError(t, "%YAML 2.0\n---\na: 1\n", "2.0")
 	wantParseError(t, "%YAML 1.2\n---\na: 1\n---\nb: 2\n", "document")
 	// goccy v1.19.2 can't parse two directives before one document, such as %YAML then %TAG; that's a known library
-	// failure, for M12, not tested here.
+	// failure, not tested here.
 }
 
 // DL-164: tags are judged after expanding %TAG handles.
 func TestTagHandles(t *testing.T) {
+	t.Parallel()
 	ok := []struct {
 		src  string
 		want cc.Tree

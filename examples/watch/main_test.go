@@ -34,6 +34,7 @@ func (b *syncBuffer) String() string {
 // The service reports an edit as its diff, keeps its last good config through a broken edit, recovers, and stops on
 // cancellation.
 func TestWatch(t *testing.T) {
+	t.Parallel()
 	fsys, world := exampletest.World(t, []string{"ccx-watch.toml"}, nil, nil)
 	notifier := cctest.NewNotifier()
 	clock := cctest.NewClock(time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC))

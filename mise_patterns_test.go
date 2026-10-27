@@ -7,6 +7,7 @@ import (
 
 // DL-130, config-locations.md 3.4: mise's global-directory patterns, lowest precedence first.
 func TestMiseGlobalPatterns(t *testing.T) {
+	t.Parallel()
 	want := []Pattern{
 		{Template: "conf.d/*.{ext}"},
 		{Template: "conf.d/*/{name}.{ext}", Root: RootFileDir},
@@ -31,6 +32,7 @@ func TestMiseGlobalPatterns(t *testing.T) {
 
 // DL-130: each call returns a fresh copy, so changing one can't change MiseLayout or a later call.
 func TestMiseGlobalPatternsIsACopy(t *testing.T) {
+	t.Parallel()
 	first := MiseGlobalPatterns()
 	if len(first) == 0 {
 		t.Fatal("MiseGlobalPatterns() is empty")
@@ -43,6 +45,7 @@ func TestMiseGlobalPatternsIsACopy(t *testing.T) {
 
 // DL-124, DL-130: MiseLayout's system and user scopes use exactly these patterns.
 func TestMiseLayoutUsesTheGlobalPatterns(t *testing.T) {
+	t.Parallel()
 	c := cfgOf(t, "myapp", MiseLayout)
 	for _, name := range []ScopeName{ScopeSystem, ScopeUser} {
 		k, ok := c.scopeKind(name).(fixedDirKind)

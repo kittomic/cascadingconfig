@@ -16,8 +16,8 @@ import (
 	ccjson "github.com/kittomic/cascadingconfig/format/json"
 )
 
-// The M7 tests use only the public API, as the M5 tests do. Most of them load a project scope over /home/me/work
-// whose file is myapp.json, above a system scope over /etc/myapp, with the include key "include".
+// The include tests use only the public API, as the decoding tests do. Most of them load a project scope over
+// /home/me/work whose file is myapp.json, above a system scope over /etc/myapp, with the include key "include".
 
 const (
 	work    = "/home/me/work"

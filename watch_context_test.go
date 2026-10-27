@@ -23,6 +23,7 @@ func closedWithin(ch <-chan struct{}, d time.Duration) bool {
 
 // DL-279: the handler's context is live while it runs, and cancelled once the watcher closes.
 func TestWatchHandlerContext(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	got := make(chan context.Context, 1)
 	w, err := e.loader().Watch(t.Context(), func(ctx context.Context, _ cc.Change[cc.Tree]) {
@@ -51,6 +52,7 @@ func TestWatchHandlerContext(t *testing.T) {
 // DL-279: Close doesn't wait for a running handler; once it returns no new handler call starts, and Done closes after
 // the running call returns.
 func TestWatchCloseDoesntWait(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	running, release := make(chan struct{}), make(chan struct{})
 	calls := 0
@@ -89,6 +91,7 @@ func TestWatchCloseDoesntWait(t *testing.T) {
 // DL-279: Done closes once the watcher has closed, whether by Close with no handler running, or by its context being
 // cancelled.
 func TestWatchDone(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	if closedWithin(w.Done(), 50*time.Millisecond) {
@@ -116,6 +119,7 @@ func TestWatchDone(t *testing.T) {
 // Reload with it, and the reload's handler call follows the current one instead of waiting for it, so the handler can
 // wait for that goroutine without deadlocking.
 func TestWatchReloadWithHandlerContextElsewhere(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var w *cc.Watcher[cc.Tree]
 	calls := 0

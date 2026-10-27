@@ -285,7 +285,7 @@ func (m prefixMatcher) matches(slashPath, _ string) bool { return strings.HasPre
 func (m prefixMatcher) describe() string { return fmt.Sprintf("Prefix(%q)", m.s) }
 
 // MatchRef matches the include references f accepts, with the whole IncludeRef, including the file that asked for it.
-// It's for allow-lists only: in WithFileFormat it is an *OptionError (DL-176).
+// It's for allow-lists only: in WithFileFormat it is an *OptionError.
 func MatchRef(f func(ref IncludeRef) bool) Matcher {
 	return refMatcher{f: f}
 }

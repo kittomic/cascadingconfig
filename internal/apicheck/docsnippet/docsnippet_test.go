@@ -15,6 +15,7 @@ func fence(s string) string { return strings.ReplaceAll(s, "'''", "```") }
 
 // DL-250: lines are trimmed, runs of spaces made one and blank lines dropped; a snippet's import lines go.
 func TestNormalise(t *testing.T) {
+	t.Parallel()
 	text := "\timport (\n\t\t\"fmt\"\n\t)\n\timport \"os\"\n\n\tx  :=   1\n\t\tfmt.Println(x)  \n"
 	if got, want := docsnippet.Normalise(text, true), []string{"x := 1", "fmt.Println(x)"}; !slices.Equal(got, want) {
 		t.Errorf("as a snippet: %q, want %q", got, want)
@@ -28,6 +29,7 @@ func TestNormalise(t *testing.T) {
 // DL-266: a snippet is a Go block after an <!-- example --> marker, with blank lines allowed between; its line is the
 // opening fence's. Unmarked blocks, and marked blocks that aren't Go, aren't snippets.
 func TestFind(t *testing.T) {
+	t.Parallel()
 	doc := fence(`# Doc
 
 <!-- example -->
@@ -67,6 +69,7 @@ not go
 // DL-250: a snippet's lines must appear as a run; a source line may put an assignment, or anything ending in a space,
 // in front of a snippet line, but nothing else may differ.
 func TestContains(t *testing.T) {
+	t.Parallel()
 	src := []string{"func Example() {", "l, err := cc.New(\"app\",", "cc.WithTag(\"x\"),", ")", "}"}
 	for _, c := range []struct {
 		snippet []string
@@ -88,6 +91,7 @@ func TestContains(t *testing.T) {
 // DL-266: Check reports each snippet no source holds, by doc and line, and each doc with the wrong number of snippets;
 // a doc or source it can't read is an error.
 func TestCheck(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	write := func(name, content string) string {
 		p := filepath.Join(dir, name)

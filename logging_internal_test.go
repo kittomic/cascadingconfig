@@ -7,6 +7,7 @@ import (
 
 // DL-263: each warning code's level. Error is only for a watch handler's panic, which has no code.
 func TestWarningLevels(t *testing.T) {
+	t.Parallel()
 	for code, want := range map[WarningCode]slog.Level{
 		WarnUntrusted:      slog.LevelInfo,
 		WarnFormatConflict: slog.LevelInfo,

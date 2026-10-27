@@ -16,6 +16,7 @@ type handler interface{ Handled() }
 
 // DL-231: timers fire inside Advance, in time order, with the clock at each timer's time, and not before they're due.
 func TestClockTimers(t *testing.T) {
+	t.Parallel()
 	c := cctest.NewClock(t0)
 	var fired []string
 	at := func(name string) func() {
@@ -44,6 +45,7 @@ func TestClockTimers(t *testing.T) {
 // DL-231: a timer can start another, which fires in the same Advance if it falls due; a timer of 0 or less waits for
 // the next Advance, Advance(0) included.
 func TestClockChainedTimers(t *testing.T) {
+	t.Parallel()
 	c := cctest.NewClock(t0)
 	var fired []time.Duration
 	var tick func()
@@ -70,6 +72,7 @@ func TestClockChainedTimers(t *testing.T) {
 // DL-231: Stop removes a timer and reports whether it hadn't fired; Set forward fires due timers, and Set back fires
 // none.
 func TestClockStopAndSet(t *testing.T) {
+	t.Parallel()
 	c := cctest.NewClock(t0)
 	fired := 0
 	tm := cctest.AfterFunc(c, time.Second, func() { fired++ })
@@ -102,6 +105,7 @@ func TestClockStopAndSet(t *testing.T) {
 // DL-231: the fake notifier records watched directories, fails Add where told, and delivers events and errors, with
 // Send and SendError waiting for Handled.
 func TestNotifier(t *testing.T) {
+	t.Parallel()
 	n := cctest.NewNotifier()
 	nn, err := n.New()
 	if err != nil || nn == nil {
@@ -159,6 +163,7 @@ func TestNotifier(t *testing.T) {
 
 // DL-231: Close closes the channels, Send after it returns at once, a second Close is fine, and New opens it again.
 func TestNotifierClose(t *testing.T) {
+	t.Parallel()
 	n := cctest.NewNotifier()
 	nn, _ := n.New()
 	_ = nn.Add("/a")

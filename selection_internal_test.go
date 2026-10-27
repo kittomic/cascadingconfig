@@ -6,6 +6,7 @@ import "testing"
 // WithScope after WithScopes adds to the selection, and WithoutScopes after the definition removes it. Placement is
 // unchanged by selection.
 func TestDefiningSelects(t *testing.T) {
+	t.Parallel()
 	v := func() ScopeKind { return Values(Tree{}) }
 
 	c := cfgOf(t, "app", Preset{}, WithScope("a", v()), WithScope("b", v()))

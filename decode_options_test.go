@@ -9,6 +9,7 @@ import (
 
 // DL-149, DL-151, DL-153, DL-157: decoding, defaults and requirement options that can only be mistakes.
 func TestDecodeOptionErrors(t *testing.T) {
+	t.Parallel()
 	type withFunc struct {
 		F func() `koanf:"f"`
 	}

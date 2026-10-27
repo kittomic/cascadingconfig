@@ -13,6 +13,7 @@ import (
 
 // DL-220: a failed first load returns a nil watcher and the load's error.
 func TestWatchFirstLoadFails(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": `})
 	w, err := e.loader().Watch(t.Context(), nil)
 	if w != nil {
@@ -28,6 +29,7 @@ func TestWatchFirstLoadFails(t *testing.T) {
 
 // DL-220: a nil handler is allowed, and Current still follows the files.
 func TestWatchNilHandler(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w, err := e.loader().Watch(t.Context(), nil)
 	if err != nil {
@@ -42,6 +44,7 @@ func TestWatchNilHandler(t *testing.T) {
 // DL-77, DL-220: cancelling ctx stops watching: the notifier is closed, Reload is a 499, Current keeps the last
 // snapshot, and Close still works.
 func TestWatchCancel(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	ctx, cancel := context.WithCancel(t.Context())
 	w, err := e.loader().Watch(ctx, e.changes.handle)
@@ -64,6 +67,7 @@ func TestWatchCancel(t *testing.T) {
 
 // DL-77, DL-220: Close is idempotent; after it, Reload is a 499 and Current keeps the last snapshot.
 func TestWatchCloseTwice(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	if err := w.Close(); err != nil {
@@ -81,6 +85,7 @@ func TestWatchCloseTwice(t *testing.T) {
 
 // DL-77, DL-223: Close from inside the handler returns without waiting for the handler, so it doesn't deadlock.
 func TestWatchCloseFromHandler(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var w *cc.Watcher[cc.Tree]
 	closed := make(chan error, 1)
@@ -106,6 +111,7 @@ func TestWatchCloseFromHandler(t *testing.T) {
 // DL-223, DL-279: Reload from inside the handler, with the handler's context, runs the reload and returns its error;
 // the change it causes is delivered after the current call returns.
 func TestWatchReloadFromHandler(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var w *cc.Watcher[cc.Tree]
 	var calls atomic.Int64
@@ -145,6 +151,7 @@ func TestWatchReloadFromHandler(t *testing.T) {
 // DL-223: Reload from outside the handler waits for the reload and the handler call it causes; it also takes pending
 // events with it, so the debounce timer doesn't reload again.
 func TestWatchReloadWaits(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	e.save(rootCfg, `{"a": 2}`)
@@ -159,6 +166,7 @@ func TestWatchReloadWaits(t *testing.T) {
 
 // DL-77, DL-223, design.md Hot reload: a manual Reload re-reads Values functions, which can't be watched.
 func TestWatchReloadValues(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{}`})
 	w := e.watch(nil)
 	e.setVals(cc.Tree{"flag": true})
@@ -172,6 +180,7 @@ func TestWatchReloadValues(t *testing.T) {
 
 // DL-77: a panicking handler is recovered and logged at error level, and watching continues.
 func TestWatchHandlerPanic(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var calls atomic.Int64
 	w, err := e.loader().Watch(t.Context(), func(context.Context, cc.Change[cc.Tree]) {
@@ -198,6 +207,7 @@ func TestWatchHandlerPanic(t *testing.T) {
 
 // DL-40, DL-223: handler calls never overlap, even with Reloads from several goroutines while events arrive.
 func TestWatchSerialHandler(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 0}`})
 	var active, most, calls atomic.Int64
 	w, err := e.loader().Watch(t.Context(), func(context.Context, cc.Change[cc.Tree]) {

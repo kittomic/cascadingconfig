@@ -21,6 +21,7 @@ var emptyHash = sum(`{}`)
 // DL-197, DL-200, design.md Allow-lists, "The normalised reference string": each form is normalised before the resolver
 // sees it, and IncludeRef's fields are split out as documented.
 func TestNormalisedReferences(t *testing.T) {
+	t.Parallel()
 	digest := "sha256:" + sha64
 	for _, tc := range []struct {
 		raw, ref, location, path, version string
@@ -75,6 +76,7 @@ func TestNormalisedReferences(t *testing.T) {
 // in another, or that don't follow their form, are *ReferenceErrors naming the including file, and never reach a
 // resolver. This is an attack suite.
 func TestRejectedReferences(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{
 		// userinfo
 		"https://user@h.example/x.json",
@@ -151,6 +153,7 @@ func TestRejectedReferences(t *testing.T) {
 // DL-56, DL-176, DL-202, design.md Allow-lists, "Matchers": Glob's * stays within a segment and ** crosses them;
 // Regexp matches the whole normalised string; Prefix sees the query; Extension and FileName see only the file path.
 func TestRemoteMatchers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		m     cc.Matcher
@@ -196,6 +199,7 @@ func TestRemoteMatchers(t *testing.T) {
 // DL-55, DL-201, design.md Remote references, "Pinned references": the loader decides pins from the form, and
 // RequirePinned rejects anything else before fetching.
 func TestRequirePinned(t *testing.T) {
+	t.Parallel()
 	pinned := cc.WithDefaultPolicy(cc.AllowResolvers("file", "https", "git", "oci", "s3", "hg"), cc.RequirePinned())
 	for _, tc := range []struct {
 		raw    string
@@ -238,6 +242,7 @@ func TestRequirePinned(t *testing.T) {
 // DL-55, DL-201: the loader checks an integrity fragment against the content itself, with or without RequirePinned, and
 // never passes the fragment to the resolver.
 func TestIntegrityFragment(t *testing.T) {
+	t.Parallel()
 	good := "https://h.example/a.json#sha256=" + emptyHash
 	t.Run("match", func(t *testing.T) {
 		f := allSchemes()

@@ -63,6 +63,7 @@ func cached(t *testing.T, dir string, clock *cctest.Clock, ref string) *cc.Resul
 // DL-229: the ETag is sent back as If-None-Match once the TTL has passed; a 304 uses the cached copy, shown as
 // revalidated; a changed file is fetched.
 func TestETag(t *testing.T) {
+	t.Parallel()
 	v := &validated{body: `{"v": 1}`, etag: `"v1"`}
 	s := newServer(t, false, v.serve)
 	ref, dir, clock := s.URL+"/a.json", filepath.Join(t.TempDir(), "includes"), cctest.NewClock(t0)
@@ -90,6 +91,7 @@ func TestETag(t *testing.T) {
 
 // DL-229: a weak ETag is sent back as it came.
 func TestWeakETag(t *testing.T) {
+	t.Parallel()
 	v := &validated{body: `{"v": 1}`, etag: `W/"w1"`}
 	s := newServer(t, false, v.serve)
 	ref, dir, clock := s.URL+"/a.json", filepath.Join(t.TempDir(), "includes"), cctest.NewClock(t0)
@@ -105,6 +107,7 @@ func TestWeakETag(t *testing.T) {
 
 // DL-229: without an ETag, Last-Modified is sent back as If-Modified-Since.
 func TestLastModified(t *testing.T) {
+	t.Parallel()
 	const lm = "Wed, 21 Oct 2026 07:28:00 GMT"
 	v := &validated{body: `{"v": 1}`, lastMod: lm}
 	s := newServer(t, false, v.serve)
@@ -121,6 +124,7 @@ func TestLastModified(t *testing.T) {
 
 // DL-229: with both headers, the ETag is used.
 func TestETagPreferred(t *testing.T) {
+	t.Parallel()
 	v := &validated{body: `{"v": 1}`, etag: `"e"`, lastMod: "Wed, 21 Oct 2026 07:28:00 GMT"}
 	s := newServer(t, false, v.serve)
 	ref, dir, clock := s.URL+"/a.json", filepath.Join(t.TempDir(), "includes"), cctest.NewClock(t0)

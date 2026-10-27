@@ -15,6 +15,7 @@ import (
 // DL-12, design.md Includes, "Rank": an included file ranks directly below its includer, above every lower scope, and
 // a later entry beats an earlier one. The include key is removed from the result.
 func TestIncludeRank(t *testing.T) {
+	t.Parallel()
 	res := incOK(t, map[string]string{
 		sysFile:              `{"a": "sys", "b": "sys", "c": "sys", "d": "sys"}`,
 		rootCfg:              `{"include": ["base.json", "extra.json"], "a": "own"}`,
@@ -33,6 +34,7 @@ func TestIncludeRank(t *testing.T) {
 // DL-187, design.md Includes, "Merge behaviour": included files rank below their includer, so its _unset removes
 // their keys, and any lower layer's, but not its own.
 func TestIncludeAndUnset(t *testing.T) {
+	t.Parallel()
 	res := incOK(t, map[string]string{
 		sysFile:             `{"proxy": "sys", "keep": "sys"}`,
 		rootCfg:             `{"include": "base.json", "_unset": ["proxy", "own"], "own": 1}`,
@@ -44,6 +46,7 @@ func TestIncludeAndUnset(t *testing.T) {
 // DL-79, DL-184, design.md Includes, "Placement" and "Value": a string or a list at the top level; elsewhere the key is
 // data; an empty list includes nothing.
 func TestIncludePlacementAndValues(t *testing.T) {
+	t.Parallel()
 	base := work + "/base.json"
 	tests := []struct {
 		name, root, want string
@@ -63,6 +66,7 @@ func TestIncludePlacementAndValues(t *testing.T) {
 
 // DL-184: an empty string, a non-string element or any other type is a *ParseError naming the including file.
 func TestIncludeBadValues(t *testing.T) {
+	t.Parallel()
 	for _, root := range []string{
 		`{"include": ""}`,
 		`{"include": ["base.json", ""]}`,
@@ -84,6 +88,7 @@ func TestIncludeBadValues(t *testing.T) {
 // DL-184, design.md Includes, "Placement": for a pattern with a Key, the include key is read at the top of the keyed
 // table, where _unset is read; the file's own top level isn't config.
 func TestIncludeInKeyedTable(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		work + "/package.json": `{"include": "outer.json", "myapp": {"include": "base.json", "a": 1}}`,
 		work + "/base.json":    `{"b": 2}`,
@@ -103,6 +108,7 @@ func TestIncludeInKeyedTable(t *testing.T) {
 // DL-184, design.md Includes, "Metadata": an included layer takes Scope, Variant, Env, Trust and ConfigRoot from its
 // includer; its Path is as joined, its Pattern is empty, its Format is its own, and IncludedBy names the includer.
 func TestIncludedLayerMetadata(t *testing.T) {
+	t.Parallel()
 	envFile := work + "/myapp.dev.json"
 	files := map[string]string{
 		envFile:                 `{"include": ["sub/base.toml"]}`,
@@ -134,6 +140,7 @@ func TestIncludedLayerMetadata(t *testing.T) {
 // DL-184, design.md Includes, "Formats": an included file's format comes from WithFileFormat rules and extensions,
 // whatever the format order; a file with no decoder is a 415 naming it.
 func TestIncludeFormats(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		rootCfg:             `{"include": ["base.toml", "app.conf"]}`,
 		work + "/base.toml": `{"a": 1}`,
@@ -155,6 +162,7 @@ func TestIncludeFormats(t *testing.T) {
 // DL-187, design.md Includes, "Where includes work": EmbeddedFS sources and value scopes keep the key as data; an
 // ExplicitFile scope's files include.
 func TestWhereIncludesWork(t *testing.T) {
+	t.Parallel()
 	t.Run("EmbeddedFS", func(t *testing.T) {
 		embedded := fstest.MapFS{"config.json": {Data: []byte(`{"include": "base.json", "a": 1}`)}}
 		res, err := newLoader(t, map[string]string{"/base.json": `{"b": 2}`}, nil,
@@ -190,6 +198,7 @@ func TestWhereIncludesWork(t *testing.T) {
 
 // DL-187: a bootstrap file's include key isn't followed; the bootstrap file only has its own keys.
 func TestBootstrapFileDoesNotInclude(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		"/home/me/.config/myapp/myapprc.json": `{"include": "/home/me/extra.json"}`,
 		"/home/me/extra.json":                 `{"secret": 1}`,
@@ -212,6 +221,7 @@ func TestBootstrapFileDoesNotInclude(t *testing.T) {
 // DL-187: under FirstMatch, the matched file's includes load below it, and the search still stops at the match: the
 // lower scope's file isn't read.
 func TestIncludeUnderFirstMatch(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		work + "/.myapprc.json": `{"include": "base.json", "a": 1}`,
 		work + "/base.json":     `{"a": 0, "b": 2}`,
@@ -236,6 +246,7 @@ func TestIncludeUnderFirstMatch(t *testing.T) {
 
 // DL-179: a reference listed twice loads once, at its later, higher position; the earlier route is LayerDuplicate.
 func TestIncludeListedTwice(t *testing.T) {
+	t.Parallel()
 	base := work + "/base.json"
 	res := incOK(t, map[string]string{
 		rootCfg:              `{"include": ["base.json", "extra.json", "base.json"]}`,
@@ -254,6 +265,7 @@ func TestIncludeListedTwice(t *testing.T) {
 // DL-179, DL-110: a file both found and included loads once, at its highest position, here the include's, with the
 // scope of its most trusted route.
 func TestIncludeOfAFoundFile(t *testing.T) {
+	t.Parallel()
 	res := incOK(t, map[string]string{
 		sysFile:             `{"x": "sys"}`,
 		"/home/me/mid.json": `{"x": "mid"}`,
@@ -273,6 +285,7 @@ func TestIncludeOfAFoundFile(t *testing.T) {
 // DL-179: in a diamond, the shared file loads once, at its highest position, under the later branch. Under the old
 // "first rank" rule it would have loaded under b, and b would win.
 func TestIncludeDiamond(t *testing.T) {
+	t.Parallel()
 	d := work + "/d.json"
 	res := incOK(t, map[string]string{
 		rootCfg:          `{"include": ["b.json", "c.json"]}`,
@@ -292,6 +305,7 @@ func TestIncludeDiamond(t *testing.T) {
 
 // DL-179: a file that includes itself is a cycle, even with flat includes.
 func TestIncludeSelf(t *testing.T) {
+	t.Parallel()
 	_, err := incFails(t, map[string]string{rootCfg: `{"include": "myapp.json"}`})
 	if !errors.Is(err, cc.ErrIncludeCycle) {
 		t.Fatalf("error = %v, want a *CycleError", err)
@@ -302,6 +316,7 @@ func TestIncludeSelf(t *testing.T) {
 // DL-178, design.md Includes, "Nesting": MiseLayout's includes are flat, so an include key in an included file is a
 // *ParseError naming that file and the key.
 func TestMiseLayoutRejectsNesting(t *testing.T) {
+	t.Parallel()
 	base := work + "/base.json"
 	files := map[string]string{
 		rootCfg:             `{"include": "base.json"}`,
@@ -321,6 +336,7 @@ func TestMiseLayoutRejectsNesting(t *testing.T) {
 
 // DL-178: MiseLayout and MiseHardenedLayout read "include"; CosmiconfigLayout has no include key, so it's data.
 func TestLayoutIncludeKeys(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		preset cc.Preset
 		file   string
@@ -349,6 +365,7 @@ func TestLayoutIncludeKeys(t *testing.T) {
 // DL-178, DL-184: with IncludeNested, included files include; relative references resolve against each file's own
 // directory; every layer of the chain takes the root file's scope, and IncludedBy names its direct includer.
 func TestNestedIncludes(t *testing.T) {
+	t.Parallel()
 	x, y := work+"/a/x.json", work+"/a/y.json"
 	res := incOK(t, map[string]string{
 		rootCfg: `{"include": "a/x.json"}`,
@@ -365,6 +382,7 @@ func TestNestedIncludes(t *testing.T) {
 
 // DL-178, DL-185: a cycle through nested includes is a 508 naming the file whose reference closes it.
 func TestNestedIncludeCycle(t *testing.T) {
+	t.Parallel()
 	a, b := work+"/a.json", work+"/b.json"
 	_, err := incFails(t, map[string]string{
 		rootCfg: `{"include": "a.json"}`,
@@ -377,6 +395,7 @@ func TestNestedIncludeCycle(t *testing.T) {
 // DL-183, design.md Local files, "References": file:// URLs with an empty host or localhost, and ~/ paths, are local;
 // C:\… is a path, not a scheme.
 func TestLocalReferences(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ ref, file string }{
 		{"file:///srv/base.json", "/srv/base.json"},
 		{"file://localhost/srv/base.json", "/srv/base.json"},
@@ -396,8 +415,10 @@ func TestLocalReferences(t *testing.T) {
 	}
 }
 
-// DL-182, DL-183: until M8, every remote reference is an *UnsupportedSchemeError (501) naming the including file.
+// DL-182, DL-183: with no resolver registered for its scheme, a remote reference is an *UnsupportedSchemeError (501)
+// naming the including file.
 func TestRemoteReferencesUnsupported(t *testing.T) {
+	t.Parallel()
 	for _, ref := range []string{
 		"git::https://github.com/acme/config.git//myapp/base.json?ref=v1",
 		"oci::ghcr.io/acme/myapp-config:1.4.0",
@@ -416,6 +437,7 @@ func TestRemoteReferencesUnsupported(t *testing.T) {
 
 // DL-185: errors about the reference name the including file, with Op "include" and the reference as written.
 func TestIncludeMissing(t *testing.T) {
+	t.Parallel()
 	_, err := incFails(t, map[string]string{rootCfg: `{"include": "nope/base.json"}`})
 	wantErr[*cc.NotFoundError](t, err, cc.CodeNotFound, rootCfg, "nope/base.json")
 	var nf *cc.NotFoundError
@@ -428,6 +450,7 @@ func TestIncludeMissing(t *testing.T) {
 // never skipped, so an unreadable file or a directory is an *IOError, not a warning. A broken symlink points at
 // nothing, so it's a missing target: a 404 naming the including file.
 func TestIncludedFileErrors(t *testing.T) {
+	t.Parallel()
 	base := work + "/base.json"
 	t.Run("parse", func(t *testing.T) {
 		res, err := incFails(t, map[string]string{rootCfg: `{"include": "base.json"}`, base: `{"a": SECRET}`})
@@ -467,6 +490,7 @@ func TestIncludedFileErrors(t *testing.T) {
 
 // DL-185: an empty included file is LayerEmpty, and the load succeeds.
 func TestIncludedFileEmpty(t *testing.T) {
+	t.Parallel()
 	base := work + "/base.json"
 	res := incOK(t, map[string]string{rootCfg: `{"include": "base.json", "a": 1}`, base: "  \n"})
 	wantTreeJSON(t, res.Tree(), `{"a": 1}`)

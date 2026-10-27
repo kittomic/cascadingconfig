@@ -9,6 +9,7 @@ import (
 // DL-250, DL-266: every snippet marked <!-- example --> in the design records appears in the example sources,
 // unchanged but for indentation, runs of spaces, and an assignment in front of a line; import lines are left out.
 func TestDocExamples(t *testing.T) {
+	t.Parallel()
 	problems, err := docsnippet.Check(map[string]int{
 		"../../../docs/design/design.md": 11,
 		"../../../docs/design/api.md":    7,

@@ -49,7 +49,7 @@ type Warning struct {
 // WarningCode identifies a kind of warning.
 type WarningCode string
 
-// Warning codes. Later milestones add more.
+// Warning codes.
 const (
 	// WarnDuplicateKey reports a key that appears more than once in one JSON object. The last value wins.
 	WarnDuplicateKey WarningCode = "duplicate-key"
@@ -101,11 +101,11 @@ const (
 	// WarnIncludeCache reports an include cache that couldn't be opened, read or written, so the load fetched instead.
 	WarnIncludeCache WarningCode = "include-cache"
 
-	// WarnWatchFailed reports a watched directory, or the whole watch set, falling back to polling, because watching
-	// it failed or the notifier stopped (DL-227).
+	// WarnWatchFailed reports a watched directory, or the whole watch set, falling back to polling, because watching it
+	// failed or the notifier stopped.
 	WarnWatchFailed WarningCode = "watch-failed"
 
-	// WarnReloadFailed reports a failed reload: the watcher keeps the last good config (DL-227).
+	// WarnReloadFailed reports a failed reload: the watcher keeps the last good config.
 	WarnReloadFailed WarningCode = "reload-failed"
 )
 

@@ -16,7 +16,7 @@ import (
 // maxRedirects is how many redirects a fetch follows (DL-208).
 const maxRedirects = 5
 
-// Option configures the resolver. It's sealed: only this package's With functions make one (DL-258).
+// Option configures the resolver. It's sealed: only this package's With functions make one.
 type Option interface{ apply(r *resolver) }
 
 type optionFunc func(r *resolver)
@@ -29,8 +29,8 @@ func WithClient(c *http.Client) Option {
 	return optionFunc(func(r *resolver) { r.client = c })
 }
 
-// New returns a resolver for http and https includes (DL-208). The loader normalises and checks every reference
-// before calling it, strips and verifies integrity fragments, and bounds each fetch with its include timeout.
+// New returns a resolver for http and https includes. The loader normalises and checks every reference before calling
+// it, strips and verifies integrity fragments, and bounds each fetch with its include timeout.
 func New(opts ...Option) cascadingconfig.IncludeResolver {
 	r := &resolver{}
 	for _, o := range opts {

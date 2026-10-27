@@ -61,7 +61,7 @@ type snapshot[T any] struct {
 }
 
 // Change is what a watch handler receives: after a reload that changed the merged values, after every failed reload,
-// and after the first good reload that follows a failure (DL-222).
+// and after the first good reload that follows a failure.
 type Change[T any] struct {
 	Old, New T       // decoded snapshots, shared and read-only; New is the last good config if Err != nil
 	Result   *Result // the reload's result; a failed one has a nil tree
@@ -69,9 +69,9 @@ type Change[T any] struct {
 	Err      error // non-nil for a failed reload
 }
 
-// KeyDiff is one leaf of either tree that differs: a scalar, an array or an empty table (DL-234). A Diff is sorted by
-// path, segment by segment, so entries nest when a value changes shape: {"b":{"b":1}} → {"b":0} is "added b" and
-// "removed b.b".
+// KeyDiff is one leaf of either tree that differs: a scalar, an array or an empty table. A Diff is sorted by path,
+// segment by segment, so entries nest when a value changes shape: {"b":{"b":1}} → {"b":0} is "added b" and "removed
+// b.b".
 type KeyDiff struct {
 	Path                 Path
 	Kind                 DiffKind
@@ -167,8 +167,8 @@ func decodeFresh[T any](res *Result) (T, error) {
 	return v, nil
 }
 
-// Current returns the latest good snapshot, without locking. It's shared with every caller and with the handler, so
-// it must be treated as read-only (DL-220).
+// Current returns the latest good snapshot, without locking. It's shared with every caller and with the handler, so it
+// must be treated as read-only.
 func (w *Watcher[T]) Current() T {
 	return w.cur.Load().value
 }
@@ -176,8 +176,8 @@ func (w *Watcher[T]) Current() T {
 // Reload forces a reload, which also re-reads env vars and Values functions, and takes any pending events with it. It
 // returns the reload's error. Called with the context a running handler call received, or one derived from it, the
 // handler call the reload causes follows the current one; called with any other context, Reload also waits for that
-// call, so a handler that reloads must pass its own context (DL-279). After Close, or once ctx is cancelled, it's a
-// *BaseError with CodeCanceled.
+// call, so a handler that reloads must pass its own context. After Close, or once ctx is cancelled, it's a *BaseError
+// with CodeCanceled.
 func (w *Watcher[T]) Reload(ctx context.Context) error {
 	if err := w.stopped(); err != nil {
 		return err
@@ -213,8 +213,8 @@ func (w *Watcher[T]) Reload(ctx context.Context) error {
 }
 
 // Close stops watching. It doesn't wait for a running handler call: once it returns, no new call starts, and Done
-// closes when the running one returns, so Close can be called from the handler (DL-279). It cancels the handlers'
-// context, and returns the notifier's Close error the first time, and nil after that.
+// closes when the running one returns, so Close can be called from the handler. It cancels the handlers' context, and
+// returns the notifier's Close error the first time, and nil after that.
 func (w *Watcher[T]) Close() error {
 	w.mu.Lock()
 	if w.closed {
@@ -244,8 +244,8 @@ func (w *Watcher[T]) Close() error {
 	return nil
 }
 
-// Done returns a channel that's closed once the watcher has closed, by Close or its context, and its last handler
-// call has returned (DL-279).
+// Done returns a channel that's closed once the watcher has closed, by Close or its context, and its last handler call
+// has returned.
 func (w *Watcher[T]) Done() <-chan struct{} { return w.finished }
 
 // endIfIdle closes finished once the watcher is closed and no handler call is running. The caller holds mu.

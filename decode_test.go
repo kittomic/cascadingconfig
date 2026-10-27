@@ -35,6 +35,7 @@ func (e positionError) Position() (line, column int) { return e.line, e.column }
 
 // DL-52, DL-82: a leading UTF-8 byte-order mark is stripped before the decoder sees the input.
 func TestDecodeDocumentStripsByteOrderMark(t *testing.T) {
+	t.Parallel()
 	d := &fakeDecoder{doc: cc.Document{Tree: cc.Tree{}}}
 	if _, err := cc.DecodeDocument(d, "app.fake", []byte("\xEF\xBB\xBF{}")); err != nil {
 		t.Fatalf("DecodeDocument error: %v", err)
@@ -46,6 +47,7 @@ func TestDecodeDocumentStripsByteOrderMark(t *testing.T) {
 
 // DL-52, DL-82: input that isn't UTF-8 is a *ParseError, and the decoder is never called.
 func TestDecodeDocumentRejectsInvalidUTF8(t *testing.T) {
+	t.Parallel()
 	d := &fakeDecoder{doc: cc.Document{Tree: cc.Tree{}}}
 	_, err := cc.DecodeDocument(d, "app.fake", []byte("{\"a\": \"\xff\"}"))
 	var pe *cc.ParseError
@@ -63,6 +65,7 @@ func TestDecodeDocumentRejectsInvalidUTF8(t *testing.T) {
 // DL-82: a decoder error with a position becomes a *ParseError carrying that position, the file, the format, and the
 // original error as its cause.
 func TestDecodeDocumentWrapsPositionedErrors(t *testing.T) {
+	t.Parallel()
 	cause := positionError{line: 3, column: 8}
 	_, err := cc.DecodeDocument(&fakeDecoder{err: cause}, "app.fake", []byte("x"))
 	var pe *cc.ParseError
@@ -85,6 +88,7 @@ func TestDecodeDocumentWrapsPositionedErrors(t *testing.T) {
 
 // DL-82: a decoder error without a position becomes a *ParseError with no position.
 func TestDecodeDocumentWrapsPlainErrors(t *testing.T) {
+	t.Parallel()
 	cause := errors.New("bad document")
 	_, err := cc.DecodeDocument(&fakeDecoder{err: cause}, "app.fake", []byte("x"))
 	var pe *cc.ParseError
@@ -102,6 +106,7 @@ func TestDecodeDocumentWrapsPlainErrors(t *testing.T) {
 // DL-82: only canonical value types may come out of a decoder. Anything else is a decoder bug: a 500, not a parse
 // error.
 func TestDecodeDocumentRejectsNonCanonicalTypes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		tree cc.Tree
@@ -131,6 +136,7 @@ func TestDecodeDocumentRejectsNonCanonicalTypes(t *testing.T) {
 
 // api.md Core types: every canonical value type passes through unchanged.
 func TestDecodeDocumentAcceptsCanonicalTypes(t *testing.T) {
+	t.Parallel()
 	tree := cc.Tree{
 		"null":   nil,
 		"bool":   true,
@@ -151,6 +157,7 @@ func TestDecodeDocumentAcceptsCanonicalTypes(t *testing.T) {
 
 // DL-81: an empty document passes through as empty, with no tree.
 func TestDecodeDocumentEmpty(t *testing.T) {
+	t.Parallel()
 	doc, err := cc.DecodeDocument(&fakeDecoder{doc: cc.Document{Empty: true}}, "app.fake", []byte("   "))
 	if err != nil {
 		t.Fatalf("DecodeDocument error: %v", err)
@@ -162,6 +169,7 @@ func TestDecodeDocumentEmpty(t *testing.T) {
 
 // DL-83: warnings without a file path get the document's path; warnings that have one keep it.
 func TestDecodeDocumentFillsWarningPaths(t *testing.T) {
+	t.Parallel()
 	d := &fakeDecoder{doc: cc.Document{
 		Tree: cc.Tree{},
 		Warnings: []cc.Warning{

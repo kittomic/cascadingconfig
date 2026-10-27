@@ -8,8 +8,8 @@ import (
 )
 
 // WithLayerTransform adds a function that runs on each layer that merges, after decoding and before its include key and
-// _unset are read (DL-36, DL-193). It gets a copy of the tree. A nil result merges nothing. An error, or a tree with a
-// non-canonical value, is a *TransformError naming the file.
+// _unset are read. It gets a copy of the tree. A nil result merges nothing. An error, or a tree with a non-canonical
+// value, is a *TransformError naming the file.
 func WithLayerTransform(f func(ctx context.Context, l Layer, t Tree) (Tree, error)) Option {
 	return optionFunc(func(c *config) {
 		if f == nil {

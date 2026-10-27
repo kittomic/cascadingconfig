@@ -47,6 +47,7 @@ func scopeInfo(t *testing.T, rep *cc.Report, name cc.ScopeName) cc.ScopeInfo {
 // DL-159, DL-194, api.md Result, Report and Origin: each file scope's effective policy, with matchers printed as their
 // constructors; nil for scopes that read no files.
 func TestReportPolicyInfo(t *testing.T) {
+	t.Parallel()
 	rep := reportPolicies(t)
 	wantSys := &cc.PolicyInfo{
 		Resolvers:       []string{"file"},
@@ -77,6 +78,7 @@ func TestReportPolicyInfo(t *testing.T) {
 
 // DL-194: the policy's JSON uses snake_case keys.
 func TestReportPolicyJSON(t *testing.T) {
+	t.Parallel()
 	js, err := json.Marshal(scopeInfo(t, reportPolicies(t), "proj"))
 	if err != nil {
 		t.Fatal(err)
@@ -89,9 +91,10 @@ func TestReportPolicyJSON(t *testing.T) {
 	}
 }
 
-// DL-194, api.md Settled in M7: the text report has a policies section, with a default row and a row for each scope
+// DL-194: the text report has a policies section, with a default row and a row for each scope
 // with its own policy, and marks included layers "included by".
 func TestReportPolicyText(t *testing.T) {
+	t.Parallel()
 	text := reportPolicies(t).String()
 	wantSection := `policies:
   default  resolvers file; confine {config_root}, {system}; permissions
@@ -113,6 +116,7 @@ func TestReportPolicyText(t *testing.T) {
 // DL-194, design.md Per-scope policies, "Describe()": a rejected reference fails the load, and the failed result's
 // report lists it as LayerFailed, with its scope, its includer, and which scope's policy rejected it and why.
 func TestReportRejectedReference(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{rootCfg: `{"include": "../outside.json"}`, "/home/me/outside.json": `{}`})
 	res, err := incLoad(t, fsys, cc.WithScopePolicy("proj", cc.AllowResolvers("file"), cc.Confine("{config_root}")))
 	if err == nil {

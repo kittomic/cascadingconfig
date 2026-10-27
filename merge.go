@@ -40,7 +40,7 @@ const (
 	ConflictFail
 )
 
-// mergeConfig sets up the merge engine. M3 builds it from options.
+// mergeConfig sets up the merge engine, as the merge options configure it.
 type mergeConfig struct {
 	rules    *ruleSet      // nil means no rules
 	arrays   MergeStrategy // for arrays with no rule: Replace, Append or Prepend

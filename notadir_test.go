@@ -11,6 +11,7 @@ import (
 // DL-262: a file where a directory is searched is skipped like a missing directory: no warning, and a Debug record
 // naming the directory that was searched. A directory that can't be read still warns.
 func TestNotADirectory(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name    string
 		files   map[string]string

@@ -44,6 +44,7 @@ func wantParseError(t *testing.T, data string) {
 
 // api.md Extension interfaces: the decoder's metadata.
 func TestDecoderMetadata(t *testing.T) {
+	t.Parallel()
 	d := ccjson.Decoder()
 	if got := d.Format(); got != "json" {
 		t.Errorf("Format() = %q, want \"json\"", got)
@@ -59,6 +60,7 @@ func TestDecoderMetadata(t *testing.T) {
 // DL-49, api.md Core types: values decode to the canonical types. Integers are int64 only when the literal has no
 // fraction or exponent.
 func TestCanonicalValues(t *testing.T) {
+	t.Parallel()
 	doc := mustDecode(t, `{
 		"int": 42, "negative": -7, "zero": 0, "negativeZero": -0,
 		"max": 9223372036854775807, "min": -9223372036854775808,
@@ -87,6 +89,7 @@ func TestCanonicalValues(t *testing.T) {
 
 // DL-49: an integer literal outside the int64 range is a parse error, as is a float outside the float64 range.
 func TestNumbersOutOfRange(t *testing.T) {
+	t.Parallel()
 	for _, data := range []string{
 		`{"big": 9223372036854775808}`,
 		`{"small": -9223372036854775809}`,
@@ -99,6 +102,7 @@ func TestNumbersOutOfRange(t *testing.T) {
 
 // DL-52: strict RFC 8259. Comments and trailing commas are rejected.
 func TestStrictDialect(t *testing.T) {
+	t.Parallel()
 	for _, data := range []string{
 		"{\n// a comment\n\"a\": 1}",
 		`{"a": 1 /* a comment */}`,
@@ -115,6 +119,7 @@ func TestStrictDialect(t *testing.T) {
 
 // DL-51: a duplicate key keeps its last value and adds a warning naming the key.
 func TestDuplicateKeys(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		data string
@@ -156,6 +161,7 @@ func TestDuplicateKeys(t *testing.T) {
 
 // Distinct keys produce no warnings.
 func TestNoWarningsWithoutDuplicates(t *testing.T) {
+	t.Parallel()
 	if doc := mustDecode(t, `{"a": 1, "b": {"a": 2}}`); len(doc.Warnings) != 0 {
 		t.Errorf("got warnings %#v, want none", doc.Warnings)
 	}
@@ -163,6 +169,7 @@ func TestNoWarningsWithoutDuplicates(t *testing.T) {
 
 // DL-52: a leading UTF-8 byte-order mark is stripped.
 func TestByteOrderMark(t *testing.T) {
+	t.Parallel()
 	doc := mustDecode(t, "\xEF\xBB\xBF{\"a\": 1}")
 	if !reflect.DeepEqual(doc.Tree, cc.Tree{"a": int64(1)}) {
 		t.Errorf("Tree = %#v, want {a: 1}", doc.Tree)
@@ -171,11 +178,13 @@ func TestByteOrderMark(t *testing.T) {
 
 // DL-52: input that isn't UTF-8 is a parse error, even inside a string, where encoding/json would silently replace it.
 func TestInvalidUTF8(t *testing.T) {
+	t.Parallel()
 	wantParseError(t, "{\"a\": \"\xff\"}")
 }
 
 // DL-53: the top level must be an object.
 func TestTopLevelMustBeAnObject(t *testing.T) {
+	t.Parallel()
 	for _, data := range []string{`[1, 2]`, `"string"`, `42`, `true`, `[]`} {
 		t.Run(data, func(t *testing.T) { wantParseError(t, data) })
 	}
@@ -183,6 +192,7 @@ func TestTopLevelMustBeAnObject(t *testing.T) {
 
 // DL-53: whitespace-only and null documents are empty. {} is not.
 func TestEmptyDocuments(t *testing.T) {
+	t.Parallel()
 	for _, data := range []string{"", "   ", "\n\t \r\n", "null", " null \n"} {
 		t.Run(data, func(t *testing.T) {
 			doc := mustDecode(t, data)
@@ -204,13 +214,15 @@ func TestEmptyDocuments(t *testing.T) {
 
 // A document must be a single JSON value: anything after it is an error.
 func TestTrailingData(t *testing.T) {
+	t.Parallel()
 	for _, data := range []string{`{"a": 1} {"b": 2}`, `{"a": 1} x`, `{} null`} {
 		t.Run(data, func(t *testing.T) { wantParseError(t, data) })
 	}
 }
 
-// Plan M1: a syntax error is a *ParseError with its 1-based line and column, shown in the message.
+// A syntax error is a *ParseError with its 1-based line and column, shown in the message.
 func TestSyntaxErrorPosition(t *testing.T) {
+	t.Parallel()
 	pe := parseError(t, "{\n  \"a\": 1,\n  \"b\": ?\n}")
 	if pe.Line != 3 || pe.Column != 8 {
 		t.Errorf("Line, Column = %d, %d; want 3, 8", pe.Line, pe.Column)

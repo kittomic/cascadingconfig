@@ -8,6 +8,7 @@ import (
 // design.md Null values: a higher null replaces the lower value whatever its type, and stays in the result as a key
 // with a nil value.
 func TestNullReplacesAnyType(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, defaultMergeConfig(), ly(t,
 		"low.json", `{"s": 1, "a": [1], "t": {"x": 1}}`,
 		"high.json", `{"s": null, "a": null, "t": null}`,
@@ -21,6 +22,7 @@ func TestNullReplacesAnyType(t *testing.T) {
 // design.md Null values: a higher value replaces a lower null; a table over a null is taken as it is. This holds with
 // the Append array default too.
 func TestNullIsReplacedByAnyValue(t *testing.T) {
+	t.Parallel()
 	cfg := defaultMergeConfig()
 	cfg.arrays = Append
 	res := mergeOK(t, cfg, ly(t,
@@ -33,6 +35,7 @@ func TestNullIsReplacedByAnyValue(t *testing.T) {
 // design.md Null values: null is never a type mismatch. Whatever rule matches, DeepMerge, Append or Prepend, the merge
 // is a Replace and the higher value wins.
 func TestNullIsNeverAMismatch(t *testing.T) {
+	t.Parallel()
 	cfg := withRules(t, rule(t, "a", Append), rule(t, "p", Prepend), rule(t, "t", DeepMerge), rule(t, "u", DeepMerge))
 	res := mergeOK(t, cfg, ly(t,
 		"low.json", `{"a": null, "p": [1], "t": null, "u": {"x": 1}}`,
@@ -43,6 +46,7 @@ func TestNullIsNeverAMismatch(t *testing.T) {
 
 // design.md Null values: a MergeFunc is the exception. It receives nil and decides for itself.
 func TestMergeFuncReceivesNull(t *testing.T) {
+	t.Parallel()
 	type call struct{ lower, higher any }
 	var calls []call
 	fn := func(_ Path, lower, higher any) (any, error) {

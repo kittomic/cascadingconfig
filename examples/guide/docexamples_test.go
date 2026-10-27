@@ -540,6 +540,7 @@ func Example_fakeClock() {
 
 // testing.md: golden files.
 func TestGoldenReport(t *testing.T) {
+	t.Parallel()
 	mise := onWorld(map[string]string{work + "/myapp.toml": "[server]\nport = 8080\n"}, nil)
 	loader, _ := cascadingconfig.NewWithPreset("myapp", mise.Preset)
 	res, err := loader.Load(t.Context())

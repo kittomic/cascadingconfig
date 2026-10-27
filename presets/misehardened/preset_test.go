@@ -19,6 +19,7 @@ func skipWindows(t *testing.T) {
 
 // DL-248: the preset is named misehardened.Preset, and the report says so.
 func TestName(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	if got := misehardened.Preset.Name(); got != "misehardened.Preset" {
 		t.Errorf("Name() = %q", got)
@@ -34,6 +35,7 @@ func TestName(t *testing.T) {
 
 // DL-248, DL-251: TOML, YAML and JSON files all load.
 func TestFormats(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	w := presettest.Work + "/"
 	res, err := presettest.Load(t, misehardened.Preset, map[string]string{
@@ -50,6 +52,7 @@ func TestFormats(t *testing.T) {
 
 // DL-205, DL-251: a remote include is a 501: the preset registers no resolvers.
 func TestNoRemotes(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	_, err := presettest.Load(t, misehardened.Preset, map[string]string{
 		presettest.Work + "/myapp.toml": "include = [\"https://config.example.com/a.toml\"]\n",
@@ -61,12 +64,14 @@ func TestNoRemotes(t *testing.T) {
 
 // DL-248, DL-251: the default notifier reloads a real directory.
 func TestWatchesByDefault(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	presettest.WatchReal(t, misehardened.Preset, "work/myapp.toml", "top = \"before\"\n", "top = \"after\"\n", "work")
 }
 
 // DL-251: the preset ranks the fixture exactly as MiseHardenedLayout does with the same decoders.
 func TestOrderMatchesLayout(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	files := presettest.Fixture(t, "MiseLayout", []string{"toml", "yaml", "yml", "json"})
 	env := map[string]string{"XDG_CONFIG_HOME": presettest.XDG, "MYAPP_ENV": "dev"}

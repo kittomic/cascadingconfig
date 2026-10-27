@@ -28,7 +28,7 @@ var protocolVersion = "2"
 // maxRedirects is how many redirects the resolver follows for an http or https repo, as httpresolver does (DL-213).
 const maxRedirects = 5
 
-// Option configures the resolver. It's sealed: only this package's With functions make one (DL-258).
+// Option configures the resolver. It's sealed: only this package's With functions make one.
 type Option interface{ apply(r *resolver) }
 
 type optionFunc func(r *resolver)
@@ -36,7 +36,7 @@ type optionFunc func(r *resolver)
 func (f optionFunc) apply(r *resolver) { f(r) }
 
 // WithProtocols sets the transports git may use, such as "https", "ssh", "http" or "file". The default is https and
-// ssh. A repo URL with any other scheme is a *PolicyError, before git runs (DL-212).
+// ssh. A repo URL with any other scheme is a *PolicyError, before git runs.
 func WithProtocols(protocols ...string) Option {
 	return optionFunc(func(r *resolver) {
 		r.protocols = nil
@@ -56,15 +56,14 @@ func WithGit(path string) Option {
 	return optionFunc(func(r *resolver) { r.git = path })
 }
 
-// WithClient sets the HTTP client that follows an http or https repo URL's redirects before git runs (DL-213). The
-// resolver copies it, so c isn't changed.
+// WithClient sets the HTTP client that follows an http or https repo URL's redirects before git runs. The resolver
+// copies it, so c isn't changed.
 func WithClient(c *http.Client) Option {
 	return optionFunc(func(r *resolver) { r.client = c })
 }
 
-// New returns a resolver for git includes (DL-211). It reads the file from the object database of a fresh bare repo,
-// never a work tree, with git isolated from the user's and the system's config and environment (DL-212). It's safe for
-// concurrent use.
+// New returns a resolver for git includes. It reads the file from the object database of a fresh bare repo, never a
+// work tree, with git isolated from the user's and the system's config and environment. It's safe for concurrent use.
 func New(opts ...Option) cascadingconfig.IncludeResolver {
 	r := &resolver{protocols: []string{"https", "ssh"}}
 	for _, o := range opts {

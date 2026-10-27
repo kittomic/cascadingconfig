@@ -72,6 +72,7 @@ func runPolicyCases(t *testing.T, tests []policyCase) {
 // DL-24, DL-188, design.md Per-scope policies: a scope policy replaces the default as a whole; InheritDefault starts
 // from the default, wherever it appears; a later option replaces only its own setting.
 func TestScopePolicies(t *testing.T) {
+	t.Parallel()
 	strict := cc.WithDefaultPolicy(cc.AllowResolvers("file"), cc.Confine("{config_root}"))
 	runPolicyCases(t, []policyCase{
 		{
@@ -127,6 +128,7 @@ func TestScopePolicies(t *testing.T) {
 // DL-188, DL-189: a fresh policy allows no resolver unless it lists one; the engine default allows every registered
 // resolver.
 func TestFreshPolicy(t *testing.T) {
+	t.Parallel()
 	runPolicyCases(t, []policyCase{
 		{name: "engine default", projRef: "/srv/outside.json", want: `{"outside": 1}`},
 		{
@@ -150,6 +152,7 @@ func TestFreshPolicy(t *testing.T) {
 // DL-177: a policy without "file" forbids local includes in its scope, as a 403; removing the file resolver while an
 // include key is set is an *OptionError at New.
 func TestForbidLocalIncludes(t *testing.T) {
+	t.Parallel()
 	runPolicyCases(t, []policyCase{{
 		name: "a policy without file", projRef: "inc.json",
 		opts: []cc.Option{cc.WithScopePolicy("proj", cc.InheritDefault(), cc.AllowResolvers())},
@@ -167,6 +170,7 @@ func TestForbidLocalIncludes(t *testing.T) {
 
 // DL-24, design.md Per-scope policies, "Which scope judges an include": the root file's scope, through nested includes.
 func TestPolicyOfNestedIncludes(t *testing.T) {
+	t.Parallel()
 	fsys := policyFS("", "inc.json")
 	fsys.WriteFile(work+"/inc.json", []byte(`{"include": "/srv/outside.json"}`), 0o644)
 	_, err := incLoad(t, fsys, nested,
@@ -177,6 +181,7 @@ func TestPolicyOfNestedIncludes(t *testing.T) {
 // DL-190: explicit files are judged by the policy of the scope whose name they take, or with no marked scope, by the
 // default policy.
 func TestPolicyOfExplicitFiles(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{"/srv/app.json": `{"include": "base.json"}`, "/srv/base.json": `{"b": 1}`}
 	forbid := cc.WithScopePolicy("proj", cc.AllowResolvers())
 	t.Run("the replaced scope's policy", func(t *testing.T) {
@@ -199,6 +204,7 @@ func TestPolicyOfExplicitFiles(t *testing.T) {
 // DL-176, design.md Allow-lists: a reference must match the global list and its scheme's list; local references are
 // matched as absolute slash paths after symlinks.
 func TestAllowLists(t *testing.T) {
+	t.Parallel()
 	fileOnly := func(opts ...cc.PolicyOption) []cc.Option {
 		return []cc.Option{cc.WithDefaultPolicy(append([]cc.PolicyOption{cc.AllowResolvers("file")}, opts...)...)}
 	}
@@ -254,6 +260,7 @@ func TestAllowLists(t *testing.T) {
 
 // DL-176: MatchRef gets the whole IncludeRef, so it can judge by the including file's scope.
 func TestMatchRef(t *testing.T) {
+	t.Parallel()
 	var seen calls[cc.IncludeRef]
 	onlySys := cc.MatchRef(func(r cc.IncludeRef) bool {
 		seen.add(r)
@@ -277,6 +284,7 @@ func TestMatchRef(t *testing.T) {
 
 // DL-176, A2: Glob's ? matches one character other than /, in WithFileFormat too; Prefix works there as well.
 func TestGlobAndPrefixInFileFormat(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{work + "/myapp.cfg": `{"a": 1}`}
 	scope := cc.Options(cc.WithScope("proj", cc.FixedDir(work, cc.Pattern{Template: "{name}.cfg"})), cc.WithScopes("proj"))
 	for _, tc := range []struct {
@@ -299,8 +307,9 @@ func TestGlobAndPrefixInFileFormat(t *testing.T) {
 	}
 }
 
-// DL-176 to DL-193, api.md Settled in M7: invalid M7 options are *OptionErrors named after the option.
-func TestM7OptionErrors(t *testing.T) {
+// DL-176 to DL-193: invalid include and policy options are *OptionErrors named after the option.
+func TestIncludePolicyOptionErrors(t *testing.T) {
+	t.Parallel()
 	inc := cc.WithIncludeKey("include", cc.IncludeFlat)
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "empty include key", opts: []cc.Option{scope, cc.WithIncludeKey("", cc.IncludeFlat)}, ops: []string{"WithIncludeKey"}},
@@ -334,8 +343,9 @@ func TestM7OptionErrors(t *testing.T) {
 	})
 }
 
-// api.md Settled in M7: every M7 option with valid values, together, is accepted.
+// DL-176 to DL-193: every include and policy option with valid values, together, is accepted.
 func TestPolicyOptionsValid(t *testing.T) {
+	t.Parallel()
 	_, err := cc.New("myapp", scope, cc.WithIncludeKey("include", cc.IncludeNested),
 		cc.WithDefaultPolicy(cc.AllowResolvers("file"), cc.Allow(cc.Prefix("/"), cc.Glob("/**")),
 			cc.AllowFor("file", cc.MatchRef(func(cc.IncludeRef) bool { return true })),
@@ -363,6 +373,7 @@ func policyErrorMentions(t *testing.T, err error, rule string) {
 
 // DL-185: a rejection says which rule the reference broke.
 func TestPolicyErrorMessages(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		opt  cc.Option

@@ -16,6 +16,7 @@ const pollInterval = 2 * time.Second
 
 // DL-225: the notifier factory is called once per watcher, and each watcher's Close closes its own notifier.
 func TestNotifierPerWatcher(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var mu sync.Mutex
 	var made []*cctest.Notifier
@@ -52,6 +53,7 @@ func TestNotifierPerWatcher(t *testing.T) {
 
 // DL-225, DL-227: a factory that fails makes everything poll, with WarnWatchFailed, and Watch still succeeds.
 func TestNotifierFactoryFails(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil, cc.WithNotifier(func() (cc.Notifier, error) { return nil, errors.New("no inotify instances left") }))
 	if !e.logged(slog.LevelWarn, cc.WarnWatchFailed) {
@@ -65,6 +67,7 @@ func TestNotifierFactoryFails(t *testing.T) {
 
 // DL-225, DL-227: a directory whose Add fails is polled, with WarnWatchFailed; the others still use events.
 func TestNotifierAddFails(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`, sysFile: `{"b": 1}`})
 	e.n.FailAdd(sysDir, errors.New("too many open files"))
 	w := e.watch(nil)
@@ -83,6 +86,7 @@ func TestNotifierAddFails(t *testing.T) {
 
 // DL-225, DL-227: an error from the notifier is a warning and a reload, because events may have been lost.
 func TestNotifierError(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	e.write(rootCfg, `{"a": 2}`)
@@ -96,6 +100,7 @@ func TestNotifierError(t *testing.T) {
 
 // DL-225, DL-227: a notifier that stops, closing its Events channel, makes the whole set poll, with a warning.
 func TestNotifierStops(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	if err := e.n.Close(); err != nil {
@@ -114,6 +119,7 @@ func TestNotifierStops(t *testing.T) {
 // DL-226: without a notifier, everything is polled every 2 s: edits, same-size edits, new files and removals are seen,
 // and nothing is warned.
 func TestPollingWithoutNotifier(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.n = nil
 	w := e.watch(nil)
@@ -146,6 +152,7 @@ func TestPollingWithoutNotifier(t *testing.T) {
 
 // DL-226: polling finds nothing to reload when nothing changed.
 func TestPollingIdle(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.n = nil
 	e.watch(nil)
@@ -155,6 +162,7 @@ func TestPollingIdle(t *testing.T) {
 
 // DL-226: WithPolling polls everything despite a notifier, at WithPollInterval's pace.
 func TestWithPolling(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch([]cc.WatchOption{cc.WithPolling(), cc.WithPollInterval(500 * time.Millisecond)})
 	if got := e.n.Watched(); len(got) != 0 {
@@ -168,6 +176,7 @@ func TestWithPolling(t *testing.T) {
 
 // DL-226: WithPollInterval sets the fallback's interval too.
 func TestPollIntervalFallback(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.n.FailAdd(work, errors.New("no watch"))
 	w := e.watch([]cc.WatchOption{cc.WithPollInterval(300 * time.Millisecond)})

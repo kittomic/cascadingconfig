@@ -8,6 +8,7 @@ import (
 
 // DL-131, DL-132, DL-134: bootstrap options that can only be mistakes.
 func TestBootstrapOptionErrors(t *testing.T) {
+	t.Parallel()
 	values := cc.Values(cc.Tree{})
 	rc := cc.Pattern{Template: ".{name}rc.json"}
 	runOptionErrorCases(t, []optionErrorCase{

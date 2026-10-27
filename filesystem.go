@@ -22,7 +22,7 @@ type FileSystem interface {
 }
 
 // OwnerInfo is implemented by the fs.FileInfo values a FileSystem returns, where the platform has owners, for
-// FilePermissions checks (DL-191).
+// FilePermissions checks.
 type OwnerInfo interface {
 	// Owner returns the owner's uid, or false when it isn't known.
 	Owner() (uid int, ok bool)
@@ -69,7 +69,7 @@ func WithLogger(l *slog.Logger) Option {
 	})
 }
 
-// WithLogLevel makes the loader drop log records below level before they reach the logger (DL-263), so
+// WithLogLevel makes the loader drop log records below level before they reach the logger, so
 // WithLogLevel(slog.LevelWarn) drops Info and Debug. A *slog.LevelVar changes the level at run time. Without it, the
 // logger's handler decides. A nil level is an *OptionError.
 func WithLogLevel(level slog.Leveler) Option {
