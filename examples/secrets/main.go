@@ -9,7 +9,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -67,12 +66,13 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 		if err != nil {
 			return err
 		}
-		show(out, cfg)
+		show(out, cfg, newSecretVersions())
 		return nil
 	}
 
 	// The handler runs on the watcher's goroutine, so printing is serialised.
 	var mu sync.Mutex
+	versions := newSecretVersions()
 	w, err := cascadingconfig.Watch(ctx, loader, func(_ context.Context, c cascadingconfig.Change[Config]) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -83,13 +83,13 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 		for _, d := range c.Diff {
 			fmt.Fprintf(out, "%s\n", d) // a KeyDiff prints its key and origins, never the values
 		}
-		show(out, c.New)
+		show(out, c.New, versions)
 	})
 	if err != nil {
 		return err
 	}
 	mu.Lock()
-	show(out, w.Current())
+	show(out, w.Current(), versions)
 	mu.Unlock()
 	<-ctx.Done()
 	err = w.Close()
@@ -97,16 +97,32 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 	return err
 }
 
-// show prints cfg with each secret replaced by a short fingerprint, so a rotation is visible but the value isn't.
-func show(out io.Writer, cfg Config) {
-	fmt.Fprintf(out, "db:  %s@%s, password %s\n", cfg.DB.User, cfg.DB.Host, fingerprint(cfg.DB.Password))
-	fmt.Fprintf(out, "api: %s, token %s\n", cfg.API.URL, fingerprint(cfg.API.Token))
+// show prints cfg with each secret replaced by its version, so a rotation is visible, but nothing derived from a
+// secret's value is printed: even a hash of it would let anyone with the output test guesses at a weak password.
+func show(out io.Writer, cfg Config, v *secretVersions) {
+	fmt.Fprintf(out, "db:  %s@%s, password %s\n", cfg.DB.User, cfg.DB.Host, v.label("db.password", cfg.DB.Password))
+	fmt.Fprintf(out, "api: %s, token %s\n", cfg.API.URL, v.label("api.token", cfg.API.Token))
 }
 
-func fingerprint(secret string) string {
+// secretVersions numbers each secret's values in the order they're seen. The values it compares against stay in
+// memory.
+type secretVersions struct {
+	last    map[string]string
+	version map[string]int
+}
+
+func newSecretVersions() *secretVersions {
+	return &secretVersions{last: map[string]string{}, version: map[string]int{}}
+}
+
+// label describes the secret called name: "not set", or "set, version n", where n goes up each time the value changes.
+func (v *secretVersions) label(name, secret string) string {
 	if secret == "" {
 		return "not set"
 	}
-	sum := sha256.Sum256([]byte(secret))
-	return fmt.Sprintf("sha256:%x…", sum[:4])
+	if v.last[name] != secret {
+		v.last[name] = secret
+		v.version[name]++
+	}
+	return fmt.Sprintf("set, version %d", v.version[name])
 }
