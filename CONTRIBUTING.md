@@ -48,7 +48,7 @@ Each check is a script in `scripts/`, and `.github/workflows/ci.yml` runs the sa
 
 ## Pull requests
 
-- **Target `wip`,** the integration branch. `main` takes only releases.
+- **Target `main`,** the only long-lived branch. Releases are tags on it.
 - **Merges are merge commits,** never squashes, so keep each commit one logical change with its own message.
 - **The PR template** lists what a reviewer checks.
 - **Licensing:** your contribution is under the [Apache License 2.0](LICENSE), as its section 5 provides. There is no

@@ -1,15 +1,14 @@
 # CI runs the same scripts as lefthook's pre-push (DL-283), so a check passes or fails the same way in both places.
 #
 # Go's module and build caches, which also hold go test's results (DL-288), and golangci-lint's cache are restored at
-# the start of every run and saved at the end, under a key per commit. A PR's run restores its own last caches or its
-# base branch's; GitHub evicts the least recently used once the repository's caches pass 10 GB.
+# the start of every run and saved at the end, under a key per commit. A PR's run restores its own last caches or
+# main's; GitHub evicts the least recently used once the repository's caches pass 10 GB.
 name: CI
 
 on:
-  pull_request:
-    branches: [wip, main]
+  pull_request: # every pull request, whatever its base
   push:
-    branches: [wip, main]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
