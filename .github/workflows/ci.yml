@@ -6,8 +6,7 @@
 name: CI
 
 on:
-  pull_request:
-    branches: [main]
+  pull_request: # every pull request, whatever its base
   push:
     branches: [main]
   workflow_dispatch:
