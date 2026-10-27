@@ -1385,7 +1385,9 @@ These checks also cover resolvers that apps write themselves:
   only; every other registry uses https. `ociresolver.WithClient(c)` sets the HTTP client, which is copied.
 - **Auth:** the standard bearer-token flow, with the credentials for the registry, and anonymous tokens otherwise. The
   token service may be on another host, such as Docker Hub's `auth.docker.io`, as the distribution spec allows. Tokens
-  are cached per resolver.
+  are cached per resolver. The token realm's address is checked by oras-go's default denylist (DL-287): from v2.7.0,
+  loopback, link-local, unspecified and cloud metadata addresses are refused, and private addresses are allowed, so a
+  self-hosted registry whose token service is on another internal host works.
 - **Redirects** (DL-217): registries redirect blob downloads to CDNs, so the resolver follows a registry's redirects
   without matching them against the allow-lists: at most 5 hops, never from `https` to `http`. Unlike `http` and `git`,
   that gives a redirect no power: blobs and digest-pinned manifests are verified, and a tag's manifest is the registry's
@@ -2355,6 +2357,7 @@ There are no open questions.
 | 284 | Branches after the first release            | `wip` serves until v0.1.0 is tagged. Then it's retired: `main` is the integration branch and the default, PRs target it with merge commits only, never squash, and releases are tags on it. Replaces the implementation plan's decision 1 from v0.1.0 on, which kept `main` for releases while the repository was private; Go consumers only see tags, and contributors' PRs target the default branch. |
 | 285 | Going public                                | The repository becomes public whole: its history (scanned by gitleaks, clean on 2026-10-27), plans and decision records included. On the same day it gets a description and topics, private vulnerability reporting (which SECURITY.md relies on), merge commits as the only merge method, no wiki, and the branch protection of DL-283. |
 | 286 | The first release                           | Every released module starts at v0.1.0, tagged on `main` in order: the core; then `format/toml`, `format/yaml`, `ociresolver` and `watch/fsnotify`, once a PR drops their `replace` of the core (DL-162) and requires core v0.1.0; then `presets`, the same way. From then on a script in pre-push and CI fails if a released module's `go.mod` has a `replace`. Each module's first changelog entry summarises it rather than listing commits. One GitHub Release, on the core's tag, covers all six modules. Before it's announced, a program outside the repository fetches `presets@v0.1.0` through the public proxy and builds, and each module's pkg.go.dev page is requested. |
+| 287 | The OCI token realm's address              | ociresolver keeps oras-go's default realm denylist rather than setting its own. From v2.7.0 that refuses loopback, link-local, unspecified and cloud metadata addresses but allows RFC 1918, unique-local IPv6 and carrier-grade NAT addresses, which v2.6.4 refused, so split-host internal registries such as self-hosted GitLab work. Accepted when moving to v2.7.0, once it's two weeks old (DL-280). |
 
 ---
 
