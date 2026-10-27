@@ -2,3 +2,5 @@ github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPE
 github.com/go-viper/mapstructure/v2 v2.5.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
 github.com/goccy/go-yaml v1.19.2/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
+github.com/kittomic/cascadingconfig v0.1.0 h1:E6rZXOq+kleOe77aVBP9SZ/guMn86JsTCxrr7Gzkw1I=
+github.com/kittomic/cascadingconfig v0.1.0/go.mod h1:DNvqHQJvkVbrWQ8tmmcx50cxPmsDc7lfaoNYuNda7cw=
