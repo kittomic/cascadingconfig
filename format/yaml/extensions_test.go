@@ -38,6 +38,7 @@ func load(t *testing.T, files, env map[string]string, opts ...cc.Option) *cc.Res
 
 // DL-47: .yml is YAML, the yml format name means yaml, and .yaml ranks above .yml in a slot.
 func TestYAMLExtensions(t *testing.T) {
+	t.Parallel()
 	res := load(t, map[string]string{"/etc/myapp/config.yml": "a: yml\n"}, nil)
 	if got := res.Tree(); !reflect.DeepEqual(got, cc.Tree{"a": "yml"}) {
 		t.Errorf(".yml: Tree = %v", got)

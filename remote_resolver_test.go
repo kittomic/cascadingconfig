@@ -12,6 +12,7 @@ import (
 
 // DL-196, DL-198, DL-199, DL-205, DL-206: the resolver, size, timeout and cache options reject what can't work.
 func TestRemoteOptionErrors(t *testing.T) {
+	t.Parallel()
 	https := newFake("https")
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "nil resolver", opts: []cc.Option{scope, cc.WithIncludeResolver(nil)}, ops: []string{"WithIncludeResolver"}},
@@ -32,6 +33,7 @@ func TestRemoteOptionErrors(t *testing.T) {
 
 // DL-196: a registered resolver handles its schemes, case-insensitively, and the last registration of a scheme wins.
 func TestRegisterResolver(t *testing.T) {
+	t.Parallel()
 	first := newFake("https").serve("https://h.example/a.json", `{"from": "first"}`)
 	second := newFake("HTTPS").serve("https://h.example/a.json", `{"from": "second"}`)
 	res := remOK(t, first, []string{"https://h.example/a.json"}, cc.WithIncludeResolver(second))
@@ -43,6 +45,7 @@ func TestRegisterResolver(t *testing.T) {
 
 // DL-196: WithoutIncludeResolver removes one scheme, even from a resolver that handles others too.
 func TestWithoutOneScheme(t *testing.T) {
+	t.Parallel()
 	f := newFake("http", "https").serve("http://h.example/a.json", `{"a": 1}`).serve("https://h.example/b.json", `{"b": 1}`)
 	res := remOK(t, f, []string{"http://h.example/a.json"}, cc.WithoutIncludeResolver("https"))
 	wantTreeJSON(t, res.Tree(), `{"root": 1, "a": 1}`)
@@ -52,6 +55,7 @@ func TestWithoutOneScheme(t *testing.T) {
 
 // DL-189, DL-196: a policy may name a scheme once a resolver is registered for it.
 func TestPolicyNamesRegisteredScheme(t *testing.T) {
+	t.Parallel()
 	f := newFake("https").serve("https://h.example/a.json", `{"a": 1}`)
 	res := remOK(t, f, []string{"https://h.example/a.json"},
 		cc.WithDefaultPolicy(cc.AllowResolvers("file", "https"), cc.AllowFor("https", cc.Prefix("https://h.example/"))))
@@ -62,6 +66,7 @@ func TestPolicyNamesRegisteredScheme(t *testing.T) {
 // reference's file path, and only then from the media type the resolver reports; none is a 415 naming the included
 // reference. An inner path with no known format is a 415 before anything is fetched.
 func TestRemoteFormat(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, ref, mediaType string
 		opts                 []cc.Option
@@ -107,6 +112,7 @@ func TestRemoteFormat(t *testing.T) {
 // DL-198: WithMaxIncludeSize limits remote content (default 1 MiB), the resolver sees the limit as MaxSize, and content
 // over it is a 413, whether the loader or the resolver finds it.
 func TestRemoteSizeLimit(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	content := `{"a": "1234567"}` // 16 bytes
 	t.Run("default", func(t *testing.T) {
@@ -140,6 +146,7 @@ func TestRemoteSizeLimit(t *testing.T) {
 // DL-199: a resolver's error with a cascadingconfig code keeps its type; any other error is a *FetchError naming the
 // including file, 504 for a timeout and 502 otherwise.
 func TestRemoteErrors(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	base := cc.BaseError{Op: "fetch", Path: ref, Err: errors.New("cause")}
 	for _, tc := range []struct {
@@ -177,6 +184,7 @@ func TestRemoteErrors(t *testing.T) {
 
 // DL-199: the load's own cancellation stays a 499 cancellation, not a fetch error.
 func TestRemoteCancel(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	f := newFake("https")
@@ -194,6 +202,7 @@ func TestRemoteCancel(t *testing.T) {
 
 // DL-199: each fetch has a deadline, 30 seconds by default and set with WithIncludeTimeout; running out is a 504.
 func TestIncludeTimeout(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	t.Run("default", func(t *testing.T) {
 		var left time.Duration
@@ -228,6 +237,7 @@ func TestIncludeTimeout(t *testing.T) {
 // DL-198: an empty identity is the content's SHA-256; an identity over 256 bytes, or with control characters, is a
 // 502, because reports show it.
 func TestRemoteIdentity(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	const content = `{"a": 1}`
 	for _, tc := range []struct {
@@ -258,6 +268,7 @@ func TestRemoteIdentity(t *testing.T) {
 // DL-198: IncludeRef.Check normalises another reference and checks it under the policy the reference passed: the
 // including file's scope's.
 func TestIncludeRefCheck(t *testing.T) {
+	t.Parallel()
 	got := map[string]error{}
 	targets := []string{
 		"https://h.example/other.json",
@@ -292,6 +303,7 @@ func TestIncludeRefCheck(t *testing.T) {
 
 // DL-199: references are fetched one at a time.
 func TestRemoteOneAtATime(t *testing.T) {
+	t.Parallel()
 	f := newFake("https")
 	f.fetch = func(context.Context, cc.IncludeRef) (*cc.Fetched, error) {
 		time.Sleep(5 * time.Millisecond)

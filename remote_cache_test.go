@@ -60,6 +60,7 @@ func cacheState(t *testing.T, res *cc.Result, path string) string {
 
 // DL-19, DL-207: an unpinned reference is served from the cache until the TTL, by the loader's clock, has passed.
 func TestCacheTTL(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	c := newCacheEnv(t)
 	f := newFake("https").serve(ref, `{"v": 1}`)
@@ -83,6 +84,7 @@ func TestCacheTTL(t *testing.T) {
 
 // DL-19, DL-207: a pinned reference is never fetched again.
 func TestCachePinned(t *testing.T) {
+	t.Parallel()
 	ref := "https://h.example/a.json#sha256=" + sum(`{"v": 1}`)
 	c := newCacheEnv(t)
 	f := newFake("https").serve("https://h.example/a.json", `{"v": 1}`)
@@ -95,6 +97,7 @@ func TestCachePinned(t *testing.T) {
 
 // DL-207: a TTL of 0 always fetches, and keeps the cache as a fallback.
 func TestCacheZeroTTL(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	c := newCacheEnv(t)
 	c.ttl = 0
@@ -113,6 +116,7 @@ func TestCacheZeroTTL(t *testing.T) {
 // DL-19, DL-207: only a *FetchError falls back to a cached copy, with WarnStaleInclude; a 404, a policy rejection or a
 // bad reference fails the load, and so does a *FetchError with nothing cached.
 func TestCacheStale(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	for _, tc := range []struct {
 		name  string
@@ -157,6 +161,7 @@ func TestCacheStale(t *testing.T) {
 
 // DL-58, DL-207: WithoutIncludeCache fetches every time, with no stale fallback.
 func TestWithoutIncludeCache(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	f := newFake("https").serve(ref, `{"v": 1}`)
 	remOK(t, f, []string{ref})
@@ -172,6 +177,7 @@ func TestWithoutIncludeCache(t *testing.T) {
 // DL-58, DL-206, design.md Traversal protection, step 4: no cache file or directory name contains any part of a
 // reference, and the cache's files are private to the user.
 func TestCacheNames(t *testing.T) {
+	t.Parallel()
 	refs := []string{"https://cachehost.example/zebra/quokka.json", "git::https://cachehost.example/wombat.git//okapi/tapir.json?ref=narwhal"}
 	c := newCacheEnv(t)
 	f := newFake("https", "git").serve(refs[0], `{"a": 1}`).serve(refs[1], `{"b": 1}`)
@@ -211,6 +217,7 @@ func TestCacheNames(t *testing.T) {
 // DL-206: content is stored under its own SHA-256, so two files with the same identity, such as two files in one
 // commit, don't collide.
 func TestCacheSameIdentity(t *testing.T) {
+	t.Parallel()
 	a := "git::https://h.example/r.git//a.json?ref=main"
 	b := "git::https://h.example/r.git//b.json?ref=main"
 	c := newCacheEnv(t)
@@ -228,6 +235,7 @@ func TestCacheSameIdentity(t *testing.T) {
 // DL-207: cached content is rechecked on use, so a loader with a smaller size limit or a narrower allow-list rejects
 // what an earlier load cached.
 func TestCacheRechecked(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	t.Run("size", func(t *testing.T) {
 		c := newCacheEnv(t)
@@ -255,6 +263,7 @@ func TestCacheRechecked(t *testing.T) {
 
 // DL-206: cached content that doesn't match its recorded SHA-256 counts as missing, so the reference is fetched again.
 func TestCacheCorrupt(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	const content = `{"v": "original"}`
 	c := newCacheEnv(t)
@@ -284,6 +293,7 @@ func TestCacheCorrupt(t *testing.T) {
 
 // DL-206: a cache that can't be used is skipped with WarnIncludeCache, and the load fetches.
 func TestCacheUnusable(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	c := newCacheEnv(t)
 	blocker := filepath.Join(t.TempDir(), "file")
@@ -302,6 +312,7 @@ func TestCacheUnusable(t *testing.T) {
 // DL-206, design.md Caching, "User cache dir": the default dir is {user cache dir}/{name}/includes, from the host's
 // XDG_CACHE_HOME on Linux.
 func TestCacheDefaultDir(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	cacheHome := t.TempDir()
 	fsys := cctest.NewFS(map[string]string{rootCfg: includeOf("", ref)})

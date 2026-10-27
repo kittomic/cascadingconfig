@@ -35,6 +35,7 @@ func hardenedLoad(t *testing.T, fsys *cctest.FS, opts ...cc.Option) (*cc.Result,
 // DL-20, DL-191, design.md misehardened.Preset, "File permissions": a searched file writable by group or other, or in
 // a directory that is, or owned by someone other than the current user or root, is ignored with a warning.
 func TestStrictModesIgnores(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		change func(*cctest.FS)
@@ -77,6 +78,7 @@ func TestStrictModesIgnores(t *testing.T) {
 
 // DL-191: a directory with the sticky bit, such as /tmp, may be writable by everyone; without it, it may not.
 func TestStrictModesStickyDirectory(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/tmp/x/myapp.json": `{"a": 1}`, "/tmp/y/myapp.json": `{"b": 2}`})
 	fsys.Chmod("/tmp/x", fs.ModeSticky|0o777)
 	fsys.Chmod("/tmp/y", 0o777)
@@ -92,6 +94,7 @@ func TestStrictModesStickyDirectory(t *testing.T) {
 
 // DL-191: StrictModes allows everything on Windows, where ACLs aren't checked yet; the same file is ignored on Linux.
 func TestStrictModesWindows(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/myapp.json": `{"a": 1}`})
 	fsys.Chmod("/srv/myapp.json", 0o666)
 	fsys.Chown("/srv/myapp.json", 1001)
@@ -111,6 +114,7 @@ func TestStrictModesWindows(t *testing.T) {
 
 // DL-191: StrictModes on its own, for apps that call it from their own check.
 func TestStrictModesFunction(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/a/f.json": `{}`, "/b/f.json": `{}`})
 	fsys.Chmod("/b/f.json", 0o620)
 	info := func(path string) fs.FileInfo {
@@ -140,6 +144,7 @@ func TestStrictModesFunction(t *testing.T) {
 // DL-191, design.md Filesystem hook, "Permission policy": the check gets every file read and its containing directory;
 // for a symlink, the target and the target's directory.
 func TestFilePermissionsChecks(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{
 		rootCfg:             `{"include": "base.json"}`,
 		work + "/base.json": `{}`,
@@ -189,6 +194,7 @@ func TestFilePermissionsChecks(t *testing.T) {
 
 // DL-191: PermissionError fails the load with a *PolicyError naming the file.
 func TestFilePermissionsError(t *testing.T) {
+	t.Parallel()
 	_, err := incLoad(t, cctest.NewFS(map[string]string{rootCfg: `{}`}),
 		cc.WithDefaultPolicy(cc.AllowResolvers("file"), cc.FilePermissions(func(c cc.FileCheck) (cc.Permission, string) {
 			if c.Path == rootCfg {
@@ -202,6 +208,7 @@ func TestFilePermissionsError(t *testing.T) {
 // DL-181: an included or explicit file that a permission check would ignore is a *PolicyError, because a file named
 // directly is never silently skipped.
 func TestFilePermissionsNamedFiles(t *testing.T) {
+	t.Parallel()
 	ignoreBad := cc.WithDefaultPolicy(cc.AllowResolvers("file"), cc.FilePermissions(func(c cc.FileCheck) (cc.Permission, string) {
 		if strings.HasSuffix(c.Path, "bad.json") {
 			return cc.PermissionIgnore, "writable by group"
@@ -232,6 +239,7 @@ func TestFilePermissionsNamedFiles(t *testing.T) {
 // DL-190, DL-191: bootstrap files get their scope's permission check, and are skipped with a warning when they fail,
 // so a group-writable project bootstrap file can't choose the env.
 func TestFilePermissionsBootstrap(t *testing.T) {
+	t.Parallel()
 	rc := work + "/.myapprc.json"
 	fsys := cctest.NewFS(map[string]string{
 		rc:                       `{"env": ["dev"]}`,
@@ -260,6 +268,7 @@ func TestFilePermissionsBootstrap(t *testing.T) {
 
 // DL-191, F4: cctest.FS reports an owner through OwnerInfo only after Chown.
 func TestCctestOwners(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/a.json": `{}`, "/b.json": `{}`})
 	fsys.Chown("/b.json", 42)
 	r, err := fsys.OpenRoot("/")

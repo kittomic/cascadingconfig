@@ -13,6 +13,7 @@ import (
 // DL-179, DL-203: a remote file is identified by its normalised reference, before it's fetched: a reference listed
 // twice, in any spelling, is fetched once and loads at its higher position, the other route being LayerDuplicate.
 func TestRemoteListedTwice(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	lower, higher := "https://h.example/a.json", "HTTPS://H.Example/./a.json"
 	f := newFake("https").serve(ref, `{"a": 1}`)
@@ -32,6 +33,7 @@ func TestRemoteListedTwice(t *testing.T) {
 
 // DL-203: different references to the same content are separate layers.
 func TestRemoteSameContent(t *testing.T) {
+	t.Parallel()
 	f := newFake("https").serve("https://h.example/a.json", `{"a": 1}`).serve("https://mirror.example/a.json", `{"a": 1}`)
 	res := remOK(t, f, []string{"https://h.example/a.json", "https://mirror.example/a.json"})
 	rep := res.Describe()
@@ -45,6 +47,7 @@ func TestRemoteSameContent(t *testing.T) {
 // DL-184, DL-203: a remote layer's Path is the reference as written, it takes its metadata from the root file, ranks
 // below its includer, and its Remote holds the scheme, normalised reference, identity, pin and cache state.
 func TestRemoteLayerMetadata(t *testing.T) {
+	t.Parallel()
 	const raw = "HTTPS://H.example/a.json"
 	f := newFake("https").serveFetched("https://h.example/a.json", cc.Fetched{Content: []byte(`{"root": 2, "a": 2}`), Identity: "id-1"})
 	res := remOK(t, f, []string{raw})
@@ -63,6 +66,7 @@ func TestRemoteLayerMetadata(t *testing.T) {
 
 // DL-178, DL-184: under IncludeFlat, an include key in a remote file is a *ParseError, as in a local one.
 func TestRemoteFlat(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	f := newFake("https").serve(ref, includeOf("", "b.json"))
 	_, err := remFails(t, f, []string{ref})
@@ -73,6 +77,7 @@ func TestRemoteFlat(t *testing.T) {
 // against the file's remote origin, relative to its directory, and is checked again; the joined reference is the
 // layer's Path.
 func TestRemoteRelative(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		parent, child, want string
 	}{
@@ -103,6 +108,7 @@ func TestRemoteRelative(t *testing.T) {
 // DL-204: a remote file can never reach the local filesystem: climbing above the repo or artifact root, ~/ and file://
 // are *ReferenceErrors naming the remote file. This is an attack suite.
 func TestRemoteRelativeEscapes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ parent, child string }{
 		{"https://h.example/cfg/a.json", "~/.ssh/config.json"},
 		{"https://h.example/cfg/a.json", "file:///etc/myapp/config.json"},
@@ -130,6 +136,7 @@ func TestRemoteRelativeEscapes(t *testing.T) {
 // DL-204, design.md Per-scope policies, "Which scope judges an include": an absolute remote reference in a remote file
 // is judged by the root file's policy.
 func TestRemoteNestedPolicy(t *testing.T) {
+	t.Parallel()
 	const parent = "https://h.example/cfg/a.json"
 	f := newFake("https").serve(parent, includeOf("", "https://other.example/c.json")).serve("https://other.example/c.json", `{}`)
 	_, err := remFails(t, f, []string{parent}, nested,
@@ -142,6 +149,7 @@ func TestRemoteNestedPolicy(t *testing.T) {
 
 // DL-179, DL-203: under IncludeNested, a remote file that reaches itself again is a cycle.
 func TestRemoteCycle(t *testing.T) {
+	t.Parallel()
 	f := newFake("https").
 		serve("https://h.example/a.json", includeOf("", "b.json")).
 		serve("https://h.example/b.json", includeOf("", "a.json"))
@@ -153,6 +161,7 @@ func TestRemoteCycle(t *testing.T) {
 // a resolver registered before WithoutRemoteIncludes. No layout registers a remote resolver, so MiseLayout gives a 501
 // too.
 func TestHardenedRemotes(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	files := map[string]string{rootCfg: includeOf("", ref)}
 	f := newFake("https").serve(ref, `{}`)
@@ -178,6 +187,7 @@ func TestHardenedRemotes(t *testing.T) {
 // DL-205: after WithoutRemoteIncludes, a resolver can be registered again, but every policy that allows its scheme must
 // give it an allow-list and RequirePinned, or New fails.
 func TestHardenedRemotesBackOn(t *testing.T) {
+	t.Parallel()
 	https := newFake("https")
 	base := []cc.Option{scope, cc.WithoutRemoteIncludes(), cc.WithIncludeResolver(https)}
 	allowList := cc.AllowFor("https", cc.Prefix("https://config.acme.internal/"))
@@ -218,6 +228,7 @@ func TestHardenedRemotesBackOn(t *testing.T) {
 // DL-203, DL-205: the report shows a remote layer's Remote and each policy's pin rule, in
 // Describe(), its JSON and its text.
 func TestRemoteReport(t *testing.T) {
+	t.Parallel()
 	const raw = "https://h.example/a.json#sha256="
 	ref := raw + sum(`{"a": 1}`)
 	f := newFake("https").serveFetched("https://h.example/a.json", cc.Fetched{Content: []byte(`{"a": 1}`), Identity: "id-1"})

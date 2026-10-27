@@ -11,6 +11,7 @@ import (
 var shipped = []string{"ccx-basic.toml", "ccx-basic.dev.toml"}
 
 func TestBasic(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name string
 		env  map[string]string
@@ -31,6 +32,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestBasicRejectsArguments(t *testing.T) {
+	t.Parallel()
 	_, world := exampletest.World(t, shipped, nil, nil)
 	if err := run(t.Context(), []string{"extra"}, &bytes.Buffer{}, world); err == nil {
 		t.Error("run accepted an argument")

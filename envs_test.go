@@ -36,6 +36,7 @@ func envsLoaded(t *testing.T, change func(*hooks.Host), opts ...Option) []string
 // DL-121, design.md Environments: WithEnvs beats {NAME}_ENV, a comma list with spaces trimmed and empty entries
 // dropped; platform envs rank below the selected ones; a name selected twice keeps its later position.
 func TestEnvironmentSelection(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		change func(*hooks.Host)
@@ -61,6 +62,7 @@ func TestEnvironmentSelection(t *testing.T) {
 
 // DL-31: names are never combined: myapp.dev.linux.json loads only when dev.linux itself is selected.
 func TestEnvironmentsAreNeverCombined(t *testing.T) {
+	t.Parallel()
 	got := envsLoaded(t, setEnv("MYAPP_ENV", "dev"))
 	for _, env := range got {
 		if strings.Contains(env, ".") {
@@ -71,6 +73,7 @@ func TestEnvironmentsAreNeverCombined(t *testing.T) {
 
 // design.md Environments: platform environment names follow GOOS and GOARCH, with mise's renames.
 func TestPlatformEnvs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		goos, goarch string
 		want         []string
@@ -94,6 +97,7 @@ func TestPlatformEnvs(t *testing.T) {
 // design.md Environments: when a name makes one file match two patterns, it loads once, at its higher position. With
 // env local, myapp.local.json is both the local file and the env file of local.
 func TestAmbiguousEnvironmentName(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/d/myapp.local.json"))
 	res := mustLoad(t, fsys, WithEnvs("local"),
 		WithScope("s", FixedDir("/d",
@@ -110,6 +114,7 @@ func TestAmbiguousEnvironmentName(t *testing.T) {
 // DL-32, DL-121: an unsafe name in {NAME}_ENV is an *OptionError at Load whose Op is the variable's name, and so is a
 // filename longer than 255 bytes.
 func TestUnsafeEnvironmentNames(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"../x", "a/b", `a\b`, "dev,..", "a:b", strings.Repeat("e", 250)} {
 		t.Run(value, func(t *testing.T) {
 			l := loader(t, memfs.New(envFiles), hostWith(map[string]string{"MYAPP_ENV": value}, nil), WithBinding(BindEnv, ""),

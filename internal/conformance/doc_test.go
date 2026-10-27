@@ -26,6 +26,7 @@ var generated = regexp.MustCompile(`(?s)(<!-- generated:[^\n]*-->\n).*?(<!-- end
 
 // DL-272: docs/conformance.md's numbers and reasons match the suites' results. With -update, they're rewritten.
 func TestConformanceDoc(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	suites := []struct {
 		name, title string

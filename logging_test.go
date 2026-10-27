@@ -57,6 +57,7 @@ func skippedEnvVar(t *testing.T, opts ...cc.Option) *cc.Loader {
 
 // DL-263: warnings are logged at their code's level, end to end.
 func TestLogLevelsEndToEnd(t *testing.T) {
+	t.Parallel()
 	t.Run("untrusted is Info", func(t *testing.T) {
 		r := &records{}
 		_, err := incLoad(t, cctest.NewFS(map[string]string{rootCfg: `{"a": 1}`}), cc.WithLogger(slog.New(r)),
@@ -108,6 +109,7 @@ func TestLogLevelsEndToEnd(t *testing.T) {
 // DL-263: WithLogLevel drops records below its level before the logger, and a *slog.LevelVar changes it between
 // loads.
 func TestWithLogLevel(t *testing.T) {
+	t.Parallel()
 	r := &records{}
 	level := new(slog.LevelVar)
 	level.Set(slog.LevelWarn)
@@ -139,6 +141,7 @@ func TestWithLogLevel(t *testing.T) {
 
 // DL-263: a nil level is an *OptionError from WithLogLevel.
 func TestWithLogLevelNil(t *testing.T) {
+	t.Parallel()
 	_, err := cc.NewWithPreset("myapp", cc.MiseLayout, cc.WithLogLevel(nil))
 	for _, e := range cc.Errors(err) {
 		var oe *cc.OptionError
@@ -160,6 +163,7 @@ func (logScope) Discover(_ context.Context, d cc.Discovery) ([]cc.Source, error)
 
 // DL-263: a custom scope's Discovery.Logger is filtered by WithLogLevel too.
 func TestCustomScopeLoggerFiltered(t *testing.T) {
+	t.Parallel()
 	r := &records{}
 	l := newLoaderFS(t, cctest.NewFS(nil), nil, cc.WithScope("c", cc.Custom(logScope{})), cc.WithScopes("c"),
 		cc.WithLogger(slog.New(r)), cc.WithLogLevel(slog.LevelWarn))
@@ -202,6 +206,7 @@ func TestDiscardHandlerSilences(t *testing.T) {
 
 // DL-263: a load traces its summary and each layer at Debug.
 func TestLoadTracing(t *testing.T) {
+	t.Parallel()
 	r := &records{}
 	files := map[string]string{rootCfg: `{"a": 1}`, sysDir + "/config.json": `{"b": 1}`}
 	if _, err := incLoad(t, cctest.NewFS(files), cc.WithLogger(slog.New(r)),
@@ -223,6 +228,7 @@ func TestLoadTracing(t *testing.T) {
 
 // DL-263: each remote include is traced with its cache outcome.
 func TestRemoteTracing(t *testing.T) {
+	t.Parallel()
 	const ref = "https://h.example/a.json"
 	c := newCacheEnv(t)
 	f := newFake("https").serve(ref, `{"v": 1}`)
@@ -238,6 +244,7 @@ func TestRemoteTracing(t *testing.T) {
 
 // DL-263: a watcher traces its watch set, each event, and each reload with its number of changes.
 func TestWatcherTracing(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.watch(nil)
 	e.save(rootCfg, `{"a": 2, "b": 1}`)

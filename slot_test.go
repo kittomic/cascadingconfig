@@ -56,6 +56,7 @@ func orderOK(t *testing.T, files []Layer, order []Decoder, policy FormatConflict
 // DL-3, design.md File format precedence: under ConflictMerge, every file in the slot loads, lowest-ranked first, so
 // the highest-ranked format is applied last.
 func TestSlotMergeOrder(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		order []Decoder
@@ -82,6 +83,7 @@ func TestSlotMergeOrder(t *testing.T) {
 // DL-3: merged in slot order, the highest-ranked format wins where the files overlap, and each file stays its own
 // layer.
 func TestSlotMergeHighestWins(t *testing.T) {
+	t.Parallel()
 	trees := map[string]string{
 		"app.json": `{"port": 1, "fromJSON": true}`,
 		"app.yaml": `{"port": 2}`,
@@ -99,6 +101,7 @@ func TestSlotMergeHighestWins(t *testing.T) {
 // design.md File format precedence: within a format, extensions rank as the decoder lists them, so .yaml is applied
 // after .yml.
 func TestSlotExtensionRank(t *testing.T) {
+	t.Parallel()
 	got := orderOK(t, slotFiles("app.yaml", "app.yml"), miseOrder, ConflictMerge)
 	if want := []string{"app.yml", "app.yaml"}; !reflect.DeepEqual(paths(got), want) {
 		t.Errorf("order = %q, want %q", paths(got), want)
@@ -108,6 +111,7 @@ func TestSlotExtensionRank(t *testing.T) {
 // DL-93: under ConflictFirst, only the highest-ranked file loads. The others are listed first, as LayerIgnored, each
 // with a reason and a WarnFormatConflict warning.
 func TestSlotFirst(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		files   []string
@@ -144,6 +148,7 @@ func TestSlotFirst(t *testing.T) {
 // DL-93: under ConflictFail, a second file in the slot, even of the same format, is a *ConflictError. Path is the
 // highest-ranked file, and Files lists them all, highest-ranked first.
 func TestSlotFail(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		files []string
@@ -176,6 +181,7 @@ func TestSlotFail(t *testing.T) {
 
 // A slot with one file loads it under every policy.
 func TestSlotSingleFile(t *testing.T) {
+	t.Parallel()
 	for _, policy := range []FormatConflict{ConflictMerge, ConflictFirst, ConflictFail} {
 		got := orderOK(t, slotFiles("app.yaml"), miseOrder, policy)
 		if len(got) != 1 || got[0].Path != "app.yaml" || got[0].Status != LayerLoaded || len(got[0].Warnings) != 0 {

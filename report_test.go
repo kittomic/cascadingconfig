@@ -16,6 +16,7 @@ import (
 // selects an environment, a user file the walk reaches too, an empty env file, an EnvVars scope and an unknown key.
 // Secret values in the fixtures never appear.
 func TestReportGolden(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{
 		"/etc/myapp/config.json":              `{"log": {"level": "info"}}`,
 		"/home/me/.config/myapp/myapprc.json": `{"env": ["dev"]}`,
@@ -63,6 +64,7 @@ func TestReportGolden(t *testing.T) {
 
 // DL-152: Origin.EnvVar names the variable behind a key from EnvVars, through MapEnv too; other keys have none.
 func TestOriginEnvVar(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{"MYAPP_SERVER__PORT": "1", "MYAPP_X": "2"}
 	mapped := cc.MapEnv(func(name, value string) (cc.Path, any, bool) {
 		return cc.Path{"mapped", strings.ToLower(name)}, value, true
@@ -85,6 +87,7 @@ func TestOriginEnvVar(t *testing.T) {
 // DL-156, DL-75: a failed load returns a result whose report lists each broken file as LayerFailed, with a reason
 // built from the error's fields, and a nil tree.
 func TestFailedLoadReport(t *testing.T) {
+	t.Parallel()
 	res, err := newLoader(t, map[string]string{
 		sysFile:  `{"a": "SECRET-1",`,
 		projFile: `{"b": SECRET-2}`,
@@ -117,6 +120,7 @@ func TestFailedLoadReport(t *testing.T) {
 // DL-155: a failed stage stops the load. With a broken file, the merge error the other files would cause and the unmet
 // requirement aren't reported.
 func TestLoadStages(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		sysFile:                  `{`,
 		projFile:                 `{"a": 1}`,
@@ -151,6 +155,7 @@ func TestLoadStages(t *testing.T) {
 // DL-158: WithProbes lists each directory and pattern searched where nothing was found, with {env} filled in, in
 // search order. Without it there are none.
 func TestReportProbes(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{"/etc/myapp/config.json": `{}`}
 	scope := cc.Options(
 		cc.WithScope("sys", cc.FixedDir("/etc/myapp",
@@ -181,6 +186,7 @@ func TestReportProbes(t *testing.T) {
 // DL-158: the report's scopes say which are selected, and why a selected scope wasn't searched; its envs say where
 // they came from; its bindings say whether each variable is set, never its value.
 func TestReportContext(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{"MYAPP_OFF": "1", "MYAPP_ENV": "staging", "MYAPP_CEILING_PATHS": "/SECRET-ceiling"}
 	l := newLoader(t, nil, env, twoScopes,
 		cc.WithBinding("OFF", ""), cc.WithBinding(cc.BindEnv, ""), cc.WithBinding(cc.BindCeilingPaths, ""),
@@ -232,6 +238,7 @@ func TestReportContext(t *testing.T) {
 
 // DL-158: a scope that explicit files replace says so.
 func TestReportReplacedScope(t *testing.T) {
+	t.Parallel()
 	res, err := newLoader(t, map[string]string{"/srv/explicit.json": `{}`}, nil, twoScopes,
 		cc.WithScope("exp", cc.FixedDir("/nowhere", cc.Pattern{Template: "x.json"}), cc.ReplacedByConfigFiles()),
 		cc.WithScopes("sys", "proj", "exp"), cc.WithConfigFiles("/srv/explicit.json"),
@@ -251,6 +258,7 @@ func TestReportReplacedScope(t *testing.T) {
 
 // DL-158: the text forms of the enums and Path, used by the report's JSON.
 func TestTextForms(t *testing.T) {
+	t.Parallel()
 	type texter interface {
 		String() string
 		MarshalText() ([]byte, error)
@@ -284,6 +292,7 @@ func TestTextForms(t *testing.T) {
 // DL-76: the loader is safe for concurrent loads and decodes, and changing Tree's result changes neither the report,
 // later decodes, nor later loads.
 func TestConcurrentUse(t *testing.T) {
+	t.Parallel()
 	l := newLoader(t, map[string]string{sysFile: `{"server": {"host": "a"}}`, projFile: `{"server": {"port": 1}}`}, nil,
 		twoScopes, cc.WithDefaults(map[string]any{"debug": true}))
 	var wg sync.WaitGroup

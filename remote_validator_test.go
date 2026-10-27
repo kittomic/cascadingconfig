@@ -59,6 +59,7 @@ const valRef = "https://h.example/a.json"
 // DL-229: after the TTL, the loader passes the stored validator; ErrNotModified uses the cached copy, shown as
 // "revalidated", and restarts the TTL; a changed source is fetched.
 func TestRevalidate(t *testing.T) {
+	t.Parallel()
 	c := newCacheEnv(t)
 	v, f := newValidating(`{"v": 1}`, `"e1"`)
 	if got := cacheState(t, c.ok(t, f, []string{valRef}), valRef); got != "" {
@@ -88,6 +89,7 @@ func TestRevalidate(t *testing.T) {
 
 // DL-229: a wrapped ErrNotModified counts too.
 func TestRevalidateWrapped(t *testing.T) {
+	t.Parallel()
 	c := newCacheEnv(t)
 	v, f := newValidating(`{"v": 1}`, "etag:abc")
 	v.notModified = fmt.Errorf("server said 304: %w", cc.ErrNotModified)
@@ -101,6 +103,7 @@ func TestRevalidateWrapped(t *testing.T) {
 // DL-229: the loader keeps a validator only if it's printable ASCII and at most 1 KiB, so a hostile server can't
 // inject headers through it.
 func TestValidatorRules(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, validator string
 		kept            bool
@@ -134,6 +137,7 @@ func TestValidatorRules(t *testing.T) {
 
 // DL-229: without the cache the loader holds no copy, so it never sends a validator; with it, the same loads do.
 func TestValidatorWithoutCache(t *testing.T) {
+	t.Parallel()
 	v, f := newValidating(`{"v": 1}`, `"e1"`)
 	remOK(t, f, []string{valRef})
 	remOK(t, f, []string{valRef})
@@ -152,6 +156,7 @@ func TestValidatorWithoutCache(t *testing.T) {
 
 // DL-207, DL-229: a *FetchError while revalidating falls back to the stale copy.
 func TestRevalidateFetchError(t *testing.T) {
+	t.Parallel()
 	c := newCacheEnv(t)
 	_, f := newValidating(`{"v": 1}`, `"e1"`)
 	c.ok(t, f, []string{valRef})

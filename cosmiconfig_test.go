@@ -50,6 +50,7 @@ func loaded(res *Result) []string {
 // DL-146, DL-147, config-locations.md 2.1: one directory with every search place. The full order shows in the layer
 // list, and only .myapprc loads. JS files and package.json are never candidates.
 func TestGoldenCosmiconfigSearchPlaces(t *testing.T) {
+	t.Parallel()
 	files := fileSet(under(srv,
 		".myapprc", ".myapprc.json", ".myapprc.yaml", ".myapprc.yml", ".myapprc.js",
 		".config/myapprc", ".config/myapprc.json", ".config/myapprc.yaml", ".config/myapprc.yml",
@@ -75,6 +76,7 @@ var strategyFiles = func() map[string]string {
 // DL-42, DL-140, DL-147, design.md Search strategies: the directories each strategy searches, with the stop dir and
 // the root marker inclusive. The layer lists show every file found; first-match resolution loads the nearest.
 func TestGoldenCosmiconfigStrategies(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		opts []Option
@@ -97,6 +99,7 @@ func TestGoldenCosmiconfigStrategies(t *testing.T) {
 // DL-139, design.md Search strategies: with first-match resolution, SearchGlobal reaches the user directory only when
 // nothing nearer matched.
 func TestSearchGlobalReachesUserLast(t *testing.T) {
+	t.Parallel()
 	files := fileSet("/home/me/.config/myapp/config.json", "/home/me/work/.myapprc.json")
 	res := cosmiLoad(t, files, inDir(app, nil), WithSearchStrategy(SearchGlobal))
 	wantPathsList(t, loaded(res), "/home/me/work/.myapprc.json")
@@ -117,6 +120,7 @@ func wantPathsList(t *testing.T, got []string, want ...string) {
 // skipped; the others are LayerIgnored, without a warning; a broken file below the match isn't decoded, so it doesn't
 // fail the load, but one above it does.
 func TestFirstMatch(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		"/low/config.json":  `{"low": true`,
 		"/mid/config.json":  `{"mid": true}`,
@@ -145,6 +149,7 @@ func TestFirstMatch(t *testing.T) {
 // as empty, and its cosmiconfig key's searchPlaces and mergeSearchPlaces change the walk. It is read from the
 // current directory, not the start directory.
 func TestCosmiconfigMeta(t *testing.T) {
+	t.Parallel()
 	base := fileSet(srv+"/.myapprc.json", srv+"/myapp.settings.json", srv+"/sub/.myapprc.json")
 	with := func(meta string) map[string]string {
 		files := map[string]string{srv + "/.config/config.json": meta}
@@ -181,6 +186,7 @@ func TestCosmiconfigMeta(t *testing.T) {
 
 // DL-144: with CosmiconfigLayout, explicit files replace every scope; nothing is searched.
 func TestCosmiconfigExplicitFiles(t *testing.T) {
+	t.Parallel()
 	files := fileSet(srv+"/.myapprc.json", "/x/explicit.json")
 	files[srv+"/.config/config.json"] = `{"myapp": {"from": "meta"}}`
 	res := cosmiLoad(t, files, inDir(srv, nil), WithConfigFiles("/x/explicit.json"))
@@ -190,6 +196,7 @@ func TestCosmiconfigExplicitFiles(t *testing.T) {
 // DL-141, design.md Choosing a file's format: WithFileFormat rules beat the decoders' extensions, the latest rule
 // first; a rule whose formats have no decoder doesn't apply; .myapprc is YAML when YAML is registered, otherwise JSON.
 func TestFileFormatRules(t *testing.T) {
+	t.Parallel()
 	files := fileSet("/d/app.conf", "/d/app.json", "/d/.myapprc", "/d/deep/nested/app.settings", "/d/noext")
 	tests := []struct {
 		name     string
@@ -229,6 +236,7 @@ func TestFileFormatRules(t *testing.T) {
 // DL-141: Glob's * stays within one segment; Regexp must match the whole path; a name no rule or extension matches
 // isn't a candidate; and a matched file only loads when its format is in the scope's searched order.
 func TestFileFormatMatching(t *testing.T) {
+	t.Parallel()
 	files := fileSet("/d/a/b.settings", "/d/noext")
 	res := mustLoad(t, memfs.New(files), WithFileFormat(Glob("/d/*.settings"), "json"), WithFileFormat(Regexp(`no`), "json"),
 		WithScope("s", FixedDir("/d", Pattern{Template: "a/b.settings"}, Pattern{Template: "noext"})), WithScopes("s"))
@@ -241,6 +249,7 @@ func TestFileFormatMatching(t *testing.T) {
 
 // DL-141: explicit files get their format from the rules too, so a file without an extension can be named.
 func TestExplicitFileFormatRules(t *testing.T) {
+	t.Parallel()
 	files := fileSet("/home/me/.myapprc")
 	res := cosmiLoad(t, files, inDir(srv, nil), WithConfigFiles("~/.myapprc"))
 	wantPaths(t, res, "/home/me/.myapprc")
@@ -251,6 +260,7 @@ func TestExplicitFileFormatRules(t *testing.T) {
 
 // DL-143: EnvPathsDirs' user directory on each OS; it has no system directory.
 func TestEnvPathsDirs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		goos string
 		env  map[string]string
@@ -285,6 +295,7 @@ func TestEnvPathsDirs(t *testing.T) {
 
 // DL-44: a package.json with a {name} key loads nothing in CosmiconfigLayout.
 func TestCosmiconfigIgnoresPackageJSON(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{srv + "/package.json": `{"myapp": {"a": 1}}`}
 	res := cosmiLoad(t, files, inDir(srv, nil))
 	wantFound(t, res)

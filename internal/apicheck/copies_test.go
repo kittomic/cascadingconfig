@@ -10,6 +10,7 @@ import (
 // DL-274: the presets module's tests read their own copy of precedence.md, so they pass from its module download; the
 // copy must match the original exactly.
 func TestPresetsPrecedenceCopy(t *testing.T) {
+	t.Parallel()
 	original, err := os.ReadFile(filepath.Join(root, "docs", "precedence.md"))
 	if err != nil {
 		t.Fatal(err)

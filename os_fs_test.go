@@ -40,6 +40,7 @@ func writeFile(t *testing.T, path, data string) {
 
 // design.md Filesystem hook: the default filesystem reads real files, following a symlink out of the directory.
 func TestOSFileSystem(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "app", "config.json"), `{"a": 1}`)
 	writeFile(t, filepath.Join(dir, "shared", "real.json"), `{"b": 2}`)
@@ -54,6 +55,7 @@ func TestOSFileSystem(t *testing.T) {
 
 // DL-66: on a real filesystem, even a case-insensitive one such as macOS's, MyApp.JSON doesn't match myapp.json.
 func TestOSCaseSensitiveMatching(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "MyApp.JSON"), `{"a": 1}`)
 	res, _ := loadReal(t, dir, "{name}.json")
@@ -64,6 +66,7 @@ func TestOSCaseSensitiveMatching(t *testing.T) {
 
 // D16: on a real filesystem, an unreadable file is skipped with a warning.
 func TestOSUnreadableFile(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root can read anything")
 	}
@@ -81,6 +84,7 @@ func TestOSUnreadableFile(t *testing.T) {
 
 // design.md Filesystem hook: MountFS makes an fs.FS appear at an absolute directory, and nothing else exists.
 func TestMountFS(t *testing.T) {
+	t.Parallel()
 	fsys := cc.MountFS("/virtual", fstest.MapFS{"myapp/config.json": {Data: []byte(`{"a": 1}`)}})
 	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cc.WithDecoder(ccjson.Decoder()),
 		cc.WithScope("in", cc.FixedDir("/virtual/{name}", p("config.json")...)),

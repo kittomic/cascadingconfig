@@ -27,6 +27,7 @@ func polls(v *validating) int { return len(v.validators()) - 1 }
 // DL-229, DL-230: a remote poll revalidates, ignoring the cache TTL; an unchanged source doesn't reload, and a changed
 // one is stored and reloads, from the cache.
 func TestRemotePoll(t *testing.T) {
+	t.Parallel()
 	v, f := newValidating(`{"r": 1}`, `"e1"`)
 	e, w := remoteWatch(t, []string{valRef}, []cc.WatchOption{cc.WithRemotePoll(10 * time.Minute)}, cc.WithIncludeResolver(f))
 	e.clock.Advance(10*time.Minute - time.Second)
@@ -53,6 +54,7 @@ func TestRemotePoll(t *testing.T) {
 // DL-230: rules match the normalised reference; when they overlap, the most recently given wins; 0 never polls; and
 // remote polling is off without a rule.
 func TestRemotePollRules(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name                 string
 		rules                []cc.WatchOption
@@ -83,6 +85,7 @@ func TestRemotePollRules(t *testing.T) {
 
 // DL-230: a failed poll doubles that reference's interval, up to 8 times, and a success resets it.
 func TestRemotePollBackoff(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var at []time.Duration
 	failing := true
@@ -125,6 +128,7 @@ func TestRemotePollBackoff(t *testing.T) {
 
 // DL-230: without the cache there's nowhere to keep validators, so each poll is a full reload.
 func TestRemotePollWithoutCache(t *testing.T) {
+	t.Parallel()
 	_, f := newValidating(`{"r": 1}`, `"e1"`)
 	e, _ := remoteWatch(t, []string{valRef}, []cc.WatchOption{cc.WithRemotePoll(time.Minute)},
 		cc.WithIncludeResolver(f), cc.WithoutIncludeCache())
@@ -136,6 +140,7 @@ func TestRemotePollWithoutCache(t *testing.T) {
 
 // DL-230: pinned references never change, so they're never polled; an unpinned one beside it is.
 func TestRemotePollPinned(t *testing.T) {
+	t.Parallel()
 	ref := "git::https://g.example/r.git//b.json?ref=" + sha40
 	gv := &validating{content: `{"g": 1}`, validator: sha40}
 	gf := newFake("git")

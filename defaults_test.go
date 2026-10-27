@@ -22,6 +22,7 @@ type withLog struct {
 // DL-72, api.md Defaults: WithDefaults is the lowest layer of every load, for Load, Decode and KoanfProvider alike.
 // Only non-zero fields become defaults.
 func TestWithDefaults(t *testing.T) {
+	t.Parallel()
 	defaults := cc.WithDefaults(withLog{Server: server{Port: 8080, Timeout: 5 * time.Second}, Log: logConfig{Level: "info"}})
 	files := map[string]string{projFile: `{"server": {"port": 9000}}`}
 	l := newLoader(t, files, nil, twoScopes, defaults)
@@ -64,6 +65,7 @@ type inner struct {
 // api.md Defaults, DL-153: defaults convert to canonical values with the decoding tag. Zero fields, nil pointers,
 // skipped and unexported fields are left out; a non-nil pointer to a zero value is kept.
 func TestDefaultsCanonical(t *testing.T) {
+	t.Parallel()
 	zero := 0
 	v := struct {
 		Base     `koanf:",squash"`
@@ -115,6 +117,7 @@ func TestDefaultsCanonical(t *testing.T) {
 
 // DL-153: the tag is read after every option, so WithTag can come later.
 func TestDefaultsUseTheTag(t *testing.T) {
+	t.Parallel()
 	v := struct {
 		Port int `config:"port"`
 	}{Port: 1}
@@ -125,6 +128,7 @@ func TestDefaultsUseTheTag(t *testing.T) {
 
 // api.md Defaults: a higher null or _unset clears a default, and a pointer field then reads nil.
 func TestDefaultsCleared(t *testing.T) {
+	t.Parallel()
 	one := 1
 	type flat struct {
 		Host string `koanf:"host"`
@@ -144,6 +148,7 @@ func TestDefaultsCleared(t *testing.T) {
 
 // api.md Defaults: OriginOf reports "set by defaults", with TrustSystem, and keeps it in a key's history.
 func TestDefaultsOrigin(t *testing.T) {
+	t.Parallel()
 	res := loadOK(t, map[string]string{projFile: `{"port": 2}`}, cc.WithDefaults(map[string]any{"port": 1, "host": "h"}))
 	o, ok := cc.OriginOf(res, "host")
 	if !ok || o.Layer.Scope != cc.ScopeDefaults || o.Layer.Trust != cc.TrustSystem || o.Kind != cc.OriginSet {
@@ -158,6 +163,7 @@ func TestDefaultsOrigin(t *testing.T) {
 // DL-153: the defaults scope is the lowest and always selected, so a later WithScopes keeps it; WithoutScopes removes
 // it; a second WithDefaults replaces the first.
 func TestDefaultsScope(t *testing.T) {
+	t.Parallel()
 	defaults := cc.WithDefaults(map[string]any{"a": 1})
 
 	res := loadOK(t, nil, defaults, cc.WithScopes("proj"))
@@ -182,6 +188,7 @@ func TestDefaultsScope(t *testing.T) {
 
 // DL-76: changing a result's tree doesn't change the defaults of later loads.
 func TestDefaultsAreCopied(t *testing.T) {
+	t.Parallel()
 	l := newLoader(t, nil, nil, twoScopes, cc.WithDefaults(map[string]any{"a": map[string]any{"b": 1}}))
 	res, err := l.Load(t.Context())
 	if err != nil {

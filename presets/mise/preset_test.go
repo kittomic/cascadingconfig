@@ -23,6 +23,7 @@ func skipWindows(t *testing.T) {
 
 // DL-248: the preset is named mise.Preset, and the report says so.
 func TestName(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	if got := mise.Preset.Name(); got != "mise.Preset" {
 		t.Errorf("Name() = %q", got)
@@ -38,6 +39,7 @@ func TestName(t *testing.T) {
 
 // DL-248, DL-251: TOML, YAML and JSON files all load.
 func TestFormats(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	w := presettest.Work + "/"
 	res, err := presettest.Load(t, mise.Preset, map[string]string{
@@ -55,6 +57,7 @@ func TestFormats(t *testing.T) {
 // DL-248, DL-251: http includes are fetched; git and oci references reach their resolvers, which fail to connect
 // (a 502), rather than having none (a 501).
 func TestRemotes(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("remote = true\n"))
@@ -81,12 +84,14 @@ func TestRemotes(t *testing.T) {
 
 // DL-248, DL-251: the default notifier reloads a real directory.
 func TestWatchesByDefault(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	presettest.WatchReal(t, mise.Preset, "work/myapp.toml", "top = \"before\"\n", "top = \"after\"\n", "work")
 }
 
 // DL-251: the preset ranks the fixture exactly as MiseLayout does with the same decoders.
 func TestOrderMatchesLayout(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	files := presettest.Fixture(t, "MiseLayout", []string{"toml", "yaml", "yml", "json"})
 	env := map[string]string{"XDG_CONFIG_HOME": presettest.XDG, "MYAPP_ENV": "dev"}

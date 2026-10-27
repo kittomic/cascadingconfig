@@ -11,6 +11,7 @@ import (
 // layer; keys set only below survive; and without a rule, a value of another type replaces the lower one with no error
 // (DL-88).
 func TestDeepMerge(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, defaultMergeConfig(), ly(t,
 		"system.json", `{
 			"name": "sys", "list": [1, 2],
@@ -33,6 +34,7 @@ func TestDeepMerge(t *testing.T) {
 
 // api.md Errors: a load that finds nothing gives an empty result, not an error.
 func TestMergeNoLayers(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, defaultMergeConfig(), nil)
 	if got := res.Tree(); len(got) != 0 {
 		t.Errorf("Tree() = %#v, want empty", got)
@@ -42,6 +44,7 @@ func TestMergeNoLayers(t *testing.T) {
 // design.md Merging, "Changing the array default": with Append as the array default, arrays concatenate wherever no
 // rule applies. An array meeting another type is still replaced, and a Replace rule beats the default.
 func TestArrayMergeDefault(t *testing.T) {
+	t.Parallel()
 	cfg := withRules(t, rule(t, "fixed", Replace))
 	cfg.arrays = Append
 	res := mergeOK(t, cfg, ly(t,
@@ -53,6 +56,7 @@ func TestArrayMergeDefault(t *testing.T) {
 
 // DL-10, DL-87, design.md Per-key merge rules: every strategy, and a MergeFunc.
 func TestMergeStrategies(t *testing.T) {
+	t.Parallel()
 	sum := func(_ Path, lower, higher any) (any, error) { return lower.(int64) + higher.(int64), nil }
 	tests := []struct {
 		name          string
@@ -85,6 +89,7 @@ func TestMergeStrategies(t *testing.T) {
 // design.md Per-key merge rules, "Paths": * matches exactly one segment, so *.list applies to a.list but neither to the
 // top-level list nor to a.b.list.
 func TestWildcardMatchesOneSegment(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, withRules(t, rule(t, "*.list", Append)), ly(t,
 		"low.json", `{"list": [1], "a": {"list": [1], "b": {"list": [1]}}}`,
 		"high.json", `{"list": [2], "a": {"list": [2], "b": {"list": [2]}}}`,
@@ -95,6 +100,7 @@ func TestWildcardMatchesOneSegment(t *testing.T) {
 // DL-88, design.md "Matching rules": at a given key, an exact path beats a wildcard, and fewer wildcards beat more,
 // whatever order the rules were set in.
 func TestMostSpecificRuleWins(t *testing.T) {
+	t.Parallel()
 	fn := func(Path, any, any) (any, error) { return "func", nil }
 	exact := rule(t, "a.b", Prepend)
 	one := rule(t, "a.*", Append)
@@ -115,6 +121,7 @@ func TestMostSpecificRuleWins(t *testing.T) {
 
 // DL-88: a rule set again for the same path replaces the earlier one, whether it is a strategy or a function.
 func TestSamePathReplacesRule(t *testing.T) {
+	t.Parallel()
 	fn := func(Path, any, any) (any, error) { return "func", nil }
 	tests := []struct {
 		name  string
@@ -136,6 +143,7 @@ func TestSamePathReplacesRule(t *testing.T) {
 // DL-88, design.md "Matching rules": two rules are ambiguous when they have the same length and the same number of
 // wildcards, and some key matches both. That is an *OptionError when the rules are set, naming both rules.
 func TestAmbiguousRules(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		a, b      string
 		ambiguous bool
@@ -171,6 +179,7 @@ func TestAmbiguousRules(t *testing.T) {
 
 // DL-88: a rule on the root is an *OptionError, and every problem in a rule set is reported together.
 func TestRootRuleAndJoinedRuleErrors(t *testing.T) {
+	t.Parallel()
 	_, err := newRuleSet([]mergeRule{{path: Path{}, strategy: Replace}})
 	if !errors.Is(err, ErrInvalidOption) {
 		t.Errorf("root rule: error = %v, want ErrInvalidOption", err)
@@ -193,6 +202,7 @@ func TestRootRuleAndJoinedRuleErrors(t *testing.T) {
 
 // design.md "Matching rules": Replace and functions cover their whole subtree, so rules below them aren't consulted.
 func TestRulesCoverSubtree(t *testing.T) {
+	t.Parallel()
 	low := `{"server": {"host": "a", "list": [1]}}`
 	high := `{"server": {"list": [2]}}`
 
@@ -220,6 +230,7 @@ func TestRulesCoverSubtree(t *testing.T) {
 // DL-88, DL-90: an explicit rule that meets the wrong types is a *MergeError with the key, the higher file as Path and
 // the lower file as Lower, and a message naming both files.
 func TestRuleTypeMismatch(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		rule          mergeRule
@@ -255,6 +266,7 @@ func TestRuleTypeMismatch(t *testing.T) {
 
 // DL-90: the merge carries on after a mismatch, and every mismatch is reported.
 func TestEveryMismatchIsReported(t *testing.T) {
+	t.Parallel()
 	err := mergeFails(t, withRules(t, rule(t, "a", Append), rule(t, "b", Append)), ly(t,
 		"low.json", `{"a": [1], "b": [1]}`,
 		"high.json", `{"a": 1, "b": 2}`,
@@ -273,6 +285,7 @@ func TestEveryMismatchIsReported(t *testing.T) {
 // DL-87, DL-89, api.md MergeFunc: a function gets the concrete path and copies of both values, runs only when both
 // layers set the path, and its result is used.
 func TestMergeFunc(t *testing.T) {
+	t.Parallel()
 	t.Run("path and copies", func(t *testing.T) {
 		var gotPath Path
 		fn := func(path Path, lower, higher any) (any, error) {
@@ -312,6 +325,7 @@ func TestMergeFunc(t *testing.T) {
 
 // DL-89: an error from a function is a *MergeError that wraps it, with the key and both files.
 func TestMergeFuncError(t *testing.T) {
+	t.Parallel()
 	appErr := errors.New("can't combine these")
 	fn := func(Path, any, any) (any, error) { return nil, appErr }
 	err := mergeFails(t, withRules(t, funcRule(t, "a", fn)), ly(t, "low.json", `{"a": 1}`, "high.json", `{"a": 2}`))
@@ -330,6 +344,7 @@ func TestMergeFuncError(t *testing.T) {
 // DL-89: a function that returns a value outside the canonical types is a bug in the app: a *BaseError with
 // CodeInternal, not a *MergeError.
 func TestMergeFuncNonCanonicalResult(t *testing.T) {
+	t.Parallel()
 	fn := func(Path, any, any) (any, error) { return 5, nil } // int, not int64
 	err := mergeFails(t, withRules(t, funcRule(t, "a", fn)), ly(t, "low.json", `{"a": 1}`, "high.json", `{"a": 2}`))
 	if CodeOf(err) != CodeInternal {
@@ -342,6 +357,7 @@ func TestMergeFuncNonCanonicalResult(t *testing.T) {
 
 // api.md Concurrency and ownership: Tree returns a copy, so changing it doesn't change the result.
 func TestResultTreeIsACopy(t *testing.T) {
+	t.Parallel()
 	res := mergeOK(t, defaultMergeConfig(), ly(t, "a.json", `{"server": {"list": [1], "port": 1}}`))
 	first := res.Tree()
 	if !reflect.DeepEqual(first, tr(t, `{"server": {"list": [1], "port": 1}}`)) {

@@ -14,6 +14,7 @@ import (
 var shipped = []string{".ccx-clirc", "team.yaml"}
 
 func TestCLI(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name string
 		args []string
@@ -37,6 +38,7 @@ func TestCLI(t *testing.T) {
 }
 
 func TestCLIErrors(t *testing.T) {
+	t.Parallel()
 	_, world := exampletest.World(t, shipped, nil, nil)
 	if err := run(t.Context(), []string{"-explain", "nope"}, &bytes.Buffer{}, world); err == nil ||
 		!strings.Contains(err.Error(), "nope isn't set") {

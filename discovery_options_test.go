@@ -12,6 +12,7 @@ func fixedKind(patterns ...cc.Pattern) cc.Option {
 
 // DL-117 to DL-127: pattern fields, scope options and walk options that can only be mistakes.
 func TestDiscoveryOptionErrors(t *testing.T) {
+	t.Parallel()
 	values := cc.Values(cc.Tree{})
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "{env} in a shared pattern", opts: []cc.Option{fixedKind(cc.Pattern{Template: "a.{env}.json"})}, ops: []string{"FixedDir"}, contains: []string{"{env}"}},
@@ -43,6 +44,7 @@ func TestDiscoveryOptionErrors(t *testing.T) {
 
 // DL-123: empty ceiling and ignored paths are dropped, not errors.
 func TestEmptyPathListEntries(t *testing.T) {
+	t.Parallel()
 	if _, err := cc.New("myapp", scope, cc.WithCeilingPaths("", "/x"), cc.WithIgnoredPaths("")); err != nil {
 		t.Errorf("New: %v", err)
 	}

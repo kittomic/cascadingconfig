@@ -15,6 +15,7 @@ import (
 // DL-191: on a real filesystem, StrictModes reads the mode and the owner from the OS. A group-writable file is ignored
 // with a warning, and a file owned by the current user with mode 0644 loads.
 func TestOSStrictModes(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	good, bad := filepath.Join(dir, "good.json"), filepath.Join(dir, "bad.json")
 	writeFile(t, good, `{"a": 1}`)

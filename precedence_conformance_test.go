@@ -74,6 +74,7 @@ func loaded(paths ...string) []string {
 
 // DL-244: the tables in docs/precedence.md are exactly the oracle's.
 func TestPrecedenceDocTables(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("docs/precedence.md")
 	if err != nil {
 		t.Fatal(err)
@@ -113,6 +114,7 @@ func TestPrecedenceDocTables(t *testing.T) {
 // PR-1: scopes rank as defined, with After and Before; the defaults are lowest; a scope disabled by its binding takes
 // no part; a scope replaced by its binding's file holds exactly that file, at its place.
 func TestPR1Scopes(t *testing.T) {
+	t.Parallel()
 	// the user directory is outside ~, so the walk doesn't reach it too (PR-11)
 	xdg := map[string]string{"XDG_CONFIG_HOME": "/xdg"}
 	files := filesOf("/etc/myapp/config.json", "/xdg/myapp/config.json", "/home/me/work/app/myapp.json",
@@ -138,6 +140,7 @@ func TestPR1Scopes(t *testing.T) {
 // PR-2: the walk applies root-most first and stops at ~, inclusive; ceilings are exclusive; a moved user directory
 // drops the walk's candidates under the default one.
 func TestPR2Walk(t *testing.T) {
+	t.Parallel()
 	files := filesOf("/home/myapp.json", "/home/me/myapp.json", "/home/me/work/myapp.json", "/home/me/work/app/myapp.json")
 	wantOrder(t, precMise(t, files, nil), false, loaded("/home/me/myapp.json", "/home/me/work/myapp.json", "/home/me/work/app/myapp.json")...)
 	wantOrder(t, precMise(t, files, nil, cc.WithCeilingPaths("/home/me/work")), false, loaded("/home/me/work/app/myapp.json")...)
@@ -151,6 +154,7 @@ func TestPR2Walk(t *testing.T) {
 
 // PR-3, PR-4: precedence.md example 1, on Linux x64 with MYAPP_ENV=dev.
 func TestPrecedenceExample1(t *testing.T) {
+	t.Parallel()
 	d := "/home/me/work/app/"
 	names := []string{"myapp.json", "myapp.unix.json", "myapp.linux.json", "myapp.linux-x64.json", "myapp.dev.json",
 		"myapp.local.json", "myapp.unix.local.json", "myapp.linux.local.json", "myapp.linux-x64.local.json", "myapp.dev.local.json"}
@@ -167,6 +171,7 @@ func TestPrecedenceExample1(t *testing.T) {
 // PR-4: a name selected twice keeps its later place; a platform environment that's selected leaves the platform
 // list.
 func TestPR4Environments(t *testing.T) {
+	t.Parallel()
 	d := "/home/me/work/app/"
 	files := filesOf(d+"myapp.unix.json", d+"myapp.linux.json", d+"myapp.dev.json", d+"myapp.prod.json")
 	wantOrder(t, precMise(t, files, nil, cc.WithEnvs("dev", "prod", "dev")), false,
@@ -179,6 +184,7 @@ func TestPR4Environments(t *testing.T) {
 
 // PR-5: within a group, patterns rank as listed, even when the groups are interleaved.
 func TestPR5PatternOrder(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(filesOf("/c/l1.json", "/c/s1.json", "/c/l2.json", "/c/s2.json"))
 	l := newLoaderFS(t, fsys, nil, cc.WithScope("s", cc.FixedDir("/c",
 		cc.Pattern{Template: "l2.{ext}", Variant: cc.VariantLocal},
@@ -195,6 +201,7 @@ func TestPR5PatternOrder(t *testing.T) {
 
 // PR-6, PR-7: precedence.md example 3.
 func TestPrecedenceExample3(t *testing.T) {
+	t.Parallel()
 	c := "/srv/app/.myapp/conf.d/"
 	files := filesOf(c+"b.yaml", c+"a.json", c+"a.toml", c+"a.yml", c+"a.yaml", c+"x/myapp.toml", c+"w/myapp.json")
 	fsys := cctest.NewFS(files)
@@ -212,6 +219,7 @@ func TestPrecedenceExample3(t *testing.T) {
 
 // PR-6: directory globs skip hidden directories; file globs don't take dotted stems; matching is case-sensitive.
 func TestPR6Globs(t *testing.T) {
+	t.Parallel()
 	c := "/home/me/work/app/.myapp/conf.d/"
 	files := filesOf(c+".h/myapp.json", c+"a.b.json", c+"A.JSON", c+"a.json", "/home/me/work/app/MyApp.json")
 	wantOrder(t, precMise(t, files, nil), false, loaded(c+"a.json")...)
@@ -220,6 +228,7 @@ func TestPR6Globs(t *testing.T) {
 // PR-7: {NAME}_CONFIG_FORMATS sets every scope's order; ConflictFirst loads only a slot's top file; ConflictFail
 // fails.
 func TestPR7Formats(t *testing.T) {
+	t.Parallel()
 	d := "/home/me/work/app/"
 	files := filesOf(d+"myapp.json", d+"myapp.toml", d+"myapp.yaml")
 	wantOrder(t, precMise(t, files, map[string]string{"MYAPP_CONFIG_FORMATS": "json,toml"}), false,
@@ -233,6 +242,7 @@ func TestPR7Formats(t *testing.T) {
 
 // PR-7: a bootstrap file's formats apply to scopes at most as trusted as it is.
 func TestPR7FormatsByTrust(t *testing.T) {
+	t.Parallel()
 	files := filesOf("/xdg/myapp/config.json", "/xdg/myapp/config.toml",
 		"/home/me/work/app/myapp.json", "/home/me/work/app/myapp.toml")
 	files["/home/me/work/app/.myapprc.json"] = `{"formats": ["json"]}`
@@ -242,6 +252,7 @@ func TestPR7FormatsByTrust(t *testing.T) {
 
 // PR-8: candidates that can't be used keep their places, with their statuses.
 func TestPR8Statuses(t *testing.T) {
+	t.Parallel()
 	d := "/home/me/work/app/"
 	fsys := cctest.NewFS(filesOf(d+".myapp/config.json", d+".config/myapp.json", d+"myapp.local.json"))
 	fsys.WriteFile(d+"myapp.json", nil, 0o644)
@@ -259,6 +270,7 @@ func TestPR8Statuses(t *testing.T) {
 // PR-9: explicit files take the project scope's place, in the order given, with no siblings; with no marked scope,
 // they rank above every scope.
 func TestPR9ExplicitFiles(t *testing.T) {
+	t.Parallel()
 	files := filesOf("/etc/myapp/config.json", "/home/me/work/app/myapp.json", "/home/me/.config/myapp/config.override.json",
 		"/x/b.json", "/x/a.json", "/x/a.local.json")
 	wantOrder(t, precMise(t, files, nil, cc.WithConfigFiles("/x/b.json", "/x/a.json")), true,
@@ -278,6 +290,7 @@ func TestPR9ExplicitFiles(t *testing.T) {
 // PR-9, DL-247: under WithConfigFilesOnly, explicit files replace the scopes that search for files, and value scopes
 // still take their places, so flags beat the file and defaults sit below it.
 func TestPR9ConfigFilesOnlyKeepsValues(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/x/a.json": `{"a": "file", "f": "file", "d": "file"}`, "/home/me/work/app/.myapprc": `{"p": 1}`})
 	l, err := cc.NewWithPreset("myapp", cc.CosmiconfigLayout, cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)),
 		cc.WithDefaults(map[string]any{"d": "default", "only": "default"}), cc.WithScope("flags", cc.Values(cc.Tree{"f": "flag"})),
@@ -294,6 +307,7 @@ func TestPR9ConfigFilesOnlyKeepsValues(t *testing.T) {
 
 // PR-10: an included file ranks directly below its includer, and later entries rank above earlier ones.
 func TestPR10Includes(t *testing.T) {
+	t.Parallel()
 	d := "/home/me/work/app/"
 	files := filesOf(d+"a.json", d+"b.json", d+"myapp.local.json")
 	files[d+"myapp.json"] = `{"include": ["a.json", "b.json"]}`
@@ -302,6 +316,7 @@ func TestPR10Includes(t *testing.T) {
 
 // PR-11: precedence.md example 2: a file reached twice ranks at its higher place, with its most trusted route's scope.
 func TestPrecedenceExample2(t *testing.T) {
+	t.Parallel()
 	files := filesOf("/etc/myapp/config.toml", "/home/me/.config/myapp/config.toml", "/home/me/myapp.toml",
 		"/home/me/work/myapp.toml", "/home/me/work/app/myapp.toml", "/home/me/work/app/.myapp.toml",
 		"/home/me/.config/myapp/config.override.toml")
@@ -328,6 +343,7 @@ func TestPrecedenceExample2(t *testing.T) {
 
 // PR-12: value layers sit at their scopes' places, and a custom scope's Tree sources in the order returned.
 func TestPR12ValueLayers(t *testing.T) {
+	t.Parallel()
 	s := sources(cc.Source{Tree: cc.Tree{"v": "t1"}}, cc.Source{Tree: cc.Tree{"v": "t2"}})
 	res := precMise(t, filesOf("/home/me/work/app/myapp.json"), nil,
 		cc.WithScope("cust", cc.Custom(s), cc.Before(cc.ScopeProject)),
@@ -346,6 +362,7 @@ func TestPR12ValueLayers(t *testing.T) {
 // PR-13: first-match chooses the highest non-empty file; files below it are ignored undecoded; a broken file above it
 // fails the load; value layers still merge.
 func TestPR13FirstMatch(t *testing.T) {
+	t.Parallel()
 	d := work + "/"
 	fsys := cctest.NewFS(map[string]string{d + ".myapprc.json": `{"a": 1}`, d + ".config/myapprc.json": `{"broken": `})
 	fsys.WriteFile(d+".myapprc", nil, 0o644)
@@ -369,6 +386,7 @@ func TestPR13FirstMatch(t *testing.T) {
 
 // PR-14: a higher bootstrap file's env replaces a lower one's.
 func TestPR14Bootstrap(t *testing.T) {
+	t.Parallel()
 	d := "/home/me/work/app/"
 	files := filesOf(d+"myapp.dev.json", d+"myapp.prod.json")
 	files["/home/me/.config/myapp/myapprc.json"] = `{"env": ["dev"]}`

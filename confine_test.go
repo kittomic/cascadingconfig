@@ -38,6 +38,7 @@ func confineFS(ref string) *cctest.FS {
 // DL-180: references that resolve outside the roots, directly, through dot segments, through symlinks to files or
 // directories, or into a sibling with the same prefix, are *PolicyErrors.
 func TestConfineEscapes(t *testing.T) {
+	t.Parallel()
 	for _, ref := range []string{
 		"../outside.json",
 		"sub/../../outside.json",
@@ -69,6 +70,7 @@ func TestConfineEscapes(t *testing.T) {
 // DL-180: references inside the roots load, including through a symlink outside the roots whose target is inside,
 // because the target is what's checked.
 func TestConfineAllows(t *testing.T) {
+	t.Parallel()
 	for _, ref := range []string{"sub/a.json", work + "/sub/a.json", "./sub/a.json", "/srv/in.json"} {
 		t.Run(ref, func(t *testing.T) {
 			res, err := incLoad(t, confineFS(ref), confined)
@@ -83,6 +85,7 @@ func TestConfineAllows(t *testing.T) {
 // DL-180, design.md Local files, "Confine": roots are resolved through symlinks too; a root that doesn't exist matches
 // nothing.
 func TestConfineRoots(t *testing.T) {
+	t.Parallel()
 	t.Run("a root through a symlink", func(t *testing.T) {
 		fsys := confineFS("sub/a.json")
 		fsys.Symlink(work, "/srv/link")
@@ -127,6 +130,7 @@ func TestConfineRoots(t *testing.T) {
 
 // DL-180: confinement applies to includes only. Searched and explicit files outside the roots load.
 func TestConfineOnlyIncludes(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{sysFile: `{"a": 1}`, "/srv/x.json": `{"b": 2}`}
 	res, err := newLoader(t, files, nil, incScopes,
 		cc.WithScope("x", cc.ExplicitFile("/srv/x.json")), cc.WithScopes("sys", "proj", "x"),
@@ -140,6 +144,7 @@ func TestConfineOnlyIncludes(t *testing.T) {
 
 // DL-20, DL-189: MiseHardenedLayout confines local includes to the config root, {user} and {system}.
 func TestHardenedConfinement(t *testing.T) {
+	t.Parallel()
 	userCfg := "/home/me/.config/myapp/config.json"
 	systemCfg := "/etc/myapp/config.json"
 	for _, tc := range []struct {

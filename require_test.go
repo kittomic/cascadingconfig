@@ -11,6 +11,7 @@ import (
 
 // DL-54, DL-157, api.md Requiring config: what each level counts, globally and per scope.
 func TestRequireConfig(t *testing.T) {
+	t.Parallel()
 	flags := cc.Options(cc.WithScope("flags", cc.Values(cc.Tree{"a": "b"})), cc.WithScopes("sys", "proj", "flags"))
 	noVars := cc.Options(cc.WithScope("env", cc.EnvVars("MYAPP_")), cc.WithScopes("sys", "proj", "env"))
 	embedded := cc.Options(
@@ -95,6 +96,7 @@ func TestRequireConfig(t *testing.T) {
 
 // api.md Requiring config: an unmet per-scope requirement names the scope.
 func TestRequireConfigNamesTheScope(t *testing.T) {
+	t.Parallel()
 	_, err := newLoader(t, nil, nil, twoScopes, cc.RequireConfig(cc.RequireFile, "sys")).Load(t.Context())
 	if err == nil || !strings.Contains(err.Error(), `"sys"`) {
 		t.Errorf("Load = %v, want an error naming the sys scope", err)

@@ -66,6 +66,7 @@ func miseFails(t *testing.T, files map[string]string, change func(*hooks.Host), 
 // DL-131, DL-138, config-locations.md 3.7: MiseLayout's bootstrap files, lowest precedence first, from inside ~
 // (where .config/myapprc.toml isn't read) and from outside it (where it isn't read in / either).
 func TestGoldenBootstrapFiles(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{}
 	for _, p := range []string{
 		"/etc/myapp/myapprc.toml", "/home/me/.config/myapp/myapprc.toml", "/home/me/.config/myapp/myapprc.local.toml",
@@ -84,6 +85,7 @@ func TestGoldenBootstrapFiles(t *testing.T) {
 // DL-133, DL-134: env from bootstrap files selects variants; a higher file replaces a lower one's list; {NAME}_ENV and
 // WithEnvs beat them; bootstrap keys never reach the config.
 func TestBootstrapEnv(t *testing.T) {
+	t.Parallel()
 	files := fileSet(app+"/myapp.dev.toml", app+"/myapp.ci.toml", app+"/myapp.qa.toml")
 	files["/home/me/.config/myapp/myapprc.toml"] = `{"env": ["ci"]}`
 	files[app+"/.myapprc.toml"] = `{"env": ["dev"]}`
@@ -123,6 +125,7 @@ func formatFiles() map[string]string {
 // DL-135, design.md Bootstrap file, "Scope limits": each scope takes formats from the highest-precedence bootstrap
 // file at least as trusted as itself; the env var beats them all, and they beat the app's option.
 func TestBootstrapFormatsByTrust(t *testing.T) {
+	t.Parallel()
 	sys := []string{"/etc/myapp/config.json", "/etc/myapp/config.toml"}
 	usr := []string{"/home/me/.config/myapp/config.json", "/home/me/.config/myapp/config.toml"}
 	prj := []string{srv + "/myapp.json", srv + "/myapp.toml"}
@@ -182,6 +185,7 @@ func TestBootstrapFormatsByTrust(t *testing.T) {
 // DL-136, design.md File format precedence: {NAME}_CONFIG_FORMATS takes WithFormats' syntax, applies to the bootstrap
 // search too, and an unknown format is an *OptionError at Load named after the variable.
 func TestConfigFormatsVariable(t *testing.T) {
+	t.Parallel()
 	files := fileSet(app+"/myapp.json", app+"/myapp.toml")
 	files[app+"/.myapprc.toml"] = `{"env": ["toml-rc"]}`
 	files[app+"/.myapprc.json"] = `{"env": ["json-rc"]}`
@@ -203,6 +207,7 @@ func TestConfigFormatsVariable(t *testing.T) {
 // design.md File format precedence, "In the bootstrap file": a bootstrap file's formats don't change how bootstrap
 // files are found; formats = [] and an unknown format are errors naming the file.
 func TestBootstrapFormatsRules(t *testing.T) {
+	t.Parallel()
 	files := fileSet(app + "/myapp.toml")
 	files[app+"/.myapprc.json"] = `{"formats": ["json"]}`
 	files[app+"/.myapprc.local.toml"] = `{"env": ["dev"]}`
@@ -224,6 +229,7 @@ func TestBootstrapFormatsRules(t *testing.T) {
 // DL-26, DL-68, DL-135: ignored_config_paths resolve against their file, apply to scopes at most as trusted as the
 // file, and an entry that would have matched a more trusted scope's file is dropped with a warning.
 func TestBootstrapIgnoredPaths(t *testing.T) {
+	t.Parallel()
 	files := fileSet("/etc/myapp/config.toml", "/home/me/.config/myapp/config.toml", app+"/myapp.toml", app+"/myapp/config.toml")
 	files[app+"/.myapprc.toml"] = `{"ignored_config_paths": ["/etc/myapp", "myapp"]}`
 	files["/home/me/.config/myapp/myapprc.toml"] = `{"ignored_config_paths": ["` + app + `/myapp.toml"]}`
@@ -242,6 +248,7 @@ func TestBootstrapIgnoredPaths(t *testing.T) {
 // DL-133: ceiling_paths from a bootstrap file limit the main walk, not the bootstrap walk; override_config_filenames
 // replace the walk's shared names, and the env var beats them.
 func TestBootstrapWalkKeys(t *testing.T) {
+	t.Parallel()
 	files := fileSet("/home/me/work/myapp.toml", app+"/myapp.toml", app+"/myapp.x.toml", app+"/custom.toml", app+"/env.toml")
 	files["/home/me/.myapprc.toml"] = `{"env": ["x"]}`
 	files[app+"/.myapprc.toml"] = `{"ceiling_paths": [".."], "override_config_filenames": ["custom.{ext}"]}`
@@ -255,6 +262,7 @@ func TestBootstrapWalkKeys(t *testing.T) {
 // DL-132, DL-78: unknown keys, include and _unset warn; WithoutBootstrapKeys and WithBootstrapLimit drop keys with a
 // warning; MiseHardenedLayout limits project files to env and formats.
 func TestBootstrapKeyLimits(t *testing.T) {
+	t.Parallel()
 	rc := app + "/.myapprc.toml"
 	content := `{"env": ["dev"], "formats": ["toml"], "ceiling_paths": ["/x"], "include": ["a.toml"], "_unset": ["b"], "nope": 1}`
 	files := fileSet(app+"/myapp.dev.toml", app+"/myapp.json")
@@ -307,6 +315,7 @@ func countCode(codes []WarningCode, code WarningCode) int {
 
 // DL-78, DL-133: a value of the wrong type, or an unsafe environment name, is an *OptionError at Load naming the file.
 func TestBootstrapWrongTypes(t *testing.T) {
+	t.Parallel()
 	for _, content := range []string{
 		`{"env": "dev"}`, `{"env": [1]}`, `{"env": ["../x"]}`, `{"formats": "toml"}`, `{"ceiling_paths": "/x"}`,
 		`{"ignored_config_paths": [true]}`, `{"override_config_filenames": {"a": 1}}`,
@@ -325,6 +334,7 @@ func TestBootstrapWrongTypes(t *testing.T) {
 // DL-134: WithBootstrapTransform sees each bootstrap file's layer and a copy of its tree, can rewrite it, and runs in
 // registration order; its error is a *TransformError naming the file.
 func TestBootstrapTransform(t *testing.T) {
+	t.Parallel()
 	files := fileSet(app+"/myapp.dev.toml", app+"/myapp.prod.toml")
 	files[app+"/.myapprc.toml"] = `{"env": ["prod"]}`
 	var seen []string
@@ -355,6 +365,7 @@ func TestBootstrapTransform(t *testing.T) {
 // design.md Choosing scopes: an unselected scope's bootstrap files aren't read; a scope replaced by explicit files
 // still has its bootstrap files read.
 func TestBootstrapScopeSelection(t *testing.T) {
+	t.Parallel()
 	files := fileSet(app+"/myapp.toml", app+"/myapp.dev.toml", "/x/explicit.toml", "/home/me/.config/myapp/config.dev.toml")
 	files["/home/me/.config/myapp/myapprc.toml"] = `{"env": ["dev"]}`
 	res := miseLoad(t, memfs.New(files), inDir(app, nil), WithScopes(ScopeProject))

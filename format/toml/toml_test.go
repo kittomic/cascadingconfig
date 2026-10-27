@@ -42,6 +42,7 @@ func wantParseError(t *testing.T, src string) {
 
 // DL-172: the decoder's format, extension and media type.
 func TestDecoderMetadata(t *testing.T) {
+	t.Parallel()
 	d := toml.Decoder()
 	if d.Format() != "toml" || !reflect.DeepEqual(d.Extensions(), []string{"toml"}) ||
 		!reflect.DeepEqual(d.MediaTypes(), []string{"application/toml"}) {
@@ -51,6 +52,7 @@ func TestDecoderMetadata(t *testing.T) {
 
 // DL-48, DL-169: offset date-times become RFC 3339 text; local date-times, dates and times their TOML text.
 func TestDates(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ src, want string }{
 		{"1979-05-27T07:32:00Z", "1979-05-27T07:32:00Z"},
 		{"1979-05-27T07:32:00+00:00", "1979-05-27T07:32:00Z"},
@@ -78,6 +80,7 @@ func TestDates(t *testing.T) {
 
 // DL-49, api.md Tree and values: integers are int64, floats float64, and tables and arrays nest as the canonical types.
 func TestCanonicalTypes(t *testing.T) {
+	t.Parallel()
 	got := mustDecode(t, `
 int = 1
 hex = 0x1F
@@ -123,6 +126,7 @@ c = 4
 // DL-51, DL-52: duplicate keys are *ParseErrors with their position; the TOML 1.1 syntax the pinned go-toml accepts
 // parses; a byte-order mark is stripped.
 func TestDialect(t *testing.T) {
+	t.Parallel()
 	pe := parseErrorOf(t, "a = 1\na = 2\n")
 	if pe.Line != 2 || pe.Column != 1 {
 		t.Errorf("duplicate key at %d:%d, want 2:1", pe.Line, pe.Column)
@@ -142,6 +146,7 @@ func TestDialect(t *testing.T) {
 
 // DL-53: a file with no keys is empty; an empty table isn't.
 func TestEmpty(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{"", "  \n", "# only a comment\n"} {
 		doc, err := decode(src)
 		if err != nil || !doc.Empty || doc.Tree != nil {
@@ -156,6 +161,7 @@ func TestEmpty(t *testing.T) {
 
 // DL-170: messages never quote the file.
 func TestErrorsDontQuoteTheFile(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"password = \"SECRET-one\"\npassword = \"SECRET-two\"\n",
 		"token = \"SECRET-three\" trailing\n",

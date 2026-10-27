@@ -18,6 +18,7 @@ func skipWindows(t *testing.T) {
 
 // DL-248: the preset is named cosmiconfig.Preset, and the report says so.
 func TestName(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	if got := cosmiconfig.Preset.Name(); got != "cosmiconfig.Preset" {
 		t.Errorf("Name() = %q", got)
@@ -33,6 +34,7 @@ func TestName(t *testing.T) {
 
 // DL-248, DL-251: .myapprc is YAML, and a YAML file loads; TOML isn't searched, as in cosmiconfig.
 func TestFormats(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	w := presettest.Work + "/"
 	res, err := presettest.Load(t, cosmiconfig.Preset, map[string]string{w + ".myapprc": "rc: yaml\n"}, nil)
@@ -53,6 +55,7 @@ func TestFormats(t *testing.T) {
 
 // DL-248, DL-251: the default notifier reloads a real directory.
 func TestWatchesByDefault(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	presettest.WatchReal(t, cosmiconfig.Preset, "work/.myapprc.json", `{"top": "before"}`, `{"top": "after"}`, "work")
 }
@@ -60,6 +63,7 @@ func TestWatchesByDefault(t *testing.T) {
 // DL-251: the preset ranks the fixture exactly as CosmiconfigLayout does with the same decoders, searching globally so
 // the user scope takes part.
 func TestOrderMatchesLayout(t *testing.T) {
+	t.Parallel()
 	skipWindows(t)
 	files := presettest.Fixture(t, "CosmiconfigLayout", []string{"yaml", "yml", "json"})
 	global := cascadingconfig.WithSearchStrategy(cascadingconfig.SearchGlobal)

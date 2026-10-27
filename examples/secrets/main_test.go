@@ -17,6 +17,7 @@ import (
 var shipped = []string{"ccx-secrets.toml", "secrets/db.password", "secrets/api.token"}
 
 func TestSecrets(t *testing.T) {
+	t.Parallel()
 	hidden := map[string]string{
 		exampletest.Cwd + "/secrets/.ignored":           "not a setting\n",
 		exampletest.Cwd + "/secrets/..data/db.password": "not read: inside a dot directory\n",
@@ -62,6 +63,7 @@ func (b *syncBuffer) String() string {
 
 // With -watch, rotating a secret reloads: the scope's WatchDirs puts the directory in the watch set.
 func TestSecretsRotation(t *testing.T) {
+	t.Parallel()
 	fsys, world := exampletest.World(t, shipped, nil, nil)
 	notifier := cctest.NewNotifier()
 	clock := cctest.NewClock(time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC))

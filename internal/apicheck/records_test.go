@@ -67,6 +67,7 @@ func loadReleased(t *testing.T) map[string]*types.Package {
 
 // DL-257: released lists exactly the repository's packages outside internal/ and examples/.
 func TestReleased(t *testing.T) {
+	t.Parallel()
 	cmd := exec.Command("go", "list", module+"/...")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "GOWORK="+filepath.Join(mustAbs(t, root), "go.work"))
@@ -107,6 +108,7 @@ var designRecords = []string{"docs/design/api.md", "docs/design/design.md"}
 
 // DL-256: every listing in the design records matches the real API.
 func TestDesignRecordListings(t *testing.T) {
+	t.Parallel()
 	pkgs := loadReleased(t)
 	for _, doc := range designRecords {
 		data, err := os.ReadFile(filepath.Join(root, doc))
@@ -130,6 +132,7 @@ func apiFile(rel string) string {
 
 // DL-257: every released package's API matches its file under api/, both ways. With -update, the files are rewritten.
 func TestAPIFiles(t *testing.T) {
+	t.Parallel()
 	pkgs := loadReleased(t)
 	for _, rel := range released {
 		t.Run(rel, func(t *testing.T) {
@@ -172,6 +175,7 @@ func TestAPIFiles(t *testing.T) {
 // DL-256: each planted error in the real design records is caught. Each mutation must apply exactly once, so the test
 // fails loudly if the docs change under it.
 func TestDesignRecordMutations(t *testing.T) {
+	t.Parallel()
 	pkgs := loadReleased(t)
 	for _, m := range []struct{ name, doc, old, new string }{
 		{"parameter type", "api.md", "func WithScopes(names ...ScopeName) Option", "func WithScopes(names ...string) Option"},

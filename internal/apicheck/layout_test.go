@@ -11,6 +11,7 @@ import (
 // DL-274: project-layout.md's repository tree lists every module in go.work, as "module …/<path>", so the tree can't
 // fall behind the repository it describes.
 func TestLayoutTreeListsModules(t *testing.T) {
+	t.Parallel()
 	work, err := os.ReadFile(filepath.Join(root, "go.work"))
 	if err != nil {
 		t.Fatal(err)

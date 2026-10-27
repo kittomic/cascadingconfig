@@ -102,6 +102,7 @@ func waitFor(t *testing.T, changes <-chan cc.Change[cc.Tree], v int64, what stri
 
 // DL-232: the notifier reports a written file in a watched directory, by its full path.
 func TestNotifierEvents(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	n, err := fsnotify.New()
 	if err != nil {
@@ -130,6 +131,7 @@ func TestNotifierEvents(t *testing.T) {
 
 // DL-232: Chmod-only events are dropped.
 func TestNotifierDropsChmod(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no Unix permissions")
 	}
@@ -167,6 +169,7 @@ func TestNotifierDropsChmod(t *testing.T) {
 
 // DL-232: Close can be called twice, and closes Events.
 func TestNotifierClose(t *testing.T) {
+	t.Parallel()
 	n, err := fsnotify.New()
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -189,6 +192,7 @@ func TestNotifierClose(t *testing.T) {
 
 // An editor's save, writing a temporary file and renaming it over the config file, reloads.
 func TestEditorRename(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
 	write(t, p, `{"v": 1}`)
@@ -212,6 +216,7 @@ func TestEditorRename(t *testing.T) {
 // design.md Hot reload: a Kubernetes ConfigMap update, which the kubelet makes by writing a new timestamped
 // directory, pointing a ..data_tmp symlink at it and renaming that over ..data, reloads.
 func TestConfigMapSwap(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need privileges on Windows")
 	}
@@ -242,6 +247,7 @@ func TestConfigMapSwap(t *testing.T) {
 
 // DL-225, DL-227: a directory that can't be watched falls back to polling, with WarnWatchFailed.
 func TestFallbackToPolling(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no Unix permissions")
 	}

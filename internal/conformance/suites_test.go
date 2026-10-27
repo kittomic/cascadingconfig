@@ -143,6 +143,7 @@ func tomlResults(t *testing.T) map[string]result {
 
 // DL-270: yaml-test-suite's cases. An error case must fail; any other must decode, to the tree its in.json holds.
 func TestYAML(t *testing.T) {
+	t.Parallel()
 	report(t, "yaml-test-suite", judge(t, "yaml-test-suite", yamlResults(t)))
 }
 

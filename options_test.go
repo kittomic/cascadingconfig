@@ -42,6 +42,7 @@ func wantScopes(t *testing.T, c *config, want ...ScopeName) {
 // DL-29, api.md Preset and Extend: options run in order, so WithScopes then WithoutScopes selects what's left, and the
 // reverse selects everything.
 func TestOptionsAppliedInOrder(t *testing.T) {
+	t.Parallel()
 	c := cfgOf(t, "app", Preset{}, defineScopes("a", "b", "c"), WithoutScopes("b"))
 	wantScopes(t, c, "a", "c")
 
@@ -52,6 +53,7 @@ func TestOptionsAppliedInOrder(t *testing.T) {
 // design.md Choosing scopes: selecting doesn't reorder; precedence stays as the scopes were defined. Removing a scope
 // that isn't selected does nothing. A defined scope is left out once WithoutScopes removes it (DL-261).
 func TestScopeSelection(t *testing.T) {
+	t.Parallel()
 	c := cfgOf(t, "app", Preset{}, defineScopes("a", "b", "c"), WithScopes("c", "a"))
 	wantScopes(t, c, "a", "c")
 
@@ -65,6 +67,7 @@ func TestScopeSelection(t *testing.T) {
 // DL-100, design.md Custom scopes: After(x) inserts directly above x and Before(x) directly below it; a later scope
 // placed After(x) sits between x and earlier ones; with neither, a scope goes above every scope defined so far.
 func TestCustomScopePlacement(t *testing.T) {
+	t.Parallel()
 	all := []ScopeName{"a", "b", "c", "x", "y", "z", "w"}
 	c := cfgOf(t, "app", Preset{},
 		WithScope("a", Values(Tree{})),
@@ -81,6 +84,7 @@ func TestCustomScopePlacement(t *testing.T) {
 
 // DL-103, design.md Custom scopes: Values scopes default to TrustUser, and Trust overrides it.
 func TestScopeTrust(t *testing.T) {
+	t.Parallel()
 	c := cfgOf(t, "app", Preset{},
 		WithScope("flags", Values(Tree{})),
 		WithScope("defaults", Values(Tree{}), Trust(TrustSystem)),
@@ -95,6 +99,7 @@ func TestScopeTrust(t *testing.T) {
 
 // DL-103: Values copies its tree when called, so changing the tree afterwards has no effect.
 func TestValuesCopiesTree(t *testing.T) {
+	t.Parallel()
 	tree := Tree{"server": map[string]any{"port": int64(1)}}
 	kind := Values(tree)
 	tree["server"].(map[string]any)["port"] = int64(2)
@@ -112,6 +117,7 @@ func TestValuesCopiesTree(t *testing.T) {
 
 // api.md Preset and Extend: Extend never changes its receiver, and two extensions of one preset don't share options.
 func TestExtendDoesNotChangeReceiver(t *testing.T) {
+	t.Parallel()
 	p := NewPreset("p", defineScopes("a", "b", "c"))
 	withoutA := p.Extend(WithoutScopes("a"))
 	withoutB := p.Extend(WithoutScopes("b"))
@@ -130,6 +136,7 @@ func summary(c *config) any {
 // api.md New and NewWithPreset: NewWithPreset(n, p, a) behaves exactly like NewWithPreset(n, p.Extend(a)), and a zero
 // Preset is the same as New.
 func TestNewWithPresetEquivalence(t *testing.T) {
+	t.Parallel()
 	p := NewPreset("p", defineScopes("a", "b"), WithBinding(BindEnv, ""), WithDecoder(tomlDecoder))
 	extra := []Option{WithoutScopes("a"), WithEnvs("dev"), WithFormats("toml")}
 
@@ -151,6 +158,7 @@ func TestNewWithPresetEquivalence(t *testing.T) {
 // DL-97: NewPreset names a preset; Extend keeps the name; ExtendAs names an extension and records its base, nearest
 // first; a zero Preset has no name.
 func TestPresetNames(t *testing.T) {
+	t.Parallel()
 	base := NewPreset("base", oneScope)
 	child := base.ExtendAs("child")
 	grandchild := child.ExtendAs("grandchild")
@@ -187,6 +195,7 @@ func TestPresetNames(t *testing.T) {
 
 // Options bundles options, which run in place, in order.
 func TestOptionsGroup(t *testing.T) {
+	t.Parallel()
 	group := Options(WithScopes("a", "b"), WithoutScopes("a"))
 	c := cfgOf(t, "app", Preset{}, defineScopes("a", "b", "c"), group)
 	wantScopes(t, c, "b")
@@ -195,6 +204,7 @@ func TestOptionsGroup(t *testing.T) {
 // DL-73, DL-99: WithEnvs and WithConfigFiles with no arguments, or only empty strings, mean not set, so the env vars
 // stay in charge. As With…s options, a later call replaces an earlier one, including with not set.
 func TestEmptyEnvsAndConfigFiles(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		opts  []Option
@@ -220,6 +230,7 @@ func TestEmptyEnvsAndConfigFiles(t *testing.T) {
 
 // DL-101, DL-105, design.md File format precedence: the format order that is searched.
 func TestFormatOrder(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		opts []Option
@@ -261,6 +272,7 @@ func TestFormatOrder(t *testing.T) {
 
 // DL-101: WithDecoder for a format that already has a decoder replaces it.
 func TestWithDecoderReplaces(t *testing.T) {
+	t.Parallel()
 	replacement := testDecoder{"json", []string{"json", "json5"}}
 	c := cfgOf(t, "app", Preset{}, oneScope, WithDecoder(jsonDecoder), WithDecoder(replacement))
 	if got := c.decoder("json"); !reflect.DeepEqual(got, replacement) {
@@ -273,6 +285,7 @@ func TestWithDecoderReplaces(t *testing.T) {
 
 // api.md A loader without a preset: the engine defaults.
 func TestEngineDefaults(t *testing.T) {
+	t.Parallel()
 	c := cfgOf(t, "app", Preset{}, oneScope)
 	if c.conflict != ConflictMerge {
 		t.Errorf("conflict = %v, want ConflictMerge", c.conflict)
@@ -299,6 +312,7 @@ func TestEngineDefaults(t *testing.T) {
 // DL-102: the merge options set up the merge engine. Rules take either path form, and a later rule for the same path
 // replaces an earlier one.
 func TestMergeOptions(t *testing.T) {
+	t.Parallel()
 	fn := func(Path, any, any) (any, error) { return "func", nil }
 	c := cfgOf(t, "app", Preset{}, oneScope,
 		WithMergeRule("tools.*", Replace),
@@ -322,6 +336,7 @@ func TestMergeOptions(t *testing.T) {
 
 // DL-102: WithUnsetKey and WithoutUnset are one setting, so the last one wins.
 func TestUnsetOptions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		opts []Option
@@ -345,6 +360,7 @@ func TestUnsetOptions(t *testing.T) {
 // DL-15, DL-98, design.md Environment variables: {NAME} is the app name in upper case, with every character outside
 // [A-Z0-9] replaced by _, and a binding's default variable is {NAME}_<suffix>.
 func TestBindingNameDerivation(t *testing.T) {
+	t.Parallel()
 	for app, want := range map[string]string{
 		"myapp":  "MYAPP_ENV",
 		"my-app": "MY_APP_ENV",
@@ -364,6 +380,7 @@ func TestBindingNameDerivation(t *testing.T) {
 // DL-98: bindings can be declared, renamed, renamed back to the default and turned off. Turning off a built-in binding
 // that isn't declared does nothing. A custom key gets the same default name.
 func TestBindings(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		opts []Option
@@ -407,6 +424,7 @@ func TestBindings(t *testing.T) {
 // DL-71, DL-94: the layouts are built only from exported identifiers. The one exception is the private JSON decoder,
 // a value passed to the exported WithDecoder (DL-95).
 func TestLayoutsUseOnlyExportedIdentifiers(t *testing.T) {
+	t.Parallel()
 	for _, ident := range unexportedIdents(t, "layouts.go") {
 		if ident != "builtinJSONDecoder" {
 			t.Errorf("layouts.go uses the unexported identifier %s", ident)

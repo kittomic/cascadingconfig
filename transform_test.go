@@ -34,6 +34,7 @@ func seenPaths(seen *calls[cc.Layer]) []string {
 
 // DL-36, design.md Transform hooks: layer transforms run in registration order, on each layer, with its metadata.
 func TestLayerTransformOrder(t *testing.T) {
+	t.Parallel()
 	appendTo := func(s string) cc.Option {
 		return cc.WithLayerTransform(func(_ context.Context, _ cc.Layer, t cc.Tree) (cc.Tree, error) {
 			v, _ := t["order"].(string)
@@ -48,6 +49,7 @@ func TestLayerTransformOrder(t *testing.T) {
 // DL-36, DL-193: a layer transform gets the layer's own config root, and runs on included layers, value scopes and
 // defaults; never on bootstrap files.
 func TestLayerTransformCoverage(t *testing.T) {
+	t.Parallel()
 	var seen calls[cc.Layer]
 	files := map[string]string{
 		rootCfg:                 `{"include": "base.json"}`,
@@ -91,6 +93,7 @@ func TestLayerTransformCoverage(t *testing.T) {
 
 // DL-186: a layer transform sees the include key before it's read, so it can expand variables in references.
 func TestLayerTransformBeforeIncludes(t *testing.T) {
+	t.Parallel()
 	expand := cc.WithLayerTransform(func(_ context.Context, _ cc.Layer, t cc.Tree) (cc.Tree, error) {
 		if ref, ok := t["include"].(string); ok {
 			t["include"] = strings.ReplaceAll(ref, "${PROFILE}", "prod")
@@ -103,6 +106,7 @@ func TestLayerTransformBeforeIncludes(t *testing.T) {
 
 // DL-193: nil from a layer transform merges nothing, and the layer stays loaded.
 func TestLayerTransformNil(t *testing.T) {
+	t.Parallel()
 	drop := cc.WithLayerTransform(func(_ context.Context, l cc.Layer, t cc.Tree) (cc.Tree, error) {
 		if l.Path == rootCfg {
 			return nil, nil
@@ -119,6 +123,7 @@ func TestLayerTransformNil(t *testing.T) {
 // DL-36, DL-193: a layer transform's error, or a tree with a non-canonical value, is a *TransformError (422) naming
 // the file.
 func TestLayerTransformErrors(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("bad template")
 	t.Run("error", func(t *testing.T) {
 		_, err := incFails(t, map[string]string{rootCfg: `{}`}, cc.WithLayerTransform(
@@ -140,6 +145,7 @@ func TestLayerTransformErrors(t *testing.T) {
 
 // DL-76, DL-193: transforms run only on layers that merge: never on ignored, untrusted, duplicate or empty layers.
 func TestLayerTransformSkipped(t *testing.T) {
+	t.Parallel()
 	var seen calls[cc.Layer]
 	files := map[string]string{
 		sysFile:                 `{}`,
@@ -188,6 +194,7 @@ func countOf(s []string, v string) int {
 // DL-36, DL-193, design.md Transform hooks: the result transform runs once, on the merged result. nil is an empty
 // result. OriginOf describes the merge: a key the transform adds has no origin, and the others keep theirs.
 func TestResultTransform(t *testing.T) {
+	t.Parallel()
 	n := 0
 	add := cc.WithResultTransform(func(_ context.Context, t cc.Tree) (cc.Tree, error) {
 		n++
@@ -216,6 +223,7 @@ func TestResultTransform(t *testing.T) {
 // DL-193: the result transform runs before the RequireConfig checks, so a failure in it is the only error a load
 // with an unmet requirement reports; and before Decode checks for unknown keys.
 func TestResultTransformOrder(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("invalid config")
 	_, err := incFails(t, map[string]string{}, cc.RequireConfig(cc.RequireFile, "proj"),
 		cc.WithResultTransform(func(context.Context, cc.Tree) (cc.Tree, error) { return nil, boom }))
@@ -247,6 +255,7 @@ func TestResultTransformOrder(t *testing.T) {
 
 // DL-193: a result transform returning a non-canonical value is a *TransformError.
 func TestResultTransformNonCanonical(t *testing.T) {
+	t.Parallel()
 	_, err := incFails(t, map[string]string{rootCfg: `{}`}, cc.WithResultTransform(
 		func(_ context.Context, t cc.Tree) (cc.Tree, error) {
 			t["f"] = float32(1)
@@ -258,6 +267,7 @@ func TestResultTransformNonCanonical(t *testing.T) {
 // DL-76, DL-159, api.md Concurrency and ownership: transforms get their own copies, so changing their
 // input doesn't change the report or later loads; and parallel loads with transforms agree under -race.
 func TestTransformsOwnTheirInput(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{rootCfg: `{"server": {"host": "h", "ports": [1, 2]}}`})
 	mutate := cc.Options(
 		cc.WithLayerTransform(func(_ context.Context, _ cc.Layer, t cc.Tree) (cc.Tree, error) {

@@ -54,6 +54,7 @@ func wantParseError(t *testing.T, src string, contains string, opts ...yaml.Opti
 
 // DL-172: the decoder's format, extensions and media types.
 func TestDecoderMetadata(t *testing.T) {
+	t.Parallel()
 	d := yaml.Decoder()
 	if d.Format() != "yaml" || !reflect.DeepEqual(d.Extensions(), []string{"yaml", "yml"}) ||
 		!reflect.DeepEqual(d.MediaTypes(), []string{"application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"}) {
@@ -63,6 +64,7 @@ func TestDecoderMetadata(t *testing.T) {
 
 // DL-50, DL-163: unquoted values get their types from the YAML 1.2 core schema. Quoted values are strings.
 func TestCoreSchemaValues(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		src  string
 		want any
@@ -104,6 +106,7 @@ func TestCoreSchemaValues(t *testing.T) {
 
 // DL-163: WithLegacyNumbers accepts the YAML 1.1 integer forms; without it they keep their core schema meaning.
 func TestLegacyNumbers(t *testing.T) {
+	t.Parallel()
 	src := "a: 017\nb: 0b11\nc: 1_000\nd: 0o17\ne: 0x1F\nf: 1e3\ng: -017\n"
 	want := cc.Tree{"a": int64(15), "b": int64(3), "c": int64(1000), "d": int64(15), "e": int64(31), "f": 1000.0, "g": int64(-15)}
 	if got := mustDecode(t, src, yaml.WithLegacyNumbers()); !reflect.DeepEqual(got, want) {
@@ -117,6 +120,7 @@ func TestLegacyNumbers(t *testing.T) {
 
 // DL-49: an integer outside the int64 range is a *ParseError, in every form.
 func TestIntegerRange(t *testing.T) {
+	t.Parallel()
 	if got := mustDecode(t, "v: 9223372036854775807\nw: -9223372036854775808\n"); got["v"] != int64(math.MaxInt64) || got["w"] != int64(math.MinInt64) {
 		t.Errorf("the int64 limits = %#v", got)
 	}
@@ -128,6 +132,7 @@ func TestIntegerRange(t *testing.T) {
 
 // DL-165: the core schema has no timestamp type, so dates stay strings exactly as written.
 func TestDatesStayStrings(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"2001-12-14", "2001-12-14t21:59:43.10-05:00", "2001-12-14 21:59:43.10 -5", "2001-12-14T21:59:43Z"} {
 		if got := mustDecode(t, "v: "+v)["v"]; got != v {
 			t.Errorf("v: %s = %#v, want the string as written", v, got)
@@ -137,6 +142,7 @@ func TestDatesStayStrings(t *testing.T) {
 
 // DL-164: the core schema's tags force their type; any other tag is a *ParseError naming it.
 func TestTags(t *testing.T) {
+	t.Parallel()
 	ok := []struct {
 		src  string
 		want any
@@ -168,6 +174,7 @@ func TestTags(t *testing.T) {
 // DL-166: keys are resolved by the core schema, then printed; keys that clash, before or after printing, and tables or
 // sequences as keys, are *ParseErrors.
 func TestKeys(t *testing.T) {
+	t.Parallel()
 	got := mustDecode(t, "0x1F: a\n~: b\ntrue: c\n1.5: d\n017: e\n'quoted': f\n1e3: g\n")
 	want := cc.Tree{"31": "a", "null": "b", "true": "c", "1.5": "d", "17": "e", "quoted": "f", "1000": "g"}
 	if !reflect.DeepEqual(got, want) {
@@ -191,6 +198,7 @@ func TestKeys(t *testing.T) {
 // DL-167: merge keys merge tables; the table's own keys win, then earlier entries of a list. A merge of anything but a
 // table is a *ParseError.
 func TestMergeKeys(t *testing.T) {
+	t.Parallel()
 	got := mustDecode(t, `
 a: &a {x: 1, y: 1}
 b: &b {x: 2, z: 2}
@@ -243,6 +251,7 @@ func bomb(levels int) string {
 // DL-168: at most 10,000 values may come from aliases and merge keys; WithMaxAliasValues moves the cap; a self-alias
 // and an unknown alias are *ParseErrors. A cap below 1 fails every Decode.
 func TestAliases(t *testing.T) {
+	t.Parallel()
 	got := mustDecode(t, "a: &a {x: 1}\nb: *a\nc: *a\n")
 	if !reflect.DeepEqual(got["b"], got["a"]) || !reflect.DeepEqual(got["c"], got["a"]) {
 		t.Errorf("aliases = %#v, want copies of a", got)
@@ -269,6 +278,7 @@ func TestAliases(t *testing.T) {
 
 // DL-50, DL-53: a file holds one document; an empty or null document is empty; the top level must be a table.
 func TestDocuments(t *testing.T) {
+	t.Parallel()
 	pe := parseErrorOf(t, "a: 1\n---\nb: 2\n", "document")
 	if pe.Line != 2 {
 		t.Errorf("several documents: line %d, want 2", pe.Line)
@@ -292,6 +302,7 @@ func TestDocuments(t *testing.T) {
 
 // DL-52: a leading byte-order mark is stripped, so it doesn't end up in the first key.
 func TestByteOrderMark(t *testing.T) {
+	t.Parallel()
 	if got := mustDecode(t, "\ufeffa: 1\n"); !reflect.DeepEqual(got, cc.Tree{"a": int64(1)}) {
 		t.Errorf("Tree = %#v, want the key a", got)
 	}
@@ -299,6 +310,7 @@ func TestByteOrderMark(t *testing.T) {
 
 // Positions reach the *ParseError, and messages never quote the file (DL-170).
 func TestErrors(t *testing.T) {
+	t.Parallel()
 	pe := parseErrorOf(t, "a: 1\na: 2\n", "")
 	if pe.Line != 2 || pe.Column != 1 {
 		t.Errorf("duplicate key at %d:%d, want 2:1", pe.Line, pe.Column)

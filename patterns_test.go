@@ -11,6 +11,7 @@ import (
 // DL-117: within one directory, patterns group by variant: shared, env once per environment, local, then env-local,
 // whatever order they're listed in. Within a group they keep their order.
 func TestPatternsGroupByVariant(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(
 		"/d/a.json", "/d/b.json", "/d/a.dev.json", "/d/a.ci.json", "/d/a.local.json", "/d/a.dev.local.json", "/d/a.ci.local.json",
 	))
@@ -31,6 +32,7 @@ func TestPatternsGroupByVariant(t *testing.T) {
 // DL-118: * matches within one segment: a dotless file name, or a directory name without a leading dot. Matches apply
 // alphabetically, and each stem is its own slot.
 func TestGlobs(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet(
 		"/d/conf.d/20-b.json", "/d/conf.d/10-a.json", "/d/conf.d/10-a.toml", "/d/conf.d/.hidden.json",
 		"/d/conf.d/30-c.dev.json", "/d/conf.d/zz/myapp.json", "/d/conf.d/aa/myapp.json", "/d/conf.d/.git/myapp.json",
@@ -49,6 +51,7 @@ func TestGlobs(t *testing.T) {
 // DL-119: RootSearchDir is the searched directory, or the scope's ConfigRoot; RootFileDir is the file's own
 // directory.
 func TestConfigRoots(t *testing.T) {
+	t.Parallel()
 	fsys := memfs.New(fileSet("/d/.config/myapp/config.json", "/d/.config/myapp/myapp.json"))
 	pats := []Pattern{
 		{Template: ".config/{name}/config.json"},
@@ -78,6 +81,7 @@ func TestConfigRoots(t *testing.T) {
 // DL-120: Pattern.Key takes the config from a table inside the file. A missing key means the file isn't found; a
 // value that isn't a table is a *ParseError naming the file and the key.
 func TestPatternKey(t *testing.T) {
+	t.Parallel()
 	pkg := Pattern{Template: "package.json", Key: "{name}"}
 	fsys := memfs.New(map[string]string{
 		"/a/package.json":   `{"name": "x", "myapp": {"port": 1}}`,

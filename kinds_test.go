@@ -25,6 +25,7 @@ func valueLayer(t *testing.T, res *Result, scope ScopeName) Layer {
 
 // DL-113: ValuesFunc runs on every load, so a reload sees new values. Its default trust is TrustUser.
 func TestValuesFunc(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	f := func(context.Context) (Tree, error) {
 		calls++
@@ -47,6 +48,7 @@ func TestValuesFunc(t *testing.T) {
 
 // DL-113: an error from a ValuesFunc, or a non-canonical value, is a 500 whose Op is ValuesFunc.
 func TestValuesFuncErrors(t *testing.T) {
+	t.Parallel()
 	appErr := errors.New("flags unavailable")
 	tests := []struct {
 		name string
@@ -72,6 +74,7 @@ func TestValuesFuncErrors(t *testing.T) {
 
 // DL-113: EmbeddedFS searches the root of an fs.FS. Its default trust is TrustProject.
 func TestEmbeddedFS(t *testing.T) {
+	t.Parallel()
 	fsys := fstest.MapFS{
 		"myapp.json":      {Data: []byte(`{"a": "embedded", "b": 1}`)},
 		"conf/extra.json": {Data: []byte(`{"b": 2}`)},
@@ -98,6 +101,7 @@ func envLoad(t *testing.T, env map[string]string, change func(*hooks.Host), opts
 // Variables bound to discovery settings are never read, and other prefixes are ignored. Its default trust is
 // TrustUser.
 func TestEnvVars(t *testing.T) {
+	t.Parallel()
 	res := envLoad(t, map[string]string{
 		"MYAPP_SERVER__PORT": "8080",
 		"MYAPP_LOG_LEVEL":    "debug",
@@ -114,6 +118,7 @@ func TestEnvVars(t *testing.T) {
 // DL-113: a name with an empty segment is skipped with a warning; when two names clash, the later name wins, with a
 // warning.
 func TestEnvVarsEdgeCases(t *testing.T) {
+	t.Parallel()
 	res := envLoad(t, map[string]string{"MYAPP_A____B": "x", "MYAPP_": "y", "MYAPP_OK": "1"}, nil)
 	wantTree(t, res, `{"ok": "1"}`)
 	if l := valueLayer(t, res, "env"); !hasWarning(l.Warnings, WarnEnvVarSkipped) {
@@ -129,12 +134,14 @@ func TestEnvVarsEdgeCases(t *testing.T) {
 
 // DL-113: the prefix is matched case-sensitively, except on Windows.
 func TestEnvVarsPrefixCase(t *testing.T) {
+	t.Parallel()
 	res := envLoad(t, map[string]string{"myapp_x": "1"}, func(h *hooks.Host) { h.GOOS = "windows" })
 	wantTree(t, res, `{"x": "1"}`)
 }
 
 // DL-113: MapEnv replaces the mapping: it can type values and skip variables. A non-canonical value is a 500.
 func TestMapEnv(t *testing.T) {
+	t.Parallel()
 	mapper := func(name, value string) (Path, any, bool) {
 		if name != "MYAPP_PORT" {
 			return nil, nil, false
@@ -158,6 +165,7 @@ func TestMapEnv(t *testing.T) {
 // design.md Value overrides, DL-113: a value scope can't remove keys, so the unset key is dropped with a warning,
 // wherever it appears.
 func TestValueScopesDropTheUnsetKey(t *testing.T) {
+	t.Parallel()
 	res := mustLoad(t, memfs.New(map[string]string{"/d/config.json": `{"a": 1, "b": {"c": 1}}`}),
 		fixed("files", "/d", "config.json"),
 		WithScope("flags", Values(Tree{"_unset": []any{"a"}, "b": map[string]any{"_unset": []any{"c"}, "d": int64(2)}})),
@@ -177,6 +185,7 @@ func TestValueScopesDropTheUnsetKey(t *testing.T) {
 
 // The trust of FixedDir defaults to TrustProject.
 func TestFixedDirTrust(t *testing.T) {
+	t.Parallel()
 	res := mustLoad(t, memfs.New(map[string]string{"/d/config.json": `{}`}), fixed("s", "/d", "config.json"), WithScopes("s"))
 	if len(res.found) != 1 {
 		t.Fatalf("found:\n%s\nwant one layer", found(res))

@@ -46,6 +46,7 @@ func wantTree(t *testing.T, got cc.Tree, want cc.Tree) {
 
 // DL-109: NewFS and WriteFile create files and their directories.
 func TestFSFiles(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/d/a.json": `{"a": 1}`})
 	fsys.WriteFile("/d/b.json", []byte(`{"b": 2}`), 0o644)
 	wantTree(t, load(t, fsys, host, dir("a.json", "b.json")), cc.Tree{"a": int64(1), "b": int64(2)})
@@ -57,6 +58,7 @@ func TestFSFiles(t *testing.T) {
 
 // DL-109: Symlink, Link, Mkfifo, Mkdir and Chmod behave as on a real filesystem.
 func TestFSSpecialEntries(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/real.json": `{"a": 1}`, "/d/locked.json": `{"x": 1}`})
 	fsys.Symlink("/srv/real.json", "/d/link.json")
 	fsys.Link("/srv/real.json", "/d/hard.json")
@@ -105,6 +107,7 @@ func TestFSSpecialEntries(t *testing.T) {
 
 // DL-109: a symlink that leaves a root can't be followed through it, as with os.Root.
 func TestFSRootConfinement(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/real.json": `{}`})
 	fsys.Symlink("/srv/real.json", "/d/link.json")
 	root, err := fsys.OpenRoot("/d")
@@ -122,6 +125,7 @@ func TestFSRootConfinement(t *testing.T) {
 
 // DL-108, DL-109: WithHost supplies env vars and the home directory; nothing is read from the process.
 func TestWithHost(t *testing.T) {
+	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/xdg/myapp/config.json": `{"from": "xdg"}`, "/home/me/.config/myapp/config.json": `{"from": "home"}`})
 	h := host
 	h.Env = map[string]string{"XDG_CONFIG_HOME": "/xdg", "MYAPP_KEY": "value"}
@@ -148,6 +152,7 @@ func (f *failures) Fatal(args ...any) { f.msgs = append(f.msgs, fmt.Sprint(args.
 
 // DL-109: Golden passes when got matches the file under testdata, and fails when it doesn't or the file is missing.
 func TestGolden(t *testing.T) {
+	t.Parallel()
 	cctest.Golden(t, "hello.golden", []byte("hello\n"))
 
 	f := &failures{TB: t}

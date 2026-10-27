@@ -81,6 +81,7 @@ func values() cc.ScopeKind { return cc.Values(cc.Tree{}) }
 
 // DL-100, DL-104, design.md Choosing scopes and Custom scopes: scope options that can only be mistakes.
 func TestScopeOptionErrors(t *testing.T) {
+	t.Parallel()
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "no scopes", ops: []string{"New"}},
 		{name: "no scopes left", opts: []cc.Option{scope, cc.WithoutScopes("s")}, ops: []string{"New"}},
@@ -105,6 +106,7 @@ func TestScopeOptionErrors(t *testing.T) {
 
 // DL-99, design.md Safe environment names: the app name and WithEnvs names must be safe in a filename.
 func TestNameErrors(t *testing.T) {
+	t.Parallel()
 	bad := []string{
 		".", "..", "a/b", `a\b`, "a\x00b", "a\x1fb", "a\x7fb", "a<b", "a>b", "a:b", `a"b`, "a|b", "a?b", "a*b",
 		strings.Repeat("a", 256),
@@ -125,6 +127,7 @@ func TestNameErrors(t *testing.T) {
 
 // DL-99: names that are safe, including dotted names, as mise allows.
 func TestSafeNames(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"myapp", "my-app", "my.app", "MyApp", "app_1", "é", strings.Repeat("a", 255)} {
 		if _, err := cc.New(name, scope, cc.WithEnvs(name, "dev.linux")); err != nil {
 			t.Errorf("New(%q) with WithEnvs(%q): %v", name, name, err)
@@ -134,6 +137,7 @@ func TestSafeNames(t *testing.T) {
 
 // DL-73, DL-101, DL-105: format options that can only be mistakes.
 func TestFormatOptionErrors(t *testing.T) {
+	t.Parallel()
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "an unknown format", opts: []cc.Option{scope, cc.WithDecoder(jsonDec), cc.WithFormats("json", "xml")}, ops: []string{"WithFormats"}, contains: []string{"xml"}},
 		{name: "a format with no decoder", opts: []cc.Option{scope, cc.WithDecoder(jsonDec), cc.WithFormats("toml")}, ops: []string{"WithFormats"}, contains: []string{"toml"}},
@@ -153,6 +157,7 @@ func TestFormatOptionErrors(t *testing.T) {
 
 // DL-102: merge options that can only be mistakes.
 func TestMergeOptionErrors(t *testing.T) {
+	t.Parallel()
 	fn := func(cc.Path, any, any) (any, error) { return nil, nil }
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "a bad path", opts: []cc.Option{scope, cc.WithMergeRule("a..b", cc.Replace)}, ops: []string{"WithMergeRule"}},
@@ -173,6 +178,7 @@ func TestMergeOptionErrors(t *testing.T) {
 
 // DL-103: a Values tree must hold only canonical values. The error names the key.
 func TestValuesErrors(t *testing.T) {
+	t.Parallel()
 	values := func(tree cc.Tree) cc.Option {
 		return cc.Options(cc.WithScope("flags", cc.Values(tree)), cc.WithScopes("flags"))
 	}
@@ -190,6 +196,7 @@ func TestValuesErrors(t *testing.T) {
 
 // DL-98: binding options that can only be mistakes.
 func TestBindingErrors(t *testing.T) {
+	t.Parallel()
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "turning off an unknown key", opts: []cc.Option{scope, cc.WithoutBinding("CONFIG_FORMAT")}, ops: []string{"WithoutBinding"}, contains: []string{"CONFIG_FORMAT"}},
 		{name: "an empty key", opts: []cc.Option{scope, cc.WithBinding("", "X")}, ops: []string{"WithBinding"}},
@@ -208,6 +215,7 @@ func TestBindingErrors(t *testing.T) {
 
 // api.md Option rules: an error's Op is the option's name, and the message follows the documented form.
 func TestOptionErrorMessage(t *testing.T) {
+	t.Parallel()
 	_, err := cc.New("myapp", scope, cc.WithDecoder(jsonDec), cc.WithFormats("xml"))
 	if err == nil || !strings.HasPrefix(err.Error(), `cascadingconfig: WithFormats: `) || !strings.Contains(err.Error(), `"xml"`) {
 		t.Errorf("error = %v, want it to start \"cascadingconfig: WithFormats: \" and name \"xml\"", err)
@@ -219,6 +227,7 @@ func TestOptionErrorMessage(t *testing.T) {
 
 // DL-94: layouts are usable from outside the package.
 func TestLayoutsFromOutside(t *testing.T) {
+	t.Parallel()
 	for _, layout := range []cc.Preset{cc.MiseLayout, cc.MiseHardenedLayout, cc.CosmiconfigLayout} {
 		if _, err := cc.NewWithPreset("myapp", layout, scope, cc.WithDecoder(tomlDec), cc.WithDecoder(yamlDec)); err != nil {
 			t.Errorf("%s: %v", layout.Name(), err)

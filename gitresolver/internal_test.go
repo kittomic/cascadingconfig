@@ -78,6 +78,7 @@ func TestFetchByCommitFallback(t *testing.T) {
 
 // DL-211: ls-tree lines parse into their fields.
 func TestParseLsTree(t *testing.T) {
+	t.Parallel()
 	oid := strings.Repeat("ab", 20)
 	for _, tc := range []struct {
 		line                  string

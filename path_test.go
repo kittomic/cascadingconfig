@@ -9,6 +9,7 @@ import (
 
 // DL-85: parsing the dotted string form.
 func TestParsePath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		in   string
 		want cc.Path
@@ -39,6 +40,7 @@ func TestParsePath(t *testing.T) {
 
 // DL-85: empty segments and malformed quoting are errors.
 func TestParsePathErrors(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{
 		"a..b",
 		".a",
@@ -59,6 +61,7 @@ func TestParsePathErrors(t *testing.T) {
 
 // DL-85: String gives the dotted form, quoting only where needed.
 func TestPathString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		in   cc.Path
 		want string
@@ -82,6 +85,7 @@ func TestPathString(t *testing.T) {
 
 // DL-85: every Path round-trips through String and ParsePath, including keys that contain dots.
 func TestPathRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, p := range []cc.Path{
 		{"server", "tls"},
 		{"plugins", "foo.bar"},

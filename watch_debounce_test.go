@@ -9,6 +9,7 @@ import (
 
 // DL-41, DL-228: one save gives one reload, once the quiet period has passed and not before.
 func TestDebounceOneSave(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	w := e.watch(nil)
 	e.wantLoads(1, "after Watch")
@@ -24,6 +25,7 @@ func TestDebounceOneSave(t *testing.T) {
 
 // DL-228: each event restarts the quiet period, so a burst with gaps shorter than it reloads once, after its last event.
 func TestDebounceBurst(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 0}`})
 	e.watch(nil)
 	for i := range 5 {
@@ -39,6 +41,7 @@ func TestDebounceBurst(t *testing.T) {
 // DL-228: a burst that never goes quiet still reloads maxWait after its first event, and later events start a new
 // burst.
 func TestDebounceMaxWait(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 0}`})
 	e.watch(nil)
 	step := quiet / 2
@@ -58,6 +61,7 @@ func TestDebounceMaxWait(t *testing.T) {
 
 // DL-228: WithDebounce sets both durations.
 func TestDebounceOption(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.watch([]cc.WatchOption{cc.WithDebounce(time.Second, 5*time.Second)})
 	e.save(rootCfg, `{"a": 2}`)
@@ -75,6 +79,7 @@ func TestDebounceOption(t *testing.T) {
 
 // DL-228: a quiet period of 0 reloads on every event, before Send returns.
 func TestDebounceZero(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.watch([]cc.WatchOption{cc.WithDebounce(0, 0)})
 	e.save(rootCfg, `{"a": 2}`)
@@ -85,6 +90,7 @@ func TestDebounceZero(t *testing.T) {
 
 // DL-226, DL-228, DL-230: invalid watch options are *OptionErrors from Watch, which then returns no watcher.
 func TestWatchOptionErrors(t *testing.T) {
+	t.Parallel()
 	for name, opt := range map[string]cc.WatchOption{
 		"negative quiet":           cc.WithDebounce(-time.Millisecond, time.Second),
 		"maxWait below quiet":      cc.WithDebounce(time.Second, 500*time.Millisecond),
@@ -106,6 +112,7 @@ func TestWatchOptionErrors(t *testing.T) {
 
 // DL-225: a nil notifier factory is an *OptionError from New, naming the option.
 func TestWithNotifierNil(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t, nil)
 	_, err := cc.New("myapp", append(e.options(), cc.WithFileSystem(e.fs), cc.WithDecoder(jsonDecoder()), cc.WithNotifier(nil))...)
 	wantErr[*cc.OptionError](t, err, cc.CodeBadRequest, "", "WithNotifier")

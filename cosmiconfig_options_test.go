@@ -8,6 +8,7 @@ import (
 
 // DL-139 to DL-141: resolution, walk-stop and file-format options that can only be mistakes.
 func TestCosmiconfigOptionErrors(t *testing.T) {
+	t.Parallel()
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "an unknown resolution", opts: []cc.Option{scope, cc.WithResolution(cc.Resolution(9))}, ops: []string{"WithResolution"}},
 		{name: "an unknown strategy", opts: []cc.Option{scope, cc.WithSearchStrategy(cc.SearchStrategy(9))}, ops: []string{"WithSearchStrategy"}},

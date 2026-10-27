@@ -12,6 +12,7 @@ import (
 
 // The same document in TOML, YAML and JSON gives an identical tree.
 func TestAcrossFormats(t *testing.T) {
+	t.Parallel()
 	docs := []struct {
 		dec cc.Decoder
 		src string

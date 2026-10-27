@@ -9,6 +9,7 @@ import (
 )
 
 func TestQuickstart(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name  string
 		env   map[string]string
@@ -33,6 +34,7 @@ func TestQuickstart(t *testing.T) {
 
 // DL-265: the README's quick start is this program, exactly, so copying it out always gives one that works.
 func TestREADMEHoldsTheQuickstart(t *testing.T) {
+	t.Parallel()
 	readme, err := os.ReadFile("../../README.md")
 	if err != nil {
 		t.Fatal(err)

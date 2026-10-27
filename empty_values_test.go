@@ -33,6 +33,7 @@ func layerOf(t *testing.T, res *cc.Result, scope cc.ScopeName) cc.Layer {
 
 // DL-264: a value layer with no keys is LayerEmpty, and one with keys LayerLoaded, for every kind of value layer.
 func TestEmptyValueLayers(t *testing.T) {
+	t.Parallel()
 	empty := func(context.Context) (cc.Tree, error) { return cc.Tree{}, nil }
 	full := func(context.Context) (cc.Tree, error) { return cc.Tree{"a": "1"}, nil }
 	type defaults struct {
@@ -74,6 +75,7 @@ func TestEmptyValueLayers(t *testing.T) {
 
 // DL-264: an empty value layer keeps its warnings.
 func TestEmptyValueLayerKeepsWarnings(t *testing.T) {
+	t.Parallel()
 	res, err := skippedEnvVar(t).Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -86,6 +88,7 @@ func TestEmptyValueLayerKeepsWarnings(t *testing.T) {
 
 // DL-264: empty value layers still don't satisfy RequireAny.
 func TestEmptyValueLayersDontMeetRequirements(t *testing.T) {
+	t.Parallel()
 	_, err := newLoaderFS(t, cctest.NewFS(nil), nil, cc.WithScope("s", cc.EnvVars("MYAPP_")),
 		cc.WithScope("v", cc.Values(cc.Tree{})), cc.WithScopes("s", "v"), cc.RequireConfig(cc.RequireAny)).Load(t.Context())
 	var nf *cc.NotFoundError

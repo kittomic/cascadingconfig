@@ -14,6 +14,7 @@ import (
 // In a const group, iota counts the specs, and a spec with no values repeats the last one's type and values, so each
 // constant's value is checked as Go would compute it.
 func TestListingsIota(t *testing.T) {
+	t.Parallel()
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "flags.go", "package m\ntype Flag int\nconst (\n\tA Flag = 1 << iota\n\tB\n\tC\n)\n", 0)
 	if err != nil {

@@ -16,6 +16,7 @@ var userDocNamesAllowed = []string{
 
 // DL-267: every name in the user docs exists.
 func TestUserDocNames(t *testing.T) {
+	t.Parallel()
 	pkgs := loadReleased(t)
 	docs := []string{filepath.Join(root, "README.md"), filepath.Join(root, "docs", "precedence.md"),
 		filepath.Join(root, "docs", "conformance.md")}

@@ -11,6 +11,7 @@ import (
 // DL-175: a document of directives belongs to the document after it. %YAML 1.2 is accepted, other 1.x versions are
 // parsed as 1.2 with a warning, and 2.x is a *ParseError.
 func TestYAMLDirective(t *testing.T) {
+	t.Parallel()
 	doc, err := decode(t, "%YAML 1.2\n---\na: 1\n")
 	if err != nil || !reflect.DeepEqual(doc.Tree, cc.Tree{"a": int64(1)}) || len(doc.Warnings) != 0 {
 		t.Errorf("%%YAML 1.2: %#v, %v; want the tree, no warnings", doc, err)
@@ -33,6 +34,7 @@ func TestYAMLDirective(t *testing.T) {
 
 // DL-164: tags are judged after expanding %TAG handles.
 func TestTagHandles(t *testing.T) {
+	t.Parallel()
 	ok := []struct {
 		src  string
 		want cc.Tree

@@ -43,6 +43,7 @@ func subcommands(t *testing.T, log string) []string {
 // DL-229: the validator is the commit id. Once the TTL has passed, an unchanged branch is checked with ls-remote and
 // nothing is fetched; a moved branch is fetched.
 func TestRevalidateBranch(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1").write("a.json", `{"v": 1}`)
 	first := r.commit("one")
 	log := marker(t, "subcommands")
@@ -82,6 +83,7 @@ func TestRevalidateBranch(t *testing.T) {
 
 // DL-229: a tag is checked the same way.
 func TestRevalidateTag(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t, "sha1").write("a.json", `{"v": 1}`)
 	r.commit("one")
 	r.git("tag", "v1")

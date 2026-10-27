@@ -110,6 +110,7 @@ var everythingTree = cc.Tree{
 // DL-148: the same struct and tree decode identically with koanf and with cascadingconfig, including day durations,
 // TextUnmarshaler, weak typing and RFC 3339 dates.
 func TestParity(t *testing.T) {
+	t.Parallel()
 	got := same[everything](t, everythingTree, "", koanf.UnmarshalConf{})
 	if got.Days != 7*24*time.Hour || got.Addr.String() != "127.0.0.1" || got.At.IsZero() || got.Untagged != "u" {
 		t.Errorf("decoded %+v, want every field set", got)
@@ -118,6 +119,7 @@ func TestParity(t *testing.T) {
 
 // DecodeAt matches koanf's Unmarshal with a path.
 func TestParityAtPath(t *testing.T) {
+	t.Parallel()
 	tree := cc.Tree{"server": map[string]any{"port": "80", "timeout": "2d"}}
 	type srv struct {
 		Port    int           `koanf:"port"`
@@ -131,6 +133,7 @@ func TestParityAtPath(t *testing.T) {
 
 // WithTag and WithFlatPaths match koanf's Tag and FlatPaths.
 func TestParityTagAndFlatPaths(t *testing.T) {
+	t.Parallel()
 	type tagged struct {
 		Port int `config:"port"`
 	}
@@ -150,6 +153,7 @@ func TestParityTagAndFlatPaths(t *testing.T) {
 
 // Both reject the same mismatches.
 func TestParityErrors(t *testing.T) {
+	t.Parallel()
 	type bad struct {
 		Int  int           `koanf:"int"`
 		Dur  time.Duration `koanf:"dur"`

@@ -9,6 +9,7 @@ import (
 // DL-198, DL-202: a WithFileFormat rule matches a remote reference as an allow-list does, so FileName and Extension
 // see its file path, not the query or the ref.
 func TestRemoteFormatRuleFilePath(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, ref string
 		rule      cc.Matcher
