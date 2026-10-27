@@ -27,10 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # gitleaks scans the whole history
+          fetch-depth: 0 # gitleaks scans the whole history, and restore-mtimes.go needs it
           persist-credentials: false
       # Installs the tools pinned in .config/mise.toml.
       - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+      # go test's cache compares the files a test opens by modification time, which a checkout sets to now (DL-288).
+      - name: Restore modification times
+        run: go run scripts/restore-mtimes.go
       - name: Cache paths
         id: paths
         run: |
@@ -87,10 +90,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0 # restore-mtimes.go needs each file's last commit
           persist-credentials: false
       - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           install_args: go
+      # go test's cache compares the files a test opens by modification time, which a checkout sets to now (DL-288).
+      - name: Restore modification times
+        run: go run scripts/restore-mtimes.go
       - name: Cache paths
         id: paths
         run: |
