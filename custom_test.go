@@ -13,7 +13,7 @@ import (
 	"github.com/kittomic/cascadingconfig/cctest"
 )
 
-// The M9b tests define one custom scope, "cust", from a function, over a cctest.FS on the test host.
+// The custom scope tests define one custom scope, "cust", from a function, over a cctest.FS on the test host.
 
 // scopeFunc is a Scope from a function, counting its calls.
 type scopeFunc struct {

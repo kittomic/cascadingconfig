@@ -50,8 +50,7 @@ func TestLoadOptionErrors(t *testing.T) {
 	})
 }
 
-// DL-114: a selected file-reading scope with an empty format order is an *OptionError, the bare-loader check moved
-// from M3. Value scopes need no decoder.
+// DL-114: a selected file-reading scope with an empty format order is an *OptionError. Value scopes need no decoder.
 func TestFileScopeNeedsAFormat(t *testing.T) {
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "no decoder", opts: []cc.Option{useKind(cc.FixedDir("/x", p("config.json")...))}, ops: []string{"New"}},

@@ -255,7 +255,7 @@ func TestResultTransformNonCanonical(t *testing.T) {
 	wantErr[*cc.TransformError](t, err, cc.CodeUnprocessable, "")
 }
 
-// DL-76, moved to M7 by DL-159, api.md Concurrency and ownership: transforms get their own copies, so changing their
+// DL-76, DL-159, api.md Concurrency and ownership: transforms get their own copies, so changing their
 // input doesn't change the report or later loads; and parallel loads with transforms agree under -race.
 func TestTransformsOwnTheirInput(t *testing.T) {
 	fsys := cctest.NewFS(map[string]string{rootCfg: `{"server": {"host": "h", "ports": [1, 2]}}`})

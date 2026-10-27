@@ -28,7 +28,7 @@ func TestYAMLDirective(t *testing.T) {
 	wantParseError(t, "%YAML 2.0\n---\na: 1\n", "2.0")
 	wantParseError(t, "%YAML 1.2\n---\na: 1\n---\nb: 2\n", "document")
 	// goccy v1.19.2 can't parse two directives before one document, such as %YAML then %TAG; that's a known library
-	// failure, for M12, not tested here.
+	// failure, not tested here.
 }
 
 // DL-164: tags are judged after expanding %TAG handles.

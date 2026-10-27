@@ -12,7 +12,7 @@ import (
 )
 
 // The load tests run against internal/memfs, which also backs cctest.FS, and a fake host, so they can read each
-// layer's status and warnings from the private layer list until Report arrives in M5 (DL-107).
+// layer's status and warnings from the private layer list (DL-107).
 
 // memFS adapts memfs to FileSystem, as cctest.FS does.
 type memFS struct{ *memfs.FS }

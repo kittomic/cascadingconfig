@@ -296,7 +296,7 @@ func TestEngineDefaults(t *testing.T) {
 	}
 }
 
-// DL-102: the merge options set up M2's engine. Rules take either path form, and a later rule for the same path
+// DL-102: the merge options set up the merge engine. Rules take either path form, and a later rule for the same path
 // replaces an earlier one.
 func TestMergeOptions(t *testing.T) {
 	fn := func(Path, any, any) (any, error) { return "func", nil }

@@ -60,7 +60,7 @@ func (t TrustLevel) MarshalText() ([]byte, error) {
 // LayerStatus says what happened to a layer.
 type LayerStatus int
 
-// Layer statuses. Later milestones add more.
+// Layer statuses.
 const (
 	// LayerLoaded is a layer that was merged.
 	LayerLoaded LayerStatus = iota

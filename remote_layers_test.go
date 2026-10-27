@@ -215,7 +215,7 @@ func TestHardenedRemotesBackOn(t *testing.T) {
 	})
 }
 
-// DL-203, DL-205, api.md Settled in M8a: the report shows a remote layer's Remote and each policy's pin rule, in
+// DL-203, DL-205: the report shows a remote layer's Remote and each policy's pin rule, in
 // Describe(), its JSON and its text.
 func TestRemoteReport(t *testing.T) {
 	const raw = "https://h.example/a.json#sha256="

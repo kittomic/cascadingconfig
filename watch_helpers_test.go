@@ -14,8 +14,8 @@ import (
 	"github.com/kittomic/cascadingconfig/cctest"
 )
 
-// The M9 tests watch a loader over a cctest.FS with a fake notifier and a fake clock, so no real timers run. Events are
-// sent by the test, as a real notifier would send them after a change. The loader has three scopes, lowest first:
+// The watch tests watch a loader over a cctest.FS with a fake notifier and a fake clock, so no real timers run. Events
+// are sent by the test, as a real notifier would send them after a change. The loader has three scopes, lowest first:
 // "vals", a ValuesFunc that counts loads and returns the test's tree; "sys" over /etc/myapp (config.json); and "proj"
 // over /home/me/work (myapp.json), with the include key "include".
 

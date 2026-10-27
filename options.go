@@ -34,7 +34,7 @@ type ScopeOption interface {
 	applyScopeOption(s *scopeSpec)
 }
 
-// PolicyOption is a per-scope policy setting, passed to WithDefaultPolicy and WithScopePolicy. Its options arrive in M7.
+// PolicyOption is a per-scope policy setting, passed to WithDefaultPolicy and WithScopePolicy.
 type PolicyOption interface {
 	policyOption()
 }
@@ -51,7 +51,7 @@ type Matcher interface {
 	describe() string
 }
 
-// WatchOption configures watching, passed to Watch. Its options arrive in M9.
+// WatchOption configures watching, passed to Watch.
 type WatchOption interface {
 	watchOption()
 }

@@ -162,7 +162,7 @@ func TestWatchSetFailedReload(t *testing.T) {
 	e.wantWatched("after the good reload", sysDir, work)
 }
 
-// DL-224, plan M9: a changed bootstrap env re-plans the watch set, so an env file that was filtered out before is
+// DL-224: a changed bootstrap env re-plans the watch set, so an env file that was filtered out before is
 // watched after.
 func TestWatchSetBootstrapEnv(t *testing.T) {
 	const rc, prod = work + "/.myapprc.json", work + "/myapp.prod.json"

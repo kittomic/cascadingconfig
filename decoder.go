@@ -49,7 +49,7 @@ type Warning struct {
 // WarningCode identifies a kind of warning.
 type WarningCode string
 
-// Warning codes. Later milestones add more.
+// Warning codes.
 const (
 	// WarnDuplicateKey reports a key that appears more than once in one JSON object. The last value wins.
 	WarnDuplicateKey WarningCode = "duplicate-key"

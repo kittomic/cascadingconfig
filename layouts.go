@@ -1,7 +1,6 @@
 package cascadingconfig
 
-// The core layouts. Each is built only from exported options, so an app's own layout can do everything they do
-// (DL-71). They gain their bootstrap files, includes and policies in the milestones that implement them (DL-94).
+// The core layouts. Each is built only from exported options, so an app's own layout can do everything they do.
 // Never reassign them.
 var (
 	// MiseLayout is mise's layout: the system, user, project and override scopes with mise's file names, TOML first, then

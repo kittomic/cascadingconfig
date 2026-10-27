@@ -80,7 +80,7 @@ func TestPathString(t *testing.T) {
 	}
 }
 
-// DL-85, plan M1: every Path round-trips through String and ParsePath, including keys that contain dots.
+// DL-85: every Path round-trips through String and ParsePath, including keys that contain dots.
 func TestPathRoundTrip(t *testing.T) {
 	for _, p := range []cc.Path{
 		{"server", "tls"},

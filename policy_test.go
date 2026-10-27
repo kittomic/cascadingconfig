@@ -299,8 +299,8 @@ func TestGlobAndPrefixInFileFormat(t *testing.T) {
 	}
 }
 
-// DL-176 to DL-193, api.md Settled in M7: invalid M7 options are *OptionErrors named after the option.
-func TestM7OptionErrors(t *testing.T) {
+// DL-176 to DL-193: invalid include and policy options are *OptionErrors named after the option.
+func TestIncludePolicyOptionErrors(t *testing.T) {
 	inc := cc.WithIncludeKey("include", cc.IncludeFlat)
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "empty include key", opts: []cc.Option{scope, cc.WithIncludeKey("", cc.IncludeFlat)}, ops: []string{"WithIncludeKey"}},
@@ -334,7 +334,7 @@ func TestM7OptionErrors(t *testing.T) {
 	})
 }
 
-// api.md Settled in M7: every M7 option with valid values, together, is accepted.
+// DL-176 to DL-193: every include and policy option with valid values, together, is accepted.
 func TestPolicyOptionsValid(t *testing.T) {
 	_, err := cc.New("myapp", scope, cc.WithIncludeKey("include", cc.IncludeNested),
 		cc.WithDefaultPolicy(cc.AllowResolvers("file"), cc.Allow(cc.Prefix("/"), cc.Glob("/**")),

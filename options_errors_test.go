@@ -217,7 +217,7 @@ func TestOptionErrorMessage(t *testing.T) {
 	}
 }
 
-// Layouts are usable from outside the package, with a scope added until M4a gives them theirs (DL-94).
+// DL-94: layouts are usable from outside the package.
 func TestLayoutsFromOutside(t *testing.T) {
 	for _, layout := range []cc.Preset{cc.MiseLayout, cc.MiseHardenedLayout, cc.CosmiconfigLayout} {
 		if _, err := cc.NewWithPreset("myapp", layout, scope, cc.WithDecoder(tomlDec), cc.WithDecoder(yamlDec)); err != nil {

@@ -107,8 +107,8 @@ var everythingTree = cc.Tree{
 	"untagged": "u",
 }
 
-// implementation-plan.md M5: the same struct and tree decode identically with koanf and with cascadingconfig, including
-// day durations, TextUnmarshaler, weak typing and RFC 3339 dates (DL-148).
+// DL-148: the same struct and tree decode identically with koanf and with cascadingconfig, including day durations,
+// TextUnmarshaler, weak typing and RFC 3339 dates.
 func TestParity(t *testing.T) {
 	got := same[everything](t, everythingTree, "", koanf.UnmarshalConf{})
 	if got.Days != 7*24*time.Hour || got.Addr.String() != "127.0.0.1" || got.At.IsZero() || got.Untagged != "u" {

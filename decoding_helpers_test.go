@@ -11,7 +11,8 @@ import (
 	ccjson "github.com/kittomic/cascadingconfig/format/json"
 )
 
-// The M5 tests use only the public API: cctest for the filesystem and the host, and the report for what a load found.
+// The decoding tests use only the public API: cctest for the filesystem and the host, and the report for what a load
+// found.
 
 const (
 	sysFile  = "/etc/myapp/config.json"

@@ -12,8 +12,8 @@ import (
 	"github.com/kittomic/cascadingconfig/cctest"
 )
 
-// plan M9, "New files": creating a candidate that didn't exist, myapp.local.json or a file in a new conf.d folder,
-// reloads with it.
+// implementation-plan.md, "New files": creating a candidate that didn't exist, myapp.local.json or a file in a new
+// conf.d folder, reloads with it.
 func TestWatchNewFiles(t *testing.T) {
 	fsys := cctest.NewFS(map[string]string{rootCfg: `{"a": 1}`})
 	n := cctest.NewNotifier()

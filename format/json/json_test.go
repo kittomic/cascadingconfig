@@ -209,7 +209,7 @@ func TestTrailingData(t *testing.T) {
 	}
 }
 
-// Plan M1: a syntax error is a *ParseError with its 1-based line and column, shown in the message.
+// A syntax error is a *ParseError with its 1-based line and column, shown in the message.
 func TestSyntaxErrorPosition(t *testing.T) {
 	pe := parseError(t, "{\n  \"a\": 1,\n  \"b\": ?\n}")
 	if pe.Line != 3 || pe.Column != 8 {

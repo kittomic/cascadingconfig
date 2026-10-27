@@ -89,7 +89,7 @@ func TestReportPolicyJSON(t *testing.T) {
 	}
 }
 
-// DL-194, api.md Settled in M7: the text report has a policies section, with a default row and a row for each scope
+// DL-194: the text report has a policies section, with a default row and a row for each scope
 // with its own policy, and marks included layers "included by".
 func TestReportPolicyText(t *testing.T) {
 	text := reportPolicies(t).String()

@@ -187,7 +187,7 @@ func TestNotifierClose(t *testing.T) {
 	}
 }
 
-// plan M9: an editor's save, writing a temporary file and renaming it over the config file, reloads.
+// An editor's save, writing a temporary file and renaming it over the config file, reloads.
 func TestEditorRename(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
@@ -209,7 +209,7 @@ func TestEditorRename(t *testing.T) {
 	}
 }
 
-// plan M9, design.md Hot reload: a Kubernetes ConfigMap update, which the kubelet makes by writing a new timestamped
+// design.md Hot reload: a Kubernetes ConfigMap update, which the kubelet makes by writing a new timestamped
 // directory, pointing a ..data_tmp symlink at it and renaming that over ..data, reloads.
 func TestConfigMapSwap(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -240,7 +240,7 @@ func TestConfigMapSwap(t *testing.T) {
 	waitFor(t, changes, 2, "the ..data swap")
 }
 
-// DL-225, DL-227, plan M9: a directory that can't be watched falls back to polling, with WarnWatchFailed.
+// DL-225, DL-227: a directory that can't be watched falls back to polling, with WarnWatchFailed.
 func TestFallbackToPolling(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no Unix permissions")

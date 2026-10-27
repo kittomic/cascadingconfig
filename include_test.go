@@ -396,7 +396,8 @@ func TestLocalReferences(t *testing.T) {
 	}
 }
 
-// DL-182, DL-183: until M8, every remote reference is an *UnsupportedSchemeError (501) naming the including file.
+// DL-182, DL-183: with no resolver registered for its scheme, a remote reference is an *UnsupportedSchemeError (501)
+// naming the including file.
 func TestRemoteReferencesUnsupported(t *testing.T) {
 	for _, ref := range []string{
 		"git::https://github.com/acme/config.git//myapp/base.json?ref=v1",

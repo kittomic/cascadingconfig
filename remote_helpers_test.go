@@ -15,9 +15,9 @@ import (
 	ccjson "github.com/kittomic/cascadingconfig/format/json"
 )
 
-// The M8a tests load rootCfg, a project file, with remote includes served by fakeResolver, which serves files from
-// memory by their normalised reference string, so a test that gets a file back also checks how the loader normalised
-// its reference.
+// The remote include tests load rootCfg, a project file, with remote includes served by fakeResolver, which serves
+// files from memory by their normalised reference string, so a test that gets a file back also checks how the loader
+// normalised its reference.
 
 var (
 	sha40 = strings.Repeat("a1", 20) // a full SHA-1 commit id
