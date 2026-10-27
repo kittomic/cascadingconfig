@@ -32,7 +32,8 @@ pre-commit:
 pre-push:
   parallel: false
   commands:
-    # until CI exists, these are the only enforcement: never skip them with --no-verify or LEFTHOOK=0
+    # CI runs the same scripts, but until branch protection requires it (DL-283) these are the only enforcement: never
+    # skip them with --no-verify or LEFTHOOK=0
     go-test:
       files: git ls-files '*.go'
       # every module, on the latest Go with -race and on the minimum Go from go.mod
