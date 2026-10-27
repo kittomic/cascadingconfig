@@ -14,7 +14,7 @@ replace (
 )
 
 require (
-	github.com/kittomic/cascadingconfig v0.0.0-00010101000000-000000000000
+	github.com/kittomic/cascadingconfig v0.1.0
 	github.com/kittomic/cascadingconfig/internal/apicheck v0.0.0-00010101000000-000000000000
 	github.com/kittomic/cascadingconfig/presets v0.0.0-00010101000000-000000000000
 )

@@ -3,7 +3,7 @@ module github.com/kittomic/cascadingconfig/internal/apicheck
 go 1.26.0
 
 require (
-	github.com/kittomic/cascadingconfig v0.0.0-00010101000000-000000000000
+	github.com/kittomic/cascadingconfig v0.1.0
 	github.com/kittomic/cascadingconfig/format/toml v0.0.0-00010101000000-000000000000
 	github.com/kittomic/cascadingconfig/format/yaml v0.0.0-00010101000000-000000000000
 	github.com/kittomic/cascadingconfig/ociresolver v0.0.0-00010101000000-000000000000
