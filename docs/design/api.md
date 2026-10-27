@@ -245,7 +245,10 @@ func (p Preset) Name() string
       `WithFormats()` with no arguments are `*OptionError`s, because an empty set can only be a mistake.
     - **Exceptions:** `WithProbes`, `WithFlatPaths` and `WithUnknownKeys` end in *s* but set a single setting. They
       follow the single-setting rule.
-  - **`Without…` removes** (`WithoutScopes`, `WithoutIncludeResolver`, `WithoutEnvBinding`, `WithoutUnset`).
+  - **`With…s` for a list that mirrors an environment variable adds** (`WithCeilingPaths`, `WithIgnoredPaths`,
+    `WithBootstrapKeys`), as its variable does, so a preset's entries and an app's combine (DL-275).
+  - **`Without…` removes** (`WithoutScopes`, `WithoutIncludeResolver`, `WithoutBinding`, `WithoutBootstrapKeys`,
+    `WithoutUnsetKey`).
   - **`Require…` turns on a check** (`RequireConfig`).
 - **Grouping:** `Options(opts...)` bundles several options into one, so an app can share a group.
 - **Errors** (DL-104): each problem is an `*OptionError` whose `Op` is the option's name, for example

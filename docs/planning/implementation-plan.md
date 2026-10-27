@@ -81,6 +81,8 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M11d2 | Guide, part 2                  | docs, `examples`                         | M11d1      |
 | —   | Release stage                     | all                                      | M11d, M12  |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
+| M13a | Packaging and API polish        | all                                      | M12        |
+| M13b | Structure, comments and tests   | core, tests                              | M13a       |
 
 M2 and M3 can be done in either order, as can M8b and M8c. M6 can run any time after M1. M12 comes before the release
 stage, but needs only M6.
@@ -904,6 +906,29 @@ conformance a measured number.
   at toml-test v2.2.0, yaml-test-suite `data-2022-01-17` and JSONTestSuite `1ef36fa`; the comparison rules for each
   suite; an outcomes file per suite listing every case that doesn't simply pass; and `docs/conformance.md` with the
   measured numbers. A first run feeds a findings gap list, whose rulings fill the outcomes files.
+
+## M13: Polish before release
+
+M13 comes from a review of the code's style and layout (DL-273), in two stages, each with its own PR.
+
+### M13a: Packaging and API
+
+**Scope:** DL-274 to DL-279.
+
+- **Packaging** (DL-274): released modules' tests read nothing outside their module and import no other module's
+  internals, so the design records' doc examples and `internal/docsnippet` move to `internal/apicheck`; `cctest`
+  registers no flags; project-layout.md's tree matches `go.work`, checked.
+- **API:** the option-naming rule and two renames (DL-275), `CacheState` (DL-276), `WithBinding` (DL-277), decoding
+  options in place of mapstructure's types (DL-278), and a watcher that needs no goroutine identity (DL-279).
+- **Renames** change every reference in one commit, tests included, since only identifiers change; a test whose checks
+  change still gets its own `test: revise` commit. The new decoding options and the watcher's new behaviour are written
+  test-first.
+
+### M13b: Structure, comments and tests
+
+**Scope:** include resolution in one place, the long functions split at their seams, `load.go` split by concern, a
+shared warning helper, no decision-log citations in exported doc comments, no milestone references in comments, and
+tests run in parallel where they share no state. No behaviour or API change.
 
 ## Decisions
 
