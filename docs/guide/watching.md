@@ -7,7 +7,7 @@ every file a load reads, the directories where new files could appear, and, if y
 
 <!-- example -->
 ```go
-w, err := cascadingconfig.Watch(ctx, loader, func(c cascadingconfig.Change[Config]) {
+w, err := cascadingconfig.Watch(ctx, loader, func(ctx context.Context, c cascadingconfig.Change[Config]) {
 	if c.Err != nil {
 		log.Printf("reload failed, keeping the last good config: %v", c.Err)
 		return

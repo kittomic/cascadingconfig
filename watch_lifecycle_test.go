@@ -44,7 +44,7 @@ func TestWatchNilHandler(t *testing.T) {
 func TestWatchCancel(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	ctx, cancel := context.WithCancel(t.Context())
-	w, err := e.loader().Watch(ctx, e.changes.add)
+	w, err := e.loader().Watch(ctx, e.changes.handle)
 	if err != nil {
 		t.Fatalf("Watch: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestWatchCloseFromHandler(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var w *cc.Watcher[cc.Tree]
 	closed := make(chan error, 1)
-	w, err := e.loader().Watch(t.Context(), func(cc.Change[cc.Tree]) { closed <- w.Close() })
+	w, err := e.loader().Watch(t.Context(), func(context.Context, cc.Change[cc.Tree]) { closed <- w.Close() })
 	if err != nil {
 		t.Fatalf("Watch: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestWatchReloadFromHandler(t *testing.T) {
 	var w *cc.Watcher[cc.Tree]
 	var calls atomic.Int64
 	var reloadErr error
-	w, err := e.loader().Watch(t.Context(), func(c cc.Change[cc.Tree]) {
+	w, err := e.loader().Watch(t.Context(), func(_ context.Context, c cc.Change[cc.Tree]) {
 		e.changes.add(c)
 		if calls.Add(1) == 1 {
 			e.setVals(cc.Tree{"v": int64(1)})
@@ -174,7 +174,7 @@ func TestWatchReloadValues(t *testing.T) {
 func TestWatchHandlerPanic(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var calls atomic.Int64
-	w, err := e.loader().Watch(t.Context(), func(cc.Change[cc.Tree]) {
+	w, err := e.loader().Watch(t.Context(), func(context.Context, cc.Change[cc.Tree]) {
 		if calls.Add(1) == 1 {
 			panic("boom")
 		}
@@ -200,7 +200,7 @@ func TestWatchHandlerPanic(t *testing.T) {
 func TestWatchSerialHandler(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 0}`})
 	var active, most, calls atomic.Int64
-	w, err := e.loader().Watch(t.Context(), func(cc.Change[cc.Tree]) {
+	w, err := e.loader().Watch(t.Context(), func(context.Context, cc.Change[cc.Tree]) {
 		n := active.Add(1)
 		for {
 			m := most.Load()

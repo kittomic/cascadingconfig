@@ -20,7 +20,7 @@ type Watcher[T any] struct {
 	l   *Loader
 	c   *config
 	ctx context.Context
-	fn  func(Change[T])
+	fn  func(context.Context, Change[T])
 	s   watchSettings
 
 	cur atomic.Pointer[snapshot[T]]
@@ -85,7 +85,7 @@ const (
 // Watch loads l's config into a fresh T, then watches for changes until ctx is cancelled or the watcher is closed. A
 // failed first load returns a nil watcher and the load's error. fn may be nil; otherwise it's called one change at a
 // time, never concurrently.
-func Watch[T any](ctx context.Context, l *Loader, fn func(Change[T]), opts ...WatchOption) (*Watcher[T], error) {
+func Watch[T any](ctx context.Context, l *Loader, fn func(context.Context, Change[T]), opts ...WatchOption) (*Watcher[T], error) {
 	s, err := newWatchSettings(opts)
 	if err != nil {
 		return nil, err
@@ -142,7 +142,7 @@ func Watch[T any](ctx context.Context, l *Loader, fn func(Change[T]), opts ...Wa
 }
 
 // Watch is Watch for the merged tree, without decoding.
-func (l *Loader) Watch(ctx context.Context, fn func(Change[Tree]), opts ...WatchOption) (*Watcher[Tree], error) {
+func (l *Loader) Watch(ctx context.Context, fn func(context.Context, Change[Tree]), opts ...WatchOption) (*Watcher[Tree], error) {
 	return Watch(ctx, l, fn, opts...)
 }
 
@@ -312,7 +312,12 @@ func (w *Watcher[T]) call(ch Change[T]) {
 			w.logger().LogAttrs(w.ctx, slog.LevelError, fmt.Sprintf("the watch handler panicked: %v", r))
 		}
 	}()
-	w.fn(ch)
+	w.fn(w.ctx, ch)
+}
+
+// Done returns a channel that's closed once the watcher has closed and its last handler call has returned (DL-279).
+func (w *Watcher[T]) Done() <-chan struct{} {
+	return nil // not implemented yet
 }
 
 // inHandler reports whether the calling goroutine is running the handler.

@@ -61,7 +61,7 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 		fmt.Fprintf(out, format, args...)
 	}
 
-	w, err := cascadingconfig.Watch(ctx, loader, func(c cascadingconfig.Change[Config]) {
+	w, err := cascadingconfig.Watch(ctx, loader, func(_ context.Context, c cascadingconfig.Change[Config]) {
 		if c.Err != nil {
 			printf("reload failed, keeping the last good config: %v\n", c.Err)
 			return

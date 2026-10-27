@@ -1,6 +1,7 @@
 package cascadingconfig_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -200,6 +201,9 @@ func (c *calls[T]) add(v T) {
 	defer c.mu.Unlock()
 	c.got = append(c.got, v)
 }
+
+// handle records v, as a watch handler.
+func (c *calls[T]) handle(_ context.Context, v T) { c.add(v) }
 
 func (c *calls[T]) all() []T {
 	c.mu.Lock()

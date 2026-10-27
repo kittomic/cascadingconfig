@@ -193,7 +193,7 @@ func WatchReal(t *testing.T, preset cascadingconfig.Preset, rel, before, after s
 		t.Fatalf("NewWithPreset: %v", err)
 	}
 	changes := make(chan cascadingconfig.Change[cascadingconfig.Tree], 8)
-	w, err := l.Watch(t.Context(), func(c cascadingconfig.Change[cascadingconfig.Tree]) { changes <- c },
+	w, err := l.Watch(t.Context(), func(_ context.Context, c cascadingconfig.Change[cascadingconfig.Tree]) { changes <- c },
 		cascadingconfig.WithDebounce(20*time.Millisecond, 200*time.Millisecond))
 	if err != nil {
 		t.Fatalf("Watch: %v", err)

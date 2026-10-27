@@ -73,7 +73,7 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 
 	// The handler runs on the watcher's goroutine, so printing is serialised.
 	var mu sync.Mutex
-	w, err := cascadingconfig.Watch(ctx, loader, func(c cascadingconfig.Change[Config]) {
+	w, err := cascadingconfig.Watch(ctx, loader, func(_ context.Context, c cascadingconfig.Change[Config]) {
 		mu.Lock()
 		defer mu.Unlock()
 		if c.Err != nil {

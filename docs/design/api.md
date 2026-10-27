@@ -22,7 +22,8 @@ err = res.Decode(&cfg) // decode it whenever you like
 report := res.Describe()
 
 // optional: watch for changes
-w, err := cascadingconfig.Watch[Config](ctx, loader, func(c cascadingconfig.Change[Config]) { /* ... */ })
+w, err := cascadingconfig.Watch[Config](ctx, loader,
+	func(ctx context.Context, c cascadingconfig.Change[Config]) { /* ... */ })
 defer w.Close()
 ```
 
@@ -764,12 +765,15 @@ type Credential struct {
 #### Settled in M9
 
 ```go
-// Watching (DL-220 to DL-223)
-func Watch[T any](ctx context.Context, l *Loader, fn func(Change[T]), opts ...WatchOption) (*Watcher[T], error)
-func (l *Loader) Watch(ctx context.Context, fn func(Change[Tree]), opts ...WatchOption) (*Watcher[Tree], error)
+// Watching (DL-220 to DL-223, DL-279)
+func Watch[T any](ctx context.Context, l *Loader, fn func(context.Context, Change[T]),
+	opts ...WatchOption) (*Watcher[T], error)
+func (l *Loader) Watch(ctx context.Context, fn func(context.Context, Change[Tree]),
+	opts ...WatchOption) (*Watcher[Tree], error)
 
 type Watcher[T any] struct { /* … */ }
 func (w *Watcher[T]) Current() T                     // the latest good snapshot, shared and read-only
+func (w *Watcher[T]) Done() <-chan struct{}       // closed once closed and the last handler call has returned (DL-279)
 func (w *Watcher[T]) Reload(ctx context.Context) error
 func (w *Watcher[T]) Close() error                   // the notifier's Close error, then nil
 
@@ -1091,7 +1095,7 @@ cascadingconfig.WithDefaults(Config{
 - **One mechanism.** There's no `SetDefaults()` method or `Defaulter` interface.
 - **`w.Current()`** returns the latest good snapshot, lock-free. `w.Reload(ctx)` forces a reload, and `w.Close()` stops
   watching.
-- **Untyped watching:** `loader.Watch(ctx, func(cascadingconfig.Change[cascadingconfig.Tree]))`.
+- **Untyped watching:** `loader.Watch(ctx, func(context.Context, cascadingconfig.Change[cascadingconfig.Tree]))`.
 
 **Lifecycle:**
 

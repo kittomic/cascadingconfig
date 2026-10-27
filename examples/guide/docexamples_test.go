@@ -422,7 +422,7 @@ func Example_watch() {
 	ctx := context.Background()
 	loader, fsys, notifier, clock := watchWorld()
 	err := func() error {
-		w, err := cascadingconfig.Watch(ctx, loader, func(c cascadingconfig.Change[Config]) {
+		w, err := cascadingconfig.Watch(ctx, loader, func(ctx context.Context, c cascadingconfig.Change[Config]) {
 			if c.Err != nil {
 				log.Printf("reload failed, keeping the last good config: %v", c.Err)
 				return
@@ -455,7 +455,7 @@ func Example_watch() {
 func Example_watchOptions() {
 	ctx := context.Background()
 	loader, _, _, _ := watchWorld()
-	handle := func(cascadingconfig.Change[Config]) {}
+	handle := func(context.Context, cascadingconfig.Change[Config]) {}
 	w, err := cascadingconfig.Watch(ctx, loader, handle,
 		cascadingconfig.WithDebounce(250*time.Millisecond, 2*time.Second),
 		cascadingconfig.WithRemotePoll(10*time.Minute), // re-check unpinned remote includes
@@ -469,7 +469,7 @@ func Example_watchOptions() {
 func Example_remotePoll() {
 	ctx := context.Background()
 	loader, _, _, _ := watchWorld()
-	handle := func(cascadingconfig.Change[Config]) {}
+	handle := func(context.Context, cascadingconfig.Change[Config]) {}
 	w, err := cascadingconfig.Watch(ctx, loader, handle,
 		cascadingconfig.WithRemotePoll(time.Hour),
 		cascadingconfig.WithRemotePoll(time.Minute, cascadingconfig.Prefix("https://config.acme.example/")),

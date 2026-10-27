@@ -1911,7 +1911,7 @@ Our case is harder than either library's: discovery spans many directories and m
 
 <!-- example -->
 ```go
-w, err := cascadingconfig.Watch[Config](ctx, loader, func(c cascadingconfig.Change[Config]) {
+w, err := cascadingconfig.Watch[Config](ctx, loader, func(ctx context.Context, c cascadingconfig.Change[Config]) {
 	// c.Old, c.New: decoded snapshots; c.Diff: changed keys with provenance; c.Err: reload failure
 }, cascadingconfig.WithDebounce(100*time.Millisecond, time.Second))
 defer w.Close()

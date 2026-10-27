@@ -116,7 +116,7 @@ func TestWatchFreshValue(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"port": 9000, "name": "svc"}`})
 	l := e.loader(cc.WithDefaults(watchCfg{Port: 8080}))
 	var got calls[cc.Change[watchCfg]]
-	w, err := cc.Watch[watchCfg](t.Context(), l, got.add)
+	w, err := cc.Watch[watchCfg](t.Context(), l, got.handle)
 	if err != nil {
 		t.Fatalf("Watch: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestWatchFreshValue(t *testing.T) {
 func TestWatchDecodeFailure(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"port": 9000}`})
 	var got calls[cc.Change[watchCfg]]
-	w, err := cc.Watch[watchCfg](t.Context(), e.loader(), got.add)
+	w, err := cc.Watch[watchCfg](t.Context(), e.loader(), got.handle)
 	if err != nil {
 		t.Fatalf("Watch: %v", err)
 	}

@@ -157,7 +157,7 @@ func TrustPaths(...string) TrustStore
 func Values(Tree) ScopeKind
 func ValuesFunc(func(context.Context) (Tree, error)) ScopeKind
 func Walk(...Pattern) ScopeKind
-func Watch[T any](context.Context, *Loader, func(Change[T]), ...WatchOption) (*Watcher[T], error)
+func Watch[T any](context.Context, *Loader, func(context.Context, Change[T]), ...WatchOption) (*Watcher[T], error)
 func WithArrayMerge(MergeStrategy) Option
 func WithBinding(Binding, string) Option
 func WithBootstrapKeys(...BootstrapKey) Option
@@ -249,7 +249,7 @@ method (*KoanfProvider) Read() (map[string]any, error)
 method (*KoanfProvider) ReadBytes() ([]byte, error)
 method (*Loader) KoanfProvider() *KoanfProvider
 method (*Loader) Load(context.Context) (*Result, error)
-method (*Loader) Watch(context.Context, func(Change[Tree]), ...WatchOption) (*Watcher[Tree], error)
+method (*Loader) Watch(context.Context, func(context.Context, Change[Tree]), ...WatchOption) (*Watcher[Tree], error)
 method (*MergeError) Code() Code
 method (*MergeError) Error() string
 method (*MergeError) Is(error) bool
@@ -298,6 +298,7 @@ method (*UnsupportedSchemeError) Is(error) bool
 method (*UnsupportedSchemeError) Unwrap() error
 method (*Watcher[T]) Close() error
 method (*Watcher[T]) Current() T
+method (*Watcher[T]) Done() <-chan struct{}
 method (*Watcher[T]) Reload(context.Context) error
 method (DiffKind) String() string
 method (KeyDiff) String() string

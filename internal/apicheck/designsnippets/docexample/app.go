@@ -20,4 +20,4 @@ var (
 
 func run(Config) {}
 
-func onChange(cascadingconfig.Change[Config]) {}
+func onChange(context.Context, cascadingconfig.Change[Config]) {}
