@@ -57,6 +57,8 @@ jobs:
         run: scripts/each-module.sh govulncheck ./...
       - name: Licence files
         run: scripts/check-licenses.sh
+      - name: No replace in released modules
+        run: scripts/check-no-replace.sh
       - name: Dependency budget and licences
         run: scripts/check-deps.sh
       - name: Markdown
