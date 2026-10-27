@@ -163,9 +163,7 @@ func (ld *loading) checkFile(pol *policy, e *entry) bool {
 			return reject(fmt.Errorf("the %s policy's file permission check failed: %s", name, why), why)
 		}
 		e.layer.Status, e.layer.Reason = LayerIgnored, why
-		e.layer.Warnings = append(e.layer.Warnings, Warning{
-			Code: WarnFilePermissions, Path: e.layer.Path, Message: e.layer.Path + " ignored: " + why,
-		})
+		e.layer.warn(WarnFilePermissions, "%s ignored: %s", e.layer.Path, why)
 		return false
 	}
 	if pol.trust == nil {
@@ -185,9 +183,7 @@ func (ld *loading) checkFile(pol *policy, e *entry) bool {
 			"not approved by its trust store")
 	}
 	e.layer.Status, e.layer.Reason = LayerUntrusted, "its trust store hasn't approved it"
-	e.layer.Warnings = append(e.layer.Warnings, Warning{
-		Code: WarnUntrusted, Path: e.layer.Path, Message: e.layer.Path + " skipped: its trust store hasn't approved it",
-	})
+	e.layer.warn(WarnUntrusted, "%s skipped: its trust store hasn't approved it", e.layer.Path)
 	return false
 }
 

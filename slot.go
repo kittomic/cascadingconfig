@@ -36,11 +36,7 @@ func orderSlot(files []Layer, order []Decoder, policy FormatConflict) ([]Layer, 
 				l := &ranked[i]
 				l.Status = LayerIgnored
 				l.Reason = fmt.Sprintf("%s, in the same slot, ranks higher", top)
-				l.Warnings = append(l.Warnings, Warning{
-					Code:    WarnFormatConflict,
-					Path:    l.Path,
-					Message: fmt.Sprintf("%s ignored: %s, in the same slot, ranks higher and was loaded", l.Path, top),
-				})
+				l.warn(WarnFormatConflict, "%s ignored: %s, in the same slot, ranks higher and was loaded", l.Path, top)
 			}
 		case ConflictFail:
 			names := make([]string, len(ranked))

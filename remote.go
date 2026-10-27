@@ -97,11 +97,8 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 			got.Fetched = c.now()
 		case hit && errors.As(err, &fetchErr):
 			got, content, l.Remote.Cache = cached.entry, cached.content, CacheStale
-			l.Warnings = append(l.Warnings, Warning{
-				Code: WarnStaleInclude, Path: l.Path,
-				Message: fmt.Sprintf("%s: using a cached copy from %s, because fetching it failed: %v", l.Path,
-					cached.entry.Fetched.Format("2006-01-02 15:04:05Z07:00"), err),
-			})
+			l.warn(WarnStaleInclude, "%s: using a cached copy from %s, because fetching it failed: %v", l.Path,
+				cached.entry.Fetched.Format("2006-01-02 15:04:05Z07:00"), err)
 		default:
 			if cerr := ld.ctx.Err(); cerr != nil {
 				return fail(contextError(cerr), "")

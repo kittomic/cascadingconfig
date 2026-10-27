@@ -230,7 +230,7 @@ func (ld *loading) addError(err error) {
 // skip records a layer that won't load, with a warning.
 func (ld *loading) skip(l Layer, status LayerStatus, code WarningCode, reason string) {
 	l.Status, l.Reason = status, reason
-	l.Warnings = append(l.Warnings, Warning{Code: code, Path: l.Path, Message: l.Path + ": " + reason})
+	l.warn(code, "%s: %s", l.Path, reason)
 	ld.entries = append(ld.entries, &entry{layer: l})
 }
 
@@ -824,11 +824,8 @@ func (ld *loading) isIgnored(resolved string, trust TrustLevel) (string, bool) {
 		}
 		if !p.drop && p.from != nil {
 			p.drop = true
-			p.from.layer.Warnings = append(p.from.layer.Warnings, Warning{
-				Code: WarnBootstrapKeyDropped, Path: p.from.layer.Path,
-				Message: fmt.Sprintf("%s: the ignored path %s points into a more trusted scope, so it was dropped for %s",
-					p.from.layer.Path, p.path, resolved),
-			})
+			p.from.layer.warn(WarnBootstrapKeyDropped, "%s: the ignored path %s points into a more trusted scope, so it was dropped for %s",
+				p.from.layer.Path, p.path, resolved)
 		}
 	}
 	return "", false
@@ -1309,10 +1306,7 @@ func (ld *loading) addValues(s *scopeDef, t Tree) {
 func (ld *loading) addValuesLayer(l Layer, t Tree) {
 	s := l.Scope
 	if key := ld.c.merge.unsetKey; key != "" && dropKey(t, key) {
-		l.Warnings = append(l.Warnings, Warning{
-			Code:    WarnReservedKey,
-			Message: fmt.Sprintf("the scope %q can't remove keys, so its %s keys were ignored", s, key),
-		})
+		l.warn(WarnReservedKey, "the scope %q can't remove keys, so its %s keys were ignored", s, key)
 	}
 	if len(t) == 0 {
 		l.Status = LayerEmpty
@@ -1376,9 +1370,6 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 	}
 	var sets []setBy // the variable behind each key, without those a later variable replaced
 	l := Layer{Scope: s.name, Trust: s.trust, Status: LayerLoaded}
-	warn := func(code WarningCode, format string, args ...any) {
-		l.Warnings = append(l.Warnings, Warning{Code: code, Message: fmt.Sprintf(format, args...)})
-	}
 	for _, v := range vars {
 		var key Path
 		var value any = v.value
@@ -1389,7 +1380,7 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 				continue
 			}
 			if len(key) == 0 {
-				warn(WarnEnvVarSkipped, "%s: the mapping gave an empty key, so it was skipped", v.name)
+				l.warn(WarnEnvVarSkipped, "%s: the mapping gave an empty key, so it was skipped", v.name)
 				continue
 			}
 			if err := checkCanonical(value, key); err != nil {
@@ -1399,7 +1390,7 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 		} else {
 			key = strings.Split(v.name[len(k.prefix):], "__")
 			if slices.Contains(key, "") {
-				warn(WarnEnvVarSkipped, "%s: the name has an empty segment, so it was skipped", v.name)
+				l.warn(WarnEnvVarSkipped, "%s: the name has an empty segment, so it was skipped", v.name)
 				continue
 			}
 			for i := range key {
@@ -1407,13 +1398,13 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 			}
 		}
 		if setPath(t, key, value) {
-			warn(WarnEnvVarClash, "%s clashes with an earlier variable at %s; the later name wins", v.name, key)
+			l.warn(WarnEnvVarClash, "%s clashes with an earlier variable at %s; the later name wins", v.name, key)
 		}
 		sets = slices.DeleteFunc(sets, func(b setBy) bool { return hasPrefix(b.key, key) || hasPrefix(key, b.key) })
 		sets = append(sets, setBy{slices.Clone(key), v.name})
 	}
 	if unset := ld.c.merge.unsetKey; unset != "" && dropKey(t, unset) {
-		warn(WarnReservedKey, "the scope %q can't remove keys, so its %s keys were ignored", s.name, unset)
+		l.warn(WarnReservedKey, "the scope %q can't remove keys, so its %s keys were ignored", s.name, unset)
 	}
 	by := make(map[string]string, len(sets))
 	for _, b := range sets {

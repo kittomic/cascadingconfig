@@ -1,6 +1,9 @@
 package cascadingconfig
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 // ScopeName names a scope. Custom scopes use their own names, and untyped string constants convert implicitly.
 type ScopeName string
@@ -113,4 +116,9 @@ type Layer struct {
 	Status     LayerStatus `json:"status"`
 	Reason     string      `json:"reason,omitempty"` // why the layer was skipped, if it was
 	Warnings   []Warning   `json:"warnings,omitempty"`
+}
+
+// warn records a warning about the layer, naming its path.
+func (l *Layer) warn(code WarningCode, format string, args ...any) {
+	l.Warnings = append(l.Warnings, Warning{Code: code, Path: l.Path, Message: fmt.Sprintf(format, args...)})
 }

@@ -270,19 +270,16 @@ func (ld *loading) applyBootstrap(e *entry) error {
 		t = next
 	}
 
-	warn := func(code WarningCode, format string, args ...any) {
-		e.layer.Warnings = append(e.layer.Warnings, Warning{Code: code, Path: e.layer.Path, Message: fmt.Sprintf(format, args...)})
-	}
 	limit, limited := c.bootstrapLimits[e.layer.Scope]
 	dir := filepath.Dir(e.layer.Path)
 	for _, k := range tree.SortedKeys(t) {
 		key := BootstrapKey(k)
 		if !c.bootstrapKeys[key] {
-			warn(WarnBootstrapUnknownKey, "%s: %q isn't a bootstrap key here, so it was ignored", e.layer.Path, k)
+			e.layer.warn(WarnBootstrapUnknownKey, "%s: %q isn't a bootstrap key here, so it was ignored", e.layer.Path, k)
 			continue
 		}
 		if limited && !slices.Contains(limit, key) {
-			warn(WarnBootstrapKeyDropped, "%s: the %s scope's bootstrap files may not set %q, so it was dropped",
+			e.layer.warn(WarnBootstrapKeyDropped, "%s: the %s scope's bootstrap files may not set %q, so it was dropped",
 				e.layer.Path, e.layer.Scope, k)
 			continue
 		}
