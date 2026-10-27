@@ -1,9 +1,10 @@
 # Tool versions are pinned, so lint and vulnerability results only change when a version is deliberately bumped.
-# Go 1.26 (the minimum in go.mod) is installed on demand by scripts/check-go-versions.sh.
+# Go 1.27.3 is the one on PATH; Go 1.26, the minimum in go.mod, is installed too, for scripts/check-go-versions.sh, so
+# CI caches both.
 [tools]
 gitleaks = "8.30.1"
 golangci-lint = "2.15.0"
-go = "1.27.3"
+go = ["1.27.3", "1.26"]
 "go:golang.org/x/vuln/cmd/govulncheck" = "1.9.0"
 lefthook = "2.2.2"
 rumdl = "0.3.0"
