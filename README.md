@@ -1,6 +1,6 @@
 # cascadingconfig
 
-[![CI](https://github.com/kittomic/cascadingconfig/actions/workflows/ci.yml/badge.svg?branch=wip)](https://github.com/kittomic/cascadingconfig/actions/workflows/ci.yml)
+[![CI](https://github.com/kittomic/cascadingconfig/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kittomic/cascadingconfig/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kittomic/cascadingconfig.svg)](https://pkg.go.dev/github.com/kittomic/cascadingconfig)
 
 A Go library that finds, merges and decodes layered configuration files, the way [mise] and [cosmiconfig] do. System,

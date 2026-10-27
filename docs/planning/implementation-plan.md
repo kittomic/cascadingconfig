@@ -916,8 +916,8 @@ tests run in parallel where they share no state. No behaviour or API change.
 
 ## M14: Release
 
-Nothing goes public, and `wip` doesn't go to `main`, until M14c. Every step there that changes something outside the
-repository (making it public, its settings, each set of tags) is confirmed first.
+Nothing goes public until M14c. Every step there that changes something outside the repository (making it public, its
+settings, each set of tags) is confirmed first.
 
 ### M14a: Release docs
 
@@ -942,22 +942,22 @@ repository (making it public, its settings, each set of tags) is confirmed first
 
 ### M14c: First release
 
-**Scope:** DL-284 to DL-286.
+**Scope:** DL-285, DL-286 and DL-289.
 
-1. `wip` goes to `main` by merge commit.
-2. The repository goes public, with DL-285's settings and DL-283's branch protection.
+1. `wip` goes to `main` by merge commit (PR #34). Then `wip` and every other working branch is deleted, and `main` is
+   the only long-lived branch (DL-289).
+2. The repository goes public, with DL-285's settings and branch protection on `main`.
 3. The core is tagged `v0.1.0`.
 4. A PR drops the `replace` from `format/toml`, `format/yaml`, `ociresolver` and `watch/fsnotify` and adds the check
    against it; once merged, each is tagged.
 5. A PR does the same for `presets`, which is tagged last.
 6. The GitHub Release, the outside build through the proxy, and the pkg.go.dev pages.
-7. `wip` is retired (DL-284), and this plan's workflow and CONTRIBUTING.md say so.
 
 ## Decisions
 
 | # | Question                  | Decision                                                                                                     |
 | - | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. From v0.1.0 on, DL-284 retires `wip`. |
+| 1 | Branching                 | A branch and PR per milestone, **targeting `main`**, the only long-lived branch (DL-289). Until M14c, milestones targeted `wip`, which went to `main` only for the release. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. |
 | 2 | CI                        | **Deferred** until M14b (DL-283), or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
 | 3 | Clock injection           | An internal clock interface, settable only through `cctest`. No public `WithClock` option.                    |
 | 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](../design/api.md#test-helpers)). |
@@ -968,13 +968,10 @@ repository (making it public, its settings, each set of tags) is confirmed first
 | 9 | Repository files          | A README stub, `SECURITY.md` and a per-module CHANGELOG convention, added in M0.                             |
 | 10 | Tooling fixes            | Fix the goimports `local-prefixes`, and pin every tool version in `.config/mise.toml` (M0).                  |
 
-**Working with `wip` as the integration branch:**
+**Working with `main`:**
 
-- **Never squash `wip` into `main`.** Use a fast-forward or a merge commit. A squash gives `main` a commit that `wip`
-  lacks, and every later release then conflicts.
-- **PRs need `--base wip`,** because GitHub targets the default branch, `main`, otherwise.
-- **Closing keywords** ("Closes #12") only close issues when a PR merges into the default branch, so issues closed by
-  milestone PRs are closed by hand or on release.
+- **Never squash.** PRs merge into `main` by merge commit, so each milestone's commits stay in the history.
+- **Closing keywords** ("Closes #12") close issues when the PR merges, since PRs target the default branch.
 - **Release tags go on `main`.**
 - **Hooks are never skipped.** Until branch protection requires CI (DL-283), lefthook is the only enforcement, so no
   commit or push uses `--no-verify` or `LEFTHOOK=0`.
