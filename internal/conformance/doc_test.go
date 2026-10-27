@@ -14,7 +14,7 @@ import (
 	"github.com/kittomic/cascadingconfig/internal/conformance"
 )
 
-// updating reports whether the test runs with -update, the flag cctest defines for golden files.
+// updating reports whether the test runs with -update, the flag update_flag_test.go defines for golden files.
 func updating() bool {
 	f := flag.Lookup("update")
 	return f != nil && f.Value.String() == "true"
