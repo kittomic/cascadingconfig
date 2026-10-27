@@ -7,7 +7,8 @@ A Go library that finds, merges and decodes layered configuration files, the way
 user and project config, environment-specific files, environment variables and flags are merged in a defined order into
 one typed struct, and every value can be traced back to the file or variable that set it.
 
-**Status: pre-1.0.** Nothing is released yet, and the API may change before 1.0.
+**Status: pre-1.0.** Releases are v0.x, so until 1.0 a minor version may break the API; each module's CHANGELOG says
+what changed.
 
 ## Features
 
