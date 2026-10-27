@@ -60,55 +60,8 @@ func (ld *loading) run() (*Result, error) {
 	}
 	ld.ignoredPaths()
 
-	explicit := c.configFiles
-	if explicit == nil {
-		if v := ld.binding(BindConfigFile); v != "" {
-			explicit = ld.pathList(v)
-		}
-	}
-	placed := false
-	// Under WithConfigFilesOnly, explicit files replace every scope that searches for files, at the place of the
-	// highest of them; value scopes keep their places (DL-247).
-	filesOnly, last := explicit != nil && c.configFilesOnly, -1
-	if filesOnly {
-		for i, s := range c.scopes {
-			if s.kind.readsFiles() {
-				last = i
-			}
-		}
-	}
-	for i, s := range c.scopes {
-		if err := ctx.Err(); err != nil {
-			return nil, contextError(err)
-		}
-		ld.order = ld.orderFor(s)
-		if filesOnly && s.kind.readsFiles() {
-			if c.selected[s.name] {
-				ld.skipped[s.name] = "replaced by explicit files"
-			}
-			if i == last {
-				ld.loadExplicit(explicit, "", TrustProject, nil)
-				placed = true
-			}
-			continue
-		}
-		switch {
-		case s.explicitFiles && explicit != nil:
-			ld.skipped[s.name] = "replaced by explicit files"
-			ld.loadExplicit(explicit, s.name, TrustProject, s)
-			placed = true
-		case !c.selected[s.name]:
-		case s.disabledBy != "" && ld.binding(s.disabledBy) != "":
-			ld.skipped[s.name] = "disabled by " + c.vars[s.disabledBy]
-		case s.replacedByFile != "" && ld.binding(s.replacedByFile) != "":
-			ld.skipped[s.name] = "replaced by the file " + c.vars[s.replacedByFile] + " names"
-			ld.loadExplicit([]string{ld.binding(s.replacedByFile)}, s.name, s.trust, s)
-		default:
-			s.kind.discover(ld, s)
-		}
-	}
-	if explicit != nil && !placed {
-		ld.loadExplicit(explicit, "", TrustProject, nil)
+	if err := ld.discoverScopes(); err != nil {
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, contextError(err)
@@ -140,6 +93,63 @@ func (ld *loading) run() (*Result, error) {
 		res.envVars[i] = l.vars
 	}
 	return res, nil
+}
+
+// discoverScopes finds each selected scope's layers, in the scopes' order, putting explicit files in their place: the
+// scope that takes them, the highest of the scopes they replace, or the top.
+func (ld *loading) discoverScopes() error {
+	c, ctx := ld.c, ld.ctx
+	explicit := c.configFiles
+	if explicit == nil {
+		if v := ld.binding(BindConfigFile); v != "" {
+			explicit = ld.pathList(v)
+		}
+	}
+	placed := false
+	// Under WithConfigFilesOnly, explicit files replace every scope that searches for files, at the place of the
+	// highest of them; value scopes keep their places (DL-247).
+	filesOnly, last := explicit != nil && c.configFilesOnly, -1
+	if filesOnly {
+		for i, s := range c.scopes {
+			if s.kind.readsFiles() {
+				last = i
+			}
+		}
+	}
+	for i, s := range c.scopes {
+		if err := ctx.Err(); err != nil {
+			return contextError(err)
+		}
+		ld.order = ld.orderFor(s)
+		if filesOnly && s.kind.readsFiles() {
+			if c.selected[s.name] {
+				ld.skipped[s.name] = "replaced by explicit files"
+			}
+			if i == last {
+				ld.loadExplicit(explicit, "", TrustProject, nil)
+				placed = true
+			}
+			continue
+		}
+		switch {
+		case s.explicitFiles && explicit != nil:
+			ld.skipped[s.name] = "replaced by explicit files"
+			ld.loadExplicit(explicit, s.name, TrustProject, s)
+			placed = true
+		case !c.selected[s.name]:
+		case s.disabledBy != "" && ld.binding(s.disabledBy) != "":
+			ld.skipped[s.name] = "disabled by " + c.vars[s.disabledBy]
+		case s.replacedByFile != "" && ld.binding(s.replacedByFile) != "":
+			ld.skipped[s.name] = "replaced by the file " + c.vars[s.replacedByFile] + " names"
+			ld.loadExplicit([]string{ld.binding(s.replacedByFile)}, s.name, s.trust, s)
+		default:
+			s.kind.discover(ld, s)
+		}
+	}
+	if explicit != nil && !placed {
+		ld.loadExplicit(explicit, "", TrustProject, nil)
+	}
+	return nil
 }
 
 // formatOrder works out the order bootstrap files are found with, and every scope's order unless a bootstrap file
@@ -1334,8 +1344,12 @@ func dropKey(v any, key string) bool {
 	return found
 }
 
-// addEnvVars adds an EnvVars scope's values.
-func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
+// envVar is one environment variable.
+type envVar struct{ name, value string }
+
+// matchingEnv returns the environment variables whose names start with prefix, sorted by name, leaving out those a
+// binding reads (DL-277). On Windows, names compare without regard to case.
+func (ld *loading) matchingEnv(prefix string) []envVar {
 	h := ld.c.host
 	windows := h.GOOS() == "windows"
 	norm := func(name string) string {
@@ -1348,21 +1362,24 @@ func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
 	for _, v := range ld.c.vars {
 		bound[norm(v)] = true
 	}
-
-	type variable struct{ name, value string }
-	var vars []variable
+	var vars []envVar
 	for _, kv := range h.Environ() {
 		name, value, ok := strings.Cut(kv, "=")
-		if !ok || name == "" || len(name) < len(k.prefix) || bound[norm(name)] {
+		if !ok || name == "" || len(name) < len(prefix) || bound[norm(name)] {
 			continue
 		}
-		if p := name[:len(k.prefix)]; p != k.prefix && (!windows || !strings.EqualFold(p, k.prefix)) {
+		if p := name[:len(prefix)]; p != prefix && (!windows || !strings.EqualFold(p, prefix)) {
 			continue
 		}
-		vars = append(vars, variable{name, value})
+		vars = append(vars, envVar{name, value})
 	}
-	slices.SortFunc(vars, func(a, b variable) int { return strings.Compare(a.name, b.name) })
+	slices.SortFunc(vars, func(a, b envVar) int { return strings.Compare(a.name, b.name) })
+	return vars
+}
 
+// addEnvVars adds an EnvVars scope's values.
+func (ld *loading) addEnvVars(s *scopeDef, k envVarsKind) {
+	vars := ld.matchingEnv(k.prefix)
 	t := Tree{}
 	type setBy struct {
 		key  Path

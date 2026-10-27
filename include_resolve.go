@@ -56,9 +56,9 @@ func failInclude(l Layer, err error, reason string) *entry {
 	return &entry{layer: l, err: err, included: true}
 }
 
-// localInclude is one local include as it's resolved: the reference, the file that wrote it, its chain's root file, and
-// the layer as it fills in.
-type localInclude struct {
+// resolving is one include as it's resolved, local or remote: the reference, the file that wrote it, its chain's root
+// file, whose scope's policy judges it, and the layer as it fills in.
+type resolving struct {
 	p          *processor
 	from, root *entry
 	raw        string
@@ -67,27 +67,36 @@ type localInclude struct {
 	name       string // the policy's name, for messages
 }
 
-// about is the base of an error about the reference; inside, of one about the included file itself (DL-185).
-func (li *localInclude) about(err error) BaseError { return includeAbout(li.from, err) }
+func (p *processor) newResolving(from, root *entry, raw string) *resolving {
+	scope := root.layer.Scope
+	return &resolving{p: p, from: from, root: root, raw: raw, l: p.ld.includeLayer(from, root, raw),
+		pol: p.ld.c.policyFor(scope), name: policyName(scope)}
+}
 
-func (li *localInclude) inside(err error) BaseError {
+// about is the base of an error about the reference; inside, of one about the included file itself (DL-185).
+func (li *resolving) about(err error) BaseError { return includeAbout(li.from, err) }
+
+func (li *resolving) inside(err error) BaseError {
 	return BaseError{Op: "include", Path: li.l.Path, Scope: string(li.l.Scope), Err: err}
 }
 
-func (li *localInclude) fail(err error, reason string) *entry { return failInclude(li.l, err, reason) }
+func (li *resolving) fail(err error, reason string) *entry { return failInclude(li.l, err, reason) }
 
 // reject fails the include as its policy's decision.
-func (li *localInclude) reject(why, reason string) *entry {
+func (li *resolving) reject(why, reason string) *entry {
 	err := &PolicyError{BaseError: li.about(fmt.Errorf("%q %s", li.raw, why))}
 	return li.fail(err, "rejected by the "+li.name+" policy: "+reason)
+}
+
+// badRef fails the include for a reference that doesn't parse or can't be joined.
+func (li *resolving) badRef(err error) *entry {
+	return li.fail(&ReferenceError{BaseError: li.about(fmt.Errorf("%q: %w", li.raw, err))}, "")
 }
 
 // resolveLocal reads the local file that raw, from's include reference, names (DL-182, DL-183): it authorises the
 // reference, opens and checks the file, then reads it.
 func (p *processor) resolveLocal(from, root *entry, raw string, ancestors []*entry) *entry {
-	scope := root.layer.Scope
-	li := &localInclude{p: p, from: from, root: root, raw: raw, l: p.ld.includeLayer(from, root, raw),
-		pol: p.ld.c.policyFor(scope), name: policyName(scope)}
+	li := p.newResolving(from, root, raw)
 	target, failed := li.authorise()
 	if failed != nil {
 		return failed
@@ -101,14 +110,14 @@ func (p *processor) resolveLocal(from, root *entry, raw string, ancestors []*ent
 
 // authorise turns the reference into an absolute path and checks it against the policy: the file scheme, the
 // confinement roots and the allow-lists. It returns the path with symlinks resolved.
-func (li *localInclude) authorise() (string, *entry) {
+func (li *resolving) authorise() (string, *entry) {
 	ld, c, raw := li.p.ld, li.p.ld.c, li.raw
 	if scheme, remote := remoteScheme(raw); remote {
 		return "", li.fail(&UnsupportedSchemeError{BaseError: li.about(fmt.Errorf("%q: no resolver is registered for the scheme %q", raw, scheme))}, "")
 	}
 	abs, err := ld.localPath(raw, li.from.layer.Path)
 	if err != nil {
-		return "", li.fail(&ReferenceError{BaseError: li.about(fmt.Errorf("%q: %w", raw, err))}, "")
+		return "", li.badRef(err)
 	}
 	li.l.Path = abs
 	ld.watchFile(abs)
@@ -134,7 +143,7 @@ func (li *localInclude) authorise() (string, *entry) {
 
 // open stats the file and checks it before it's read: not already in this chain of includes, of a known format, a
 // regular file and within the size limit.
-func (li *localInclude) open(target string, ancestors []*entry) (Root, fs.FileInfo, *entry) {
+func (li *resolving) open(target string, ancestors []*entry) (Root, fs.FileInfo, *entry) {
 	ld, c := li.p.ld, li.p.ld.c
 	dir, base := filepath.Dir(target), filepath.Base(target)
 	r, ok := ld.root(dir)
@@ -167,7 +176,7 @@ func (li *localInclude) open(target string, ancestors []*entry) (Root, fs.FileIn
 
 // read applies the policy's permission check and reads the file. The included file takes the scope and trust of its
 // most trusted route, if discovery also found it (DL-184).
-func (li *localInclude) read(r Root, info fs.FileInfo, target string) *entry {
+func (li *resolving) read(r Root, info fs.FileInfo, target string) *entry {
 	ld, c := li.p.ld, li.p.ld.c
 	e := &entry{layer: li.l, info: info, file: true, included: true, real: target}
 	if di, err := r.Stat("."); err == nil {

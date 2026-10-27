@@ -10,134 +10,156 @@ import (
 )
 
 // resolveRemote fetches the remote file that raw names, or that raw, a plain path in the remote file from, names
-// relative to it (DL-204), and returns it as an entry to walk.
+// relative to it (DL-204), and returns it as an entry to walk: it finds the reference's resolver, checks it, gets the
+// content from the cache or the resolver, and checks the content.
 func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*entry) *entry {
-	ld, c := p.ld, p.ld.c
-	scope := root.layer.Scope
-	pol := c.policyFor(scope)
-	name := policyName(scope)
-	l := ld.includeLayer(from, root, raw)
-	fail := func(err error, reason string) *entry { return failInclude(l, err, reason) }
-	about := func(err error) BaseError { return includeAbout(from, err) }
-	inside := func(err error) BaseError {
-		return BaseError{Op: "include", Path: l.Path, Scope: string(scope), Err: err}
+	r := p.newResolving(from, root, raw)
+	resolver, rr, failed := r.targetRemote()
+	if failed != nil {
+		return failed
 	}
-	reject := func(why, reason string) *entry {
-		return fail(&PolicyError{BaseError: about(fmt.Errorf("%q %s", raw, why))}, "rejected by the "+name+" policy: "+reason)
+	if stop := r.checkRemote(rr, ancestors); stop != nil {
+		return stop
 	}
-	badRef := func(err error) *entry {
-		return fail(&ReferenceError{BaseError: about(fmt.Errorf("%q: %w", raw, err))}, "")
+	got, content, failed := r.obtainRemote(resolver, rr)
+	if failed != nil {
+		return failed
 	}
+	return r.acceptRemote(resolver, rr, got, content)
+}
 
+// targetRemote works out the reference to fetch, joining a path inside a remote file to its origin, and the resolver
+// for its scheme.
+func (r *resolving) targetRemote() (IncludeResolver, remoteRef, *entry) {
+	c, raw := r.p.ld.c, r.raw
 	target, scheme := raw, ""
 	if s, remote := remoteScheme(raw); remote {
 		scheme = s
 	} else {
-		joined, err := joinRemote(from.remote, raw)
+		joined, err := joinRemote(r.from.remote, raw)
 		if err != nil {
-			return badRef(err)
+			return nil, remoteRef{}, r.badRef(err)
 		}
-		target, scheme = joined, from.remote.ref.Scheme
-		l.Path = joined
+		target, scheme = joined, r.from.remote.ref.Scheme
+		r.l.Path = joined
 	}
 	resolver, ok := c.resolvers[scheme]
 	if !ok {
-		return fail(&UnsupportedSchemeError{BaseError: about(fmt.Errorf("%q: no resolver is registered for the scheme %q", raw, scheme))}, "")
+		err := &UnsupportedSchemeError{BaseError: r.about(fmt.Errorf("%q: no resolver is registered for the scheme %q", raw, scheme))}
+		return nil, remoteRef{}, r.fail(err, "")
 	}
 	rr, err := parseRemote(target, scheme, c.name)
 	if err != nil {
-		return badRef(err)
+		return nil, remoteRef{}, r.badRef(err)
 	}
-	rr.ref.From = from.layer
-	l.Remote = &Remote{Scheme: scheme, Ref: rr.ref.Ref, Pinned: rr.pinned}
-	if why, reason := ld.remoteAllowed(pol, name, rr); why != "" {
-		return reject(why, reason)
+	rr.ref.From = r.from.layer
+	r.l.Remote = &Remote{Scheme: scheme, Ref: rr.ref.Ref, Pinned: rr.pinned}
+	return resolver, rr, nil
+}
+
+// checkRemote applies the policy, pinning and cycle checks before anything is fetched. It returns the entry to use
+// instead of fetching: a failure, or a duplicate of a file already walked. Otherwise it records the file as walked.
+func (r *resolving) checkRemote(rr remoteRef, ancestors []*entry) *entry {
+	p, ld := r.p, r.p.ld
+	if why, reason := ld.remoteAllowed(r.pol, r.name, rr); why != "" {
+		return r.reject(why, reason)
 	}
-	if pol.pinned && !rr.pinned {
-		return reject(fmt.Sprintf("isn't pinned, and the %s policy requires pinned references", name), "not pinned")
+	if r.pol.pinned && !rr.pinned {
+		return r.reject(fmt.Sprintf("isn't pinned, and the %s policy requires pinned references", r.name), "not pinned")
 	}
 	for _, a := range ancestors {
 		if a.remote != nil && a.remote.ref.Ref == rr.ref.Ref {
-			return fail(&CycleError{BaseError: about(fmt.Errorf("%q includes %s, which is already in this chain of includes", raw, rr.ref.Ref))},
-				"an include cycle")
+			err := &CycleError{BaseError: r.about(fmt.Errorf("%q includes %s, which is already in this chain of includes", r.raw, rr.ref.Ref))}
+			return r.fail(err, "an include cycle")
 		}
 	}
 	if keeper, seen := p.remoteSeen[rr.ref.Ref]; seen {
-		l.Status = LayerDuplicate
-		l.Reason = fmt.Sprintf("loaded at a higher position through the %s scope", keeper)
-		return &entry{layer: l, included: true, remote: &rr}
+		r.l.Status = LayerDuplicate
+		r.l.Reason = fmt.Sprintf("loaded at a higher position through the %s scope", keeper)
+		return &entry{layer: r.l, included: true, remote: &rr}
 	}
 	if rr.form != formURL {
 		if _, ok := ld.remoteFormat(rr, ""); !ok {
-			return fail(&UnsupportedFormatError{BaseError: inside(fmt.Errorf("no format rule or registered decoder's extension matches %s", rr.file))}, "")
+			return r.fail(&UnsupportedFormatError{BaseError: r.inside(fmt.Errorf("no format rule or registered decoder's extension matches %s", rr.file))}, "")
 		}
 	}
 	if p.remoteSeen == nil {
 		p.remoteSeen = map[string]ScopeName{}
 	}
-	p.remoteSeen[rr.ref.Ref] = scope
+	p.remoteSeen[rr.ref.Ref] = r.l.Scope
+	return nil
+}
 
+// obtainRemote gets the content: from the cache within its TTL, or pinned; otherwise from the resolver, revalidating
+// a cached copy, and falling back to it when fetching fails (DL-207, DL-229). It records where the content came from in
+// the layer's Remote.Cache.
+func (r *resolving) obtainRemote(resolver IncludeResolver, rr remoteRef) (cacheEntry, []byte, *entry) {
+	ld, c, l := r.p.ld, r.p.ld.c, &r.l
 	cached, hit := ld.cacheLookup(rr.ref.Ref)
-	var got cacheEntry
-	var content []byte
-	switch {
-	case hit && (rr.pinned || c.now().Sub(cached.entry.Fetched) < c.cacheTTL):
-		got, content, l.Remote.Cache = cached.entry, cached.content, CacheCached
-	default:
-		validator := ""
-		if hit {
-			validator = cached.entry.Validator
-		}
-		fe, err := ld.fetch(resolver, rr, from, pol, name, validator)
-		var fetchErr *FetchError
-		switch {
-		case err == nil:
-		case validator != "" && errors.Is(err, ErrNotModified):
-			got, content, l.Remote.Cache = cached.entry, cached.content, CacheRevalidated
-			got.Fetched = c.now()
-		case hit && errors.As(err, &fetchErr):
-			got, content, l.Remote.Cache = cached.entry, cached.content, CacheStale
-			l.warn(WarnStaleInclude, "%s: using a cached copy from %s, because fetching it failed: %v", l.Path,
-				cached.entry.Fetched.Format("2006-01-02 15:04:05Z07:00"), err)
-		default:
-			if cerr := ld.ctx.Err(); cerr != nil {
-				return fail(contextError(cerr), "")
-			}
-			return fail(err, "")
-		}
-		if l.Remote.Cache == CacheFetched {
-			if err := checkIdentity(fe.Identity); err != nil {
-				return fail(&FetchError{BaseError: about(fmt.Errorf("%q: the resolver returned %w", raw, err))}, "")
-			}
-			content = fe.Content
-			got = cacheEntry{
-				Identity: fe.Identity, Sum: sha256Hex(content), MediaType: fe.MediaType, Fetched: c.now(), Pinned: rr.pinned,
-				Validator: keptValidator(fe.Validator),
-			}
-			if got.Identity == "" {
-				got.Identity = "sha256:" + got.Sum
-			}
-		}
+	if hit && (rr.pinned || c.now().Sub(cached.entry.Fetched) < c.cacheTTL) {
+		l.Remote.Cache = CacheCached
+		return cached.entry, cached.content, nil
 	}
+	validator := ""
+	if hit {
+		validator = cached.entry.Validator
+	}
+	fe, err := ld.fetch(resolver, rr, r.from, r.pol, r.name, validator)
+	var fetchErr *FetchError
+	switch {
+	case err == nil:
+	case validator != "" && errors.Is(err, ErrNotModified):
+		l.Remote.Cache = CacheRevalidated
+		got := cached.entry
+		got.Fetched = c.now()
+		return got, cached.content, nil
+	case hit && errors.As(err, &fetchErr):
+		l.Remote.Cache = CacheStale
+		l.warn(WarnStaleInclude, "%s: using a cached copy from %s, because fetching it failed: %v", l.Path,
+			cached.entry.Fetched.Format("2006-01-02 15:04:05Z07:00"), err)
+		return cached.entry, cached.content, nil
+	default:
+		if cerr := ld.ctx.Err(); cerr != nil {
+			return cacheEntry{}, nil, r.fail(contextError(cerr), "")
+		}
+		return cacheEntry{}, nil, r.fail(err, "")
+	}
+	if err := checkIdentity(fe.Identity); err != nil {
+		return cacheEntry{}, nil, r.fail(&FetchError{BaseError: r.about(fmt.Errorf("%q: the resolver returned %w", r.raw, err))}, "")
+	}
+	got := cacheEntry{
+		Identity: fe.Identity, Sum: sha256Hex(fe.Content), MediaType: fe.MediaType, Fetched: c.now(), Pinned: rr.pinned,
+		Validator: keptValidator(fe.Validator),
+	}
+	if got.Identity == "" {
+		got.Identity = "sha256:" + got.Sum
+	}
+	return got, fe.Content, nil
+}
+
+// acceptRemote checks the content, whether fetched or cached: its size, its integrity fragment and its format. It
+// stores fresh content in the cache, and records the remote for a watcher's polling.
+func (r *resolving) acceptRemote(resolver IncludeResolver, rr remoteRef, got cacheEntry, content []byte) *entry {
+	ld, c, l := r.p.ld, r.p.ld.c, &r.l
 	l.Remote.Identity = got.Identity
 	if int64(len(content)) > c.maxIncludeSize {
-		return fail(&TooLargeError{BaseError: inside(fmt.Errorf("the content is %d bytes, and the limit is %d", len(content), c.maxIncludeSize))}, "")
+		return r.fail(&TooLargeError{BaseError: r.inside(fmt.Errorf("the content is %d bytes, and the limit is %d", len(content), c.maxIncludeSize))}, "")
 	}
 	if rr.sum != "" && sha256Hex(content) != rr.sum {
-		return reject("doesn't match its integrity fragment: the content's SHA-256 is "+sha256Hex(content), "the content doesn't match its integrity fragment")
+		return r.reject("doesn't match its integrity fragment: the content's SHA-256 is "+sha256Hex(content), "the content doesn't match its integrity fragment")
 	}
 	format, ok := ld.remoteFormat(rr, got.MediaType)
 	if !ok {
-		return fail(&UnsupportedFormatError{BaseError: inside(fmt.Errorf("no format rule, extension or media type (%q) has a registered decoder", got.MediaType))}, "")
+		return r.fail(&UnsupportedFormatError{BaseError: r.inside(fmt.Errorf("no format rule, extension or media type (%q) has a registered decoder", got.MediaType))}, "")
 	}
 	l.Format = format
 	if l.Remote.Cache == CacheFetched || l.Remote.Cache == CacheRevalidated {
 		ld.cacheStore(rr.ref.Ref, got, content)
 	}
 	if ld.rec != nil {
-		ld.rec.remotes = append(ld.rec.remotes, remoteUse{resolver: resolver, rr: rr, from: from, pol: pol, name: name})
+		ld.rec.remotes = append(ld.rec.remotes, remoteUse{resolver: resolver, rr: rr, from: r.from, pol: r.pol, name: r.name})
 	}
-	return &entry{layer: l, data: content, included: true, remote: &rr}
+	return &entry{layer: *l, data: content, included: true, remote: &rr}
 }
 
 // remoteAllowed checks a remote reference's scheme and allow-lists under pol, and says why it's rejected, if it is.

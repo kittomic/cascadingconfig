@@ -239,39 +239,11 @@ func (ld *loading) applyBootstrap(e *entry) error {
 	if e.layer.Status != LayerLoaded {
 		return nil
 	}
-	doc, err := DecodeDocument(c.decoder(e.layer.Format), e.layer.Path, e.data)
-	if err != nil {
+	t, ok, err := ld.bootstrapTree(e)
+	if err != nil || !ok {
 		return err
 	}
-	e.layer.Warnings = append(e.layer.Warnings, doc.Warnings...)
-	if doc.Empty {
-		e.layer.Status = LayerEmpty
-		return nil
-	}
-	t := doc.Tree
-	if e.key != nil {
-		sub, ok, err := subtree(t, e.key)
-		switch {
-		case err != nil:
-			return &ParseError{BaseError: BaseError{Op: "bootstrap", Path: e.layer.Path, Err: err}, Format: e.layer.Format}
-		case !ok:
-			e.layer.Status = LayerEmpty
-			return nil
-		}
-		t = sub
-	}
-	for _, f := range c.bootstrapTransforms {
-		next, err := f(ld.ctx, e.layer, tree.CopyMap(t))
-		if err != nil {
-			return &TransformError{BaseError: BaseError{
-				Op: "bootstrap", Path: e.layer.Path, Scope: string(e.layer.Scope), Err: err,
-			}}
-		}
-		t = next
-	}
-
 	limit, limited := c.bootstrapLimits[e.layer.Scope]
-	dir := filepath.Dir(e.layer.Path)
 	for _, k := range tree.SortedKeys(t) {
 		key := BootstrapKey(k)
 		if !c.bootstrapKeys[key] {
@@ -283,60 +255,103 @@ func (ld *loading) applyBootstrap(e *entry) error {
 				e.layer.Path, e.layer.Scope, k)
 			continue
 		}
-		if key == BootstrapMergeSearchPlaces {
-			merge, ok := t[k].(bool)
-			if !ok {
-				return ld.bootError(e, key, fmt.Errorf("the value must be a boolean, not %s", describeType(t[k])))
-			}
-			ld.settings.mergeSearchPlaces = merge
-			continue
+		if err := ld.applyBootstrapKey(e, key, t[k]); err != nil {
+			return err
 		}
-		list, err := stringList(t[k])
+	}
+	return nil
+}
+
+// bootstrapTree decodes a bootstrap file, takes its key's subtree when its pattern names one, and runs the transforms.
+// It reports false, having marked the layer empty, when there's nothing to apply.
+func (ld *loading) bootstrapTree(e *entry) (Tree, bool, error) {
+	c := ld.c
+	doc, err := DecodeDocument(c.decoder(e.layer.Format), e.layer.Path, e.data)
+	if err != nil {
+		return nil, false, err
+	}
+	e.layer.Warnings = append(e.layer.Warnings, doc.Warnings...)
+	if doc.Empty {
+		e.layer.Status = LayerEmpty
+		return nil, false, nil
+	}
+	t := doc.Tree
+	if e.key != nil {
+		sub, ok, err := subtree(t, e.key)
+		switch {
+		case err != nil:
+			return nil, false, &ParseError{BaseError: BaseError{Op: "bootstrap", Path: e.layer.Path, Err: err}, Format: e.layer.Format}
+		case !ok:
+			e.layer.Status = LayerEmpty
+			return nil, false, nil
+		}
+		t = sub
+	}
+	for _, f := range c.bootstrapTransforms {
+		next, err := f(ld.ctx, e.layer, tree.CopyMap(t))
 		if err != nil {
-			return ld.bootError(e, key, err)
+			return nil, false, &TransformError{BaseError: BaseError{
+				Op: "bootstrap", Path: e.layer.Path, Scope: string(e.layer.Scope), Err: err,
+			}}
 		}
-		switch key {
-		case BootstrapEnv:
-			for _, env := range list {
-				if err := checkName(env); err != nil {
-					return ld.bootError(e, key, fmt.Errorf("invalid environment name %q: %w", env, err))
-				}
+		t = next
+	}
+	return t, true, nil
+}
+
+// applyBootstrapKey checks one bootstrap key's value and records it in the load's settings.
+func (ld *loading) applyBootstrapKey(e *entry, key BootstrapKey, v any) error {
+	if key == BootstrapMergeSearchPlaces {
+		merge, ok := v.(bool)
+		if !ok {
+			return ld.bootError(e, key, fmt.Errorf("the value must be a boolean, not %s", describeType(v)))
+		}
+		ld.settings.mergeSearchPlaces = merge
+		return nil
+	}
+	list, err := stringList(v)
+	if err != nil {
+		return ld.bootError(e, key, err)
+	}
+	switch key {
+	case BootstrapEnv:
+		for _, env := range list {
+			if err := checkName(env); err != nil {
+				return ld.bootError(e, key, fmt.Errorf("invalid environment name %q: %w", env, err))
 			}
-			ld.settings.env, ld.settings.envFrom = list, e.layer.Path
-		case BootstrapFormats:
-			if len(list) == 0 {
-				return ld.bootError(e, key, errors.New("an empty list would turn every format off"))
+		}
+		ld.settings.env, ld.settings.envFrom = list, e.layer.Path
+	case BootstrapFormats:
+		if len(list) == 0 {
+			return ld.bootError(e, key, errors.New("an empty list would turn every format off"))
+		}
+		formats, errs := ld.c.parseFormats(list, true)
+		if len(errs) > 0 {
+			return ld.bootError(e, key, errs[0])
+		}
+		ld.settings.formats = append(ld.settings.formats, bootFormats{trust: e.layer.Trust, formats: formats})
+	case BootstrapCeilingPaths, BootstrapIgnoredConfigPaths:
+		dir := filepath.Dir(e.layer.Path)
+		for _, p := range list {
+			abs, ok := ld.bootPath(p, dir)
+			if !ok {
+				continue
 			}
-			formats, errs := c.parseFormats(list, true)
-			if len(errs) > 0 {
-				return ld.bootError(e, key, errs[0])
+			if key == BootstrapCeilingPaths {
+				ld.settings.ceilings = append(ld.settings.ceilings, abs)
+			} else {
+				ld.settings.ignored = append(ld.settings.ignored, ignoredPath{path: abs, trust: e.layer.Trust, from: e})
 			}
-			ld.settings.formats = append(ld.settings.formats, bootFormats{trust: e.layer.Trust, formats: formats})
-		case BootstrapCeilingPaths, BootstrapIgnoredConfigPaths:
-			for _, p := range list {
-				abs, ok := ld.bootPath(p, dir)
-				if !ok {
-					continue
-				}
-				if key == BootstrapCeilingPaths {
-					ld.settings.ceilings = append(ld.settings.ceilings, abs)
-				} else {
-					ld.settings.ignored = append(ld.settings.ignored, ignoredPath{path: abs, trust: e.layer.Trust, from: e})
-				}
+		}
+	case BootstrapOverrideConfigFilenames, BootstrapSearchPlaces:
+		for _, n := range list {
+			if err := checkPattern(Pattern{Template: n}); err != nil {
+				return ld.bootError(e, key, err)
 			}
-		case BootstrapOverrideConfigFilenames:
-			for _, n := range list {
-				if err := checkPattern(Pattern{Template: n}); err != nil {
-					return ld.bootError(e, key, err)
-				}
-			}
+		}
+		if key == BootstrapOverrideConfigFilenames {
 			ld.settings.override = list
-		case BootstrapSearchPlaces:
-			for _, n := range list {
-				if err := checkPattern(Pattern{Template: n}); err != nil {
-					return ld.bootError(e, key, err)
-				}
-			}
+		} else {
 			ld.settings.searchPlaces = list
 		}
 	}
