@@ -20,8 +20,8 @@ import (
 // Load type-checks the packages that patterns name from their export data, running go list in dir, and returns them
 // by import path.
 //
-// go test's cache doesn't see what Load reads, so a test using it can pass from the cache after the packages changed;
-// the pre-push hook runs the tests with -count=1 (DL-259).
+// go test's cache doesn't see what Load reads, so a package whose tests use it reads CC_TEST_INPUTS, which
+// scripts/each-module.sh sets to a hash of the repository (DL-288).
 func Load(dir string, patterns ...string) (map[string]*types.Package, error) {
 	args := append([]string{"list", "-export", "-json", "-deps", "--"}, patterns...)
 	cmd := exec.Command("go", args...)

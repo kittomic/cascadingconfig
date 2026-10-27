@@ -976,5 +976,5 @@ repository (making it public, its settings, each set of tags) is confirmed first
 - **Closing keywords** ("Closes #12") only close issues when a PR merges into the default branch, so issues closed by
   milestone PRs are closed by hand or on release.
 - **Release tags go on `main`.**
-- **Hooks are never skipped.** Until CI exists, lefthook is the only enforcement, so no commit or push uses
-  `--no-verify` or `LEFTHOOK=0`.
+- **Hooks are never skipped.** Until branch protection requires CI (DL-283), lefthook is the only enforcement, so no
+  commit or push uses `--no-verify` or `LEFTHOOK=0`.

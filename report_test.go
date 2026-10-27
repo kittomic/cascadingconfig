@@ -16,6 +16,7 @@ import (
 // selects an environment, a user file the walk reaches too, an empty env file, an EnvVars scope and an unknown key.
 // Secret values in the fixtures never appear.
 func TestReportGolden(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{
 		"/etc/myapp/config.json":              `{"log": {"level": "info"}}`,

@@ -57,6 +57,7 @@ func skippedEnvVar(t *testing.T, opts ...cc.Option) *cc.Loader {
 
 // DL-263: warnings are logged at their code's level, end to end.
 func TestLogLevelsEndToEnd(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	t.Run("untrusted is Info", func(t *testing.T) {
 		r := &records{}
@@ -206,6 +207,7 @@ func TestDiscardHandlerSilences(t *testing.T) {
 
 // DL-263: a load traces its summary and each layer at Debug.
 func TestLoadTracing(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	r := &records{}
 	files := map[string]string{rootCfg: `{"a": 1}`, sysDir + "/config.json": `{"b": 1}`}
@@ -228,6 +230,7 @@ func TestLoadTracing(t *testing.T) {
 
 // DL-263: each remote include is traced with its cache outcome.
 func TestRemoteTracing(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	const ref = "https://h.example/a.json"
 	c := newCacheEnv(t)
@@ -244,6 +247,7 @@ func TestRemoteTracing(t *testing.T) {
 
 // DL-263: a watcher traces its watch set, each event, and each reload with its number of changes.
 func TestWatcherTracing(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	e.watch(nil)

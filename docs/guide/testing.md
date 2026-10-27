@@ -17,8 +17,9 @@ host := cctest.Host{GOOS: "linux", GOARCH: "amd64", Home: "/home/me", Cwd: "/hom
 loader, err := cascadingconfig.NewWithPreset("myapp", mise.Preset, cascadingconfig.WithFileSystem(fsys), cctest.WithHost(host))
 ```
 
-- **`NewFS`** takes file paths and contents. Directories are implied, and the `FS` has methods for what tests need:
-  `WriteFile`, `Remove`, `Mkdir`, `Symlink`, `Chmod`, `Chown` and `Mkfifo`.
+- **`NewFS`** takes file paths and contents. They must be absolute on the OS the tests run on, so the Unix paths used
+  here work on Linux and macOS, but not on Windows. Directories are implied, and the `FS` has methods for what tests
+  need: `WriteFile`, `Remove`, `Mkdir`, `Symlink`, `Chmod`, `Chown` and `Mkfifo`.
 - **`WithHost`** replaces everything the loader would ask the process: the OS and architecture, which select platform
   environments and paths, the home and working directories, the user ID for permission checks, and the environment
   variables. Nothing leaks in from the real one.
@@ -85,4 +86,4 @@ Then compare:
 cctest.Golden(t, "report.golden", []byte(res.Describe().String()))
 ```
 
-Reports name paths in the fake world, so they're the same on every machine.
+Reports name paths in the fake world, so they're the same on every Linux or macOS machine.

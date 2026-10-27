@@ -272,6 +272,7 @@ func fzFiles(f *fuzzBytes, w *oWorld) map[string]string {
 }
 
 func FuzzPrecedence(f *testing.F) {
+	skipUnixPaths(f)
 	f.Add([]byte{0, 0, 0, 0, 2, 3, 0, 1, 0, 9, 0, 3, 5, 1, 2, 3})
 	f.Add([]byte{1, 1, 1, 1, 0, 1, 2, 2, 3, 1, 0, 0, 4, 7, 2, 1, 1, 0})
 	f.Add([]byte{2, 0, 1, 3, 1, 2, 0, 1, 3, 2, 5, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9})

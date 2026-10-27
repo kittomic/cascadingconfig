@@ -22,6 +22,7 @@ func hostWith(env map[string]string, change func(h *hooks.Host)) Option {
 
 // DL-112, design.md Platform directories: XDGDirs' user and system directories, and the bindings that override them.
 func TestPlatformDirs(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	files := map[string]string{
 		"/xdg/myapp/config.json":             `{"user": "xdg"}`,
@@ -73,6 +74,7 @@ func TestPlatformDirs(t *testing.T) {
 // DL-70, DL-108: on Windows, the system directory is %ProgramData%\{name}, falling back to C:\ProgramData. Paths are
 // joined with the real OS's rules.
 func TestWindowsSystemDir(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	h := testHost()
 	h.GOOS = "windows"
@@ -92,6 +94,7 @@ func TestWindowsSystemDir(t *testing.T) {
 // DL-112: without a home directory, scopes that use the user directory are skipped with a WarnNoHome warning. The
 // others still load.
 func TestNoHome(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := memfs.New(map[string]string{"/etc/myapp/config.json": `{"system": 1}`})
 	res := mustLoad(t, fsys,

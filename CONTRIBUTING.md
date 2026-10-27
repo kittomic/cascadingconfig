@@ -20,7 +20,8 @@ The repository is a Go workspace (`go.work`) of several modules.
 
 ## Checks
 
-Until CI exists, the hooks are the only enforcement, so **never skip them** with `--no-verify` or `LEFTHOOK=0`.
+CI runs the same checks on every PR, on Linux, with the tests also on macOS and Windows. The hooks catch problems before
+they reach CI, so **never skip them** with `--no-verify` or `LEFTHOOK=0`.
 
 - **Before each commit:** formatting, golangci-lint on what changed, `go mod tidy`, rumdl on staged markdown, and a
   gitleaks scan.
@@ -30,7 +31,7 @@ Until CI exists, the hooks are the only enforcement, so **never skip them** with
 - **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org), such as `feat(watch): …` or
   `docs: …`.
 
-Each check is a script in `scripts/`, so CI can run the same ones.
+Each check is a script in `scripts/`, and `.github/workflows/ci.yml` runs the same ones.
 
 ## How a change is made
 

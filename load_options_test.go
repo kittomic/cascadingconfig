@@ -25,6 +25,7 @@ func useKind(kind cc.ScopeKind) cc.Option {
 
 // DL-111, DL-113, DL-115: options and kinds that can only be mistakes.
 func TestLoadOptionErrors(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "a relative dir", opts: []cc.Option{useKind(cc.FixedDir("etc/{name}", p("config.json")...))}, ops: []string{"FixedDir"}},
@@ -53,6 +54,7 @@ func TestLoadOptionErrors(t *testing.T) {
 
 // DL-114: a selected file-reading scope with an empty format order is an *OptionError. Value scopes need no decoder.
 func TestFileScopeNeedsAFormat(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "no decoder", opts: []cc.Option{useKind(cc.FixedDir("/x", p("config.json")...))}, ops: []string{"New"}},
@@ -111,6 +113,7 @@ func attrs(rec slog.Record) map[string]string {
 
 // DL-115: warnings go to the logger at Warn level, with their code and file.
 func TestWarningsReachTheLogger(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(nil)
 	fsys.Mkfifo("/d/config.json")

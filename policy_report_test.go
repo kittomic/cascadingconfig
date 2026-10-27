@@ -116,6 +116,7 @@ func TestReportPolicyText(t *testing.T) {
 // DL-194, design.md Per-scope policies, "Describe()": a rejected reference fails the load, and the failed result's
 // report lists it as LayerFailed, with its scope, its includer, and which scope's policy rejected it and why.
 func TestReportRejectedReference(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{rootCfg: `{"include": "../outside.json"}`, "/home/me/outside.json": `{}`})
 	res, err := incLoad(t, fsys, cc.WithScopePolicy("proj", cc.AllowResolvers("file"), cc.Confine("{config_root}")))

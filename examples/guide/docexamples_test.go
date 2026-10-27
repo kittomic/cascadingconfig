@@ -1,3 +1,8 @@
+// These tests use Unix paths in cctest's world, which aren't absolute on Windows, so the file doesn't build there
+// (DL-282).
+
+//go:build !windows
+
 package guide_test
 
 import (

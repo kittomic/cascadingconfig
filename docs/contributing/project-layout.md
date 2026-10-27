@@ -90,8 +90,8 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
   `presets` last.
 - **`go.work` is committed,** so working in the repo builds every module against its local siblings. It has no effect on
   consumers.
-- **Release check:** each module is also built and tested with `GOWORK=off`, from lefthook's pre-push for now and from
-  CI later. That catches a module that silently depends on unreleased core changes.
+- **Release check:** each module is also built and tested with `GOWORK=off`, from lefthook's pre-push and from CI. That
+  catches a module that silently depends on unreleased core changes.
 - **Replacing the core:** modules that are never released (`internal/compat`, `examples`) may `replace` the core with
   the repository's copy, so they build with `GOWORK=off` too. Until the first release, so may the modules that will be
   released (`format/toml`, `format/yaml` and the rest), because the repository is private and the core can't be fetched
@@ -114,7 +114,7 @@ done
 | `go-mod-tidy` (pre-commit)         | Loop over the modules. Also match any `go.mod` or `go.sum`, not only the root ones.             |
 | `go-lint` (pre-commit)             | Loop over the modules, each with `--new-from-rev=HEAD`.                                         |
 | `go-fmt` (pre-commit)              | No change: it runs on staged files.                                                             |
-| `go-test` (pre-push)               | Loop over the modules, with `-race`, uncached on the latest Go (DL-259).                        |
+| `go-test` (pre-push)               | Loop over the modules, with `-race` on the latest Go, cached; the repository is an input (DL-288). |
 | `golangci-lint` (pre-push)         | Loop over the modules.                                                                          |
 | `govulncheck` (pre-push)           | Loop over the modules. Then each module is checked against its own dependencies.               |
 | `deps` (pre-push, from M6)         | `scripts/check-deps.sh` builds a throwaway consumer for each setup whose modules exist and checks the counts below (DL-173). |
@@ -123,10 +123,10 @@ done
 In workspace mode, `go test ./...` from the root may already match packages in every workspace module. That should be
 verified when the modules are created, but the loop is used regardless, so that every tool behaves the same way.
 
-CI is deferred ([implementation-plan.md](../planning/implementation-plan.md#decisions)). Until it exists, lefthook runs
-every check, including the `GOWORK=off` release check, as scripts in `scripts/` that CI will later reuse. The tests run
-on two Go versions: the minimum from the `go` directive (Go 1.26, through `mise exec go@1.26 --`) and the latest, so
-that the stated minimum is actually tested.
+Lefthook runs every check, including the `GOWORK=off` release check, as scripts in `scripts/`, and CI
+(`.github/workflows/ci.yml`) runs the same scripts on every PR (DL-283). The tests run on two Go versions: the minimum
+from the `go` directive (Go 1.26, through `mise exec go@1.26 --`) and the latest, so that the stated minimum is actually
+tested.
 
 ## Dependency analysis
 
@@ -189,6 +189,6 @@ stub blank-imports its real library. A small consumer app was then created for e
 | # | Question                    | Decision                                                                                                   |
 | - | --------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | 1 | The `go` directive          | `go 1.26.0` in every module and in `go.work`: the oldest supported Go release, and the minimum consumers need. `filepath.IsLocal` (Go 1.20) and `os.Root` (Go 1.24) are both older. The dev toolchain stays at the latest Go, through mise. |
-| 2 | Committing `go.work`        | Committed, with the `GOWORK=off` release check (lefthook now, CI later).                                                        |
+| 2 | Committing `go.work`        | Committed, with the `GOWORK=off` release check (lefthook and CI).                                                        |
 | 3 | JSON in every layout        | Yes. JSON uses only `encoding/json`, so every core layout registers it, through the parser in `internal/json` that `format/json` also wraps (DL-95). |
 | 4 | One `presets` module        | One module for now. It may be reconsidered later, for example if SBOM noise from `go list -m all` becomes a problem. |

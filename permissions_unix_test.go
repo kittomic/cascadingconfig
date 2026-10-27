@@ -20,6 +20,13 @@ func TestOSStrictModes(t *testing.T) {
 	good, bad := filepath.Join(dir, "good.json"), filepath.Join(dir, "bad.json")
 	writeFile(t, good, `{"a": 1}`)
 	writeFile(t, bad, `{"b": 2}`)
+	// The modes are set explicitly: the directory and files are created through the umask, which is 0002 on some
+	// systems, and StrictModes checks the directory too.
+	for p, mode := range map[string]os.FileMode{dir: 0o755, good: 0o644} {
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.Chmod(bad, 0o664); err != nil {
 		t.Fatal(err)
 	}

@@ -24,6 +24,7 @@ func walkLoad(t *testing.T, change func(*hooks.Host), opts ...Option) *Result {
 // DL-5, DL-122, design.md Directory walk: from inside ~, the walk searches up to and including ~; from outside, it
 // goes to /. Directories apply root-most first.
 func TestWalkGolden(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	inside := walkLoad(t, func(h *hooks.Host) { h.Cwd = "/home/me/work/app" })
 	golden.Check(t, "discovery/walk-inside-home.golden", []byte(detail(inside)))
@@ -34,6 +35,7 @@ func TestWalkGolden(t *testing.T) {
 // DL-122: StopAtRoot always walks to /; WithStartDir sets the start, resolving a relative dir against the current
 // directory; with no home directory, the walk goes to /.
 func TestWalkOptions(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	cwd := func(h *hooks.Host) { h.Cwd = "/home/me/work/app" }
 	tests := []struct {
@@ -67,6 +69,7 @@ func TestWalkOptions(t *testing.T) {
 // is a path list with the host's separator; empty entries are dropped, relative ones resolve against the current
 // directory, and ~ is expanded.
 func TestCeilings(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	cwd := "/home/me/work/app"
 	tests := []struct {

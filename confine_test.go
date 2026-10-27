@@ -38,6 +38,7 @@ func confineFS(ref string) *cctest.FS {
 // DL-180: references that resolve outside the roots, directly, through dot segments, through symlinks to files or
 // directories, or into a sibling with the same prefix, are *PolicyErrors.
 func TestConfineEscapes(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	for _, ref := range []string{
 		"../outside.json",
@@ -70,6 +71,7 @@ func TestConfineEscapes(t *testing.T) {
 // DL-180: references inside the roots load, including through a symlink outside the roots whose target is inside,
 // because the target is what's checked.
 func TestConfineAllows(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	for _, ref := range []string{"sub/a.json", work + "/sub/a.json", "./sub/a.json", "/srv/in.json"} {
 		t.Run(ref, func(t *testing.T) {
@@ -85,6 +87,7 @@ func TestConfineAllows(t *testing.T) {
 // DL-180, design.md Local files, "Confine": roots are resolved through symlinks too; a root that doesn't exist matches
 // nothing.
 func TestConfineRoots(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	t.Run("a root through a symlink", func(t *testing.T) {
 		fsys := confineFS("sub/a.json")
@@ -144,6 +147,7 @@ func TestConfineOnlyIncludes(t *testing.T) {
 
 // DL-20, DL-189: MiseHardenedLayout confines local includes to the config root, {user} and {system}.
 func TestHardenedConfinement(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	userCfg := "/home/me/.config/myapp/config.json"
 	systemCfg := "/etc/myapp/config.json"

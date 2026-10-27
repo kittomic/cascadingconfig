@@ -46,6 +46,7 @@ func wantTree(t *testing.T, got cc.Tree, want cc.Tree) {
 
 // DL-109: NewFS and WriteFile create files and their directories.
 func TestFSFiles(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/d/a.json": `{"a": 1}`})
 	fsys.WriteFile("/d/b.json", []byte(`{"b": 2}`), 0o644)
@@ -58,6 +59,7 @@ func TestFSFiles(t *testing.T) {
 
 // DL-109: Symlink, Link, Mkfifo, Mkdir and Chmod behave as on a real filesystem.
 func TestFSSpecialEntries(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/real.json": `{"a": 1}`, "/d/locked.json": `{"x": 1}`})
 	fsys.Symlink("/srv/real.json", "/d/link.json")
@@ -107,6 +109,7 @@ func TestFSSpecialEntries(t *testing.T) {
 
 // DL-109: a symlink that leaves a root can't be followed through it, as with os.Root.
 func TestFSRootConfinement(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/real.json": `{}`})
 	fsys.Symlink("/srv/real.json", "/d/link.json")
@@ -125,6 +128,7 @@ func TestFSRootConfinement(t *testing.T) {
 
 // DL-108, DL-109: WithHost supplies env vars and the home directory; nothing is read from the process.
 func TestWithHost(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/xdg/myapp/config.json": `{"from": "xdg"}`, "/home/me/.config/myapp/config.json": `{"from": "home"}`})
 	h := host

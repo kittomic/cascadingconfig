@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check the dependency budget (DL-173): for each setup in docs/contributing/project-layout.md whose modules exist, build
 # a throwaway consumer module that imports them, and compare the third-party modules it pulls in with the expected
-# counts.
+# counts. Every third-party module a consumer builds with must also be in the licence list below (DL-280).
 #
 # The consumer replaces this repository's modules with the local copies, so it measures what an app would get from the
 # current code. go mod tidy needs the module cache or network access. Written for bash 3.2, which macOS ships.
@@ -21,6 +21,21 @@ setups=(
 	"presets-mise|9 9 9 11|${repo}/presets/mise"
 	"presets-misehardened|5 5 5 9|${repo}/presets/misehardened"
 	"presets-cosmiconfig|4 4 4 9|${repo}/presets/cosmiconfig"
+)
+
+# Each third-party module the released modules build with, and its licence, as reviewed in
+# docs/design/decisions/0005-dependencies-before-release.md. A new dependency fails the check until its licence is
+# reviewed, found compatible with Apache-2.0, and listed here.
+licences=(
+	"github.com/fsnotify/fsnotify|BSD-3-Clause"
+	"github.com/go-viper/mapstructure/v2|MIT"
+	"github.com/goccy/go-yaml|MIT"
+	"github.com/opencontainers/go-digest|Apache-2.0"
+	"github.com/opencontainers/image-spec|Apache-2.0"
+	"github.com/pelletier/go-toml/v2|MIT"
+	"golang.org/x/sync|BSD-3-Clause"
+	"golang.org/x/sys|BSD-3-Clause"
+	"oras.land/oras-go/v2|Apache-2.0"
 )
 
 work="$(mktemp -d)"
@@ -75,7 +90,8 @@ for setup in "${setups[@]}"; do
 
 	gomod="$(awk '/^require \(/{r=1; next} r && /^\)/{r=0} r{print $1} /^require [^(]/{print $2}' "$dir/go.mod" | third_party | wc -l)"
 	gosum="$( (cut -d' ' -f1 "$dir/go.sum" 2>/dev/null || true) | third_party | wc -l)"
-	build="$(cd "$dir" && GOWORK=off go list -deps -f '{{with .Module}}{{.Path}}{{end}}' . | third_party | wc -l)"
+	built="$(cd "$dir" && GOWORK=off go list -deps -f '{{with .Module}}{{.Path}}{{end}}' . | third_party)"
+	build="$(echo "$built" | sed '/^$/d' | wc -l)"
 	graph="$(cd "$dir" && GOWORK=off go list -m all | cut -d' ' -f1 | third_party | wc -l)"
 	got="$(echo "$gomod $gosum $build $graph" | tr -s ' ' | sed 's/^ //')"
 
@@ -85,10 +101,22 @@ for setup in "${setups[@]}"; do
 		echo "${name}: go.mod go.sum build graph = ${got}, want ${want} (docs/contributing/project-layout.md#dependency-analysis)" >&2
 		failed="${failed} ${name}"
 	fi
+
+	while IFS= read -r mod; do
+		[[ -z "$mod" ]] && continue
+		listed=""
+		for l in "${licences[@]}"; do
+			[[ "${l%%|*}" == "$mod" ]] && listed=1
+		done
+		if [[ -z "$listed" ]]; then
+			echo "${name}: ${mod} isn't in the licence list in scripts/check-deps.sh; review its licence first (DL-280)" >&2
+			failed="${failed} ${name}"
+		fi
+	done <<<"$built"
 done
 
 if [[ -n "$failed" ]]; then
-	echo "dependency budget exceeded in:${failed}" >&2
+	echo "dependency budget or licence list failed in:${failed}" >&2
 	exit 1
 fi
-echo "dependency budget met in every setup"
+echo "dependency budget met, and every dependency's licence listed, in every setup"
