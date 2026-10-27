@@ -1962,6 +1962,9 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 - **One at a time** (DL-223): one goroutine runs a reload, then the handler, then the next reload. While the handler
   runs, events keep coalescing, but the next reload waits for it to return. `Current()` is updated before the handler is
   called.
+- **The handler's context** (DL-279) is cancelled when the watcher closes, and marks the call: `Reload` with it queues
+  its handler call after the current one, where any other `Reload` waits for its call. `Close` doesn't wait for a
+  running handler, and `Done()` closes once the last call returns.
 - **Manual reload:** `w.Reload(ctx)` forces one, for example on `SIGHUP`. It also re-reads env vars and `Values`
   functions, which can't be watched. It takes any pending events with it, cancelling the debounce timer.
 

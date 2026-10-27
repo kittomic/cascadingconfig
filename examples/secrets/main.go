@@ -92,7 +92,9 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 	show(out, w.Current())
 	mu.Unlock()
 	<-ctx.Done()
-	return w.Close()
+	err = w.Close()
+	<-w.Done() // Close doesn't wait for a handler call that's still running
+	return err
 }
 
 // show prints cfg with each secret replaced by a short fingerprint, so a rotation is visible but the value isn't.

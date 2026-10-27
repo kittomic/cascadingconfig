@@ -88,6 +88,7 @@ func run(ctx context.Context, args []string, out io.Writer, opts ...cascadingcon
 	if err := w.Close(); err != nil {
 		return err
 	}
+	<-w.Done() // Close doesn't wait for a handler call that's still running
 	printf("stopped\n")
 	return nil
 }

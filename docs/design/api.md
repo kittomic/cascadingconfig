@@ -828,8 +828,10 @@ func New() (cascadingconfig.Notifier, error)
 
 - **Option errors:** from `Watch`, as `*OptionError`s: a negative `quiet`, a `maxWait` below `quiet`, a poll interval
   that isn't positive, and a negative remote poll interval. A nil notifier factory is an `*OptionError` from `New`.
-- **`Close` and `Reload` from the handler** (DL-223): `Close` returns without waiting, and `Reload` runs the reload and
-  returns, with its handler call after the current one. From any other goroutine, both wait.
+- **`Close` and `Reload` from the handler** (DL-279): the handler gets a context, cancelled when the watcher closes.
+  `Reload` with that context, or one derived from it, runs the reload and returns, its handler call following the
+  current one; with any other context it waits for that call. `Close` never waits for a running handler, and `Done()`
+  closes once the last call returns.
 - **`Report.String()`** shows `(revalidated)` like `(cached)`.
 
 #### Settled in M9b
@@ -1100,8 +1102,8 @@ cascadingconfig.WithDefaults(Config{
 **Lifecycle:**
 
 - **`ctx` bounds the watcher.** Cancelling it stops watching, as `Close` does.
-- **`Close`** is idempotent. It waits for a running handler to return, and it's safe to call from inside the handler,
-  where it returns without waiting (DL-223).
+- **`Close`** is idempotent, and doesn't wait for a running handler, so it's safe to call from inside one. Once it
+  returns no new handler call starts, and `Done()` closes after the running one returns (DL-279).
 - **`Reload(ctx)`** returns an `error`. It calls the handler only if the reload changed something, failed, or is the
   first good reload after a failure (DL-222).
 - **What counts as a change:** a difference in the merged values, compared exactly (DL-233). Dates and times are RFC

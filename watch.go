@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -25,14 +22,23 @@ type Watcher[T any] struct {
 
 	cur atomic.Pointer[snapshot[T]]
 
+	// hctx is the base of every handler call's context, cancelled when the watcher closes (DL-279).
+	hctx    context.Context
+	hcancel context.CancelFunc
+
 	// run is held for a reload and the handler calls it causes, so handler calls never overlap (DL-223).
-	run     sync.Mutex
-	handler atomic.Int64 // the goroutine id of the running handler call, or 0
-	queue   []Change[T]  // changes waiting for the handler; guarded by run
+	run sync.Mutex
+	// inner orders a reload that the running handler call asks for, through its context, with the call's end, so two
+	// reloads never run at once; it guards queue (DL-279).
+	inner sync.Mutex
+	queue []Change[T] // changes waiting for the handler
 
 	mu       sync.Mutex
 	closed   bool
-	done     chan struct{}
+	done     chan struct{} // closed by Close: stops the watcher's goroutines
+	running  bool          // a handler call is running
+	finished chan struct{} // Done: closed once closed and no handler call is running
+	ended    bool          // finished is closed
 	notifier Notifier
 	pollAll  bool               // every directory polls: no notifier, a failed one, or WithPolling
 	plan     *watchPlan         // the current watch set
@@ -100,9 +106,10 @@ func Watch[T any](ctx context.Context, l *Loader, fn func(context.Context, Chang
 		return nil, err
 	}
 	w := &Watcher[T]{
-		l: l, c: l.cfg, ctx: ctx, fn: fn, s: s, done: make(chan struct{}),
+		l: l, c: l.cfg, ctx: ctx, fn: fn, s: s, done: make(chan struct{}), finished: make(chan struct{}),
 		watched: map[string]bool{}, polled: map[string]dirScan{}, warned: map[string]bool{}, remotes: map[string]*remoteState{},
 	}
+	w.hctx, w.hcancel = context.WithCancel(ctx) //nolint:gosec // Close calls hcancel, and a cancelled ctx calls Close
 	w.cur.Store(&snapshot[T]{value: v, res: res})
 	switch {
 	case s.polling:
@@ -167,22 +174,28 @@ func (w *Watcher[T]) Current() T {
 }
 
 // Reload forces a reload, which also re-reads env vars and Values functions, and takes any pending events with it. It
-// returns the reload's error. From any goroutine but the handler's, it also waits for the handler call the reload
-// causes; from the handler's, that call follows the current one (DL-223). After Close, or once ctx is cancelled, it's a
+// returns the reload's error. Called with the context a running handler call received, or one derived from it, the
+// handler call the reload causes follows the current one; called with any other context, Reload also waits for that
+// call, so a handler that reloads must pass its own context (DL-279). After Close, or once ctx is cancelled, it's a
 // *BaseError with CodeCanceled.
 func (w *Watcher[T]) Reload(ctx context.Context) error {
 	if err := w.stopped(); err != nil {
 		return err
 	}
-	if w.inHandler() {
-		w.mu.Lock()
-		w.clearPending()
-		w.mu.Unlock()
-		ch, notify, err := w.reload(ctx)
-		if notify && w.fn != nil {
-			w.queue = append(w.queue, ch)
+	if call, ok := ctx.Value(handlerKey{}).(*handlerCall); ok && call.w == any(w) {
+		w.inner.Lock()
+		if call.active {
+			defer w.inner.Unlock()
+			w.mu.Lock()
+			w.clearPending()
+			w.mu.Unlock()
+			ch, notify, err := w.reload(ctx)
+			if notify && w.fn != nil {
+				w.queue = append(w.queue, ch)
+			}
+			return err
 		}
-		return err
+		w.inner.Unlock() // the call has ended, so this is an outside Reload
 	}
 	w.run.Lock()
 	defer w.run.Unlock()
@@ -199,8 +212,9 @@ func (w *Watcher[T]) Reload(ctx context.Context) error {
 	return err
 }
 
-// Close stops watching. It waits for a running handler to return, except when called from the handler itself. It
-// returns the notifier's Close error the first time, and nil after that.
+// Close stops watching. It doesn't wait for a running handler call: once it returns, no new call starts, and Done
+// closes when the running one returns, so Close can be called from the handler (DL-279). It cancels the handlers'
+// context, and returns the notifier's Close error the first time, and nil after that.
 func (w *Watcher[T]) Close() error {
 	w.mu.Lock()
 	if w.closed {
@@ -209,6 +223,7 @@ func (w *Watcher[T]) Close() error {
 	}
 	w.closed = true
 	close(w.done)
+	w.endIfIdle()
 	w.clearPending()
 	if w.pollT != nil {
 		w.pollT.Stop()
@@ -222,16 +237,23 @@ func (w *Watcher[T]) Close() error {
 	}
 	n := w.notifier
 	w.mu.Unlock()
-	var err error
+	w.hcancel()
 	if n != nil {
-		err = n.Close()
+		return n.Close()
 	}
-	if !w.inHandler() {
-		w.run.Lock()
-		//nolint:staticcheck // an empty critical section: waiting for a running handler to return is the point
-		w.run.Unlock()
+	return nil
+}
+
+// Done returns a channel that's closed once the watcher has closed, by Close or its context, and its last handler
+// call has returned (DL-279).
+func (w *Watcher[T]) Done() <-chan struct{} { return w.finished }
+
+// endIfIdle closes finished once the watcher is closed and no handler call is running. The caller holds mu.
+func (w *Watcher[T]) endIfIdle() {
+	if w.closed && !w.running && !w.ended {
+		w.ended = true
+		close(w.finished)
 	}
-	return err
 }
 
 // stopped returns the error for a watcher that's closed or whose ctx is done.
@@ -283,59 +305,66 @@ func (w *Watcher[T]) reload(ctx context.Context) (Change[T], bool, error) {
 	return ch, changed || recovered || w.s.anyEvent, nil
 }
 
-// deliver calls the handler with ch, then with any changes a Reload from the handler queued. The caller holds run.
+// deliver calls the handler with ch, then with any changes that reloads the calls asked for queued. The caller holds
+// run.
 func (w *Watcher[T]) deliver(ch Change[T]) {
 	if w.fn == nil {
 		return
 	}
+	w.inner.Lock()
 	w.queue = append(w.queue, ch)
-	for len(w.queue) > 0 {
-		next := w.queue[0]
-		w.queue = w.queue[1:]
-		w.mu.Lock()
-		closed := w.closed
-		w.mu.Unlock()
-		if closed {
-			w.queue = nil
+	w.inner.Unlock()
+	for {
+		w.inner.Lock()
+		if len(w.queue) == 0 {
+			w.inner.Unlock()
 			return
 		}
+		next := w.queue[0]
+		w.queue = w.queue[1:]
+		w.inner.Unlock()
+
+		w.mu.Lock()
+		if w.closed {
+			w.mu.Unlock()
+			w.inner.Lock()
+			w.queue = nil
+			w.inner.Unlock()
+			return
+		}
+		w.running = true
+		w.mu.Unlock()
 		w.call(next)
+		w.mu.Lock()
+		w.running = false
+		w.endIfIdle()
+		w.mu.Unlock()
 	}
 }
 
-// call runs the handler once, recovering a panic, which is logged at error level (DL-77).
+// handlerCall marks a context as a handler call's (DL-279). Reload recognises it while the call runs.
+type handlerCall struct {
+	w      any
+	active bool // guarded by the watcher's inner
+}
+
+type handlerKey struct{}
+
+// call runs the handler once, with a context marked as this call's, recovering a panic, which is logged at error level
+// (DL-77).
 func (w *Watcher[T]) call(ch Change[T]) {
-	w.handler.Store(goid())
-	defer w.handler.Store(0)
+	marker := &handlerCall{w: w, active: true}
+	defer func() {
+		w.inner.Lock()
+		marker.active = false
+		w.inner.Unlock()
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			w.logger().LogAttrs(w.ctx, slog.LevelError, fmt.Sprintf("the watch handler panicked: %v", r))
 		}
 	}()
-	w.fn(w.ctx, ch)
-}
-
-// Done returns a channel that's closed once the watcher has closed and its last handler call has returned (DL-279).
-func (w *Watcher[T]) Done() <-chan struct{} {
-	return nil // not implemented yet
-}
-
-// inHandler reports whether the calling goroutine is running the handler.
-func (w *Watcher[T]) inHandler() bool {
-	id := w.handler.Load()
-	return id != 0 && id == goid()
-}
-
-// goid returns the calling goroutine's id, from the first line of its stack: "goroutine N [".
-func goid() int64 {
-	var buf [64]byte
-	s := strings.TrimPrefix(string(buf[:runtime.Stack(buf[:], false)]), "goroutine ")
-	if i := strings.IndexByte(s, ' '); i > 0 {
-		if id, err := strconv.ParseInt(s[:i], 10, 64); err == nil {
-			return id
-		}
-	}
-	return 0
+	w.fn(context.WithValue(w.hctx, handlerKey{}, marker), ch)
 }
 
 // events reads the notifier until it stops or the watcher closes.

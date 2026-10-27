@@ -46,7 +46,14 @@ handler gets `Err` with `Old` and `New` both the last good config, and a `reload
 is called again by the next good reload, even if nothing changed since the last good one, so you know it recovered.
 
 **The handler** runs on the watcher's own goroutine, one call at a time; events that arrive meanwhile are coalesced into
-the next reload. It may call `Reload` or `Close`. `WithReloadOnAnyEvent()` calls it after every reload, changed or not.
+the next reload. `WithReloadOnAnyEvent()` calls it after every reload, changed or not.
+
+- **Its context** is cancelled when the watcher closes, so a long handler can stop early.
+- **Reloading from the handler:** pass the handler's own `ctx` to `Reload`. Its reload runs, and the handler call it
+  causes follows the current one. Any other context makes `Reload` wait for that call, which from inside the handler
+  would wait forever.
+- **Closing from the handler** is safe: `Close` never waits for a running handler. To wait until the handler has
+  finished, after `Close`, read from `w.Done()`.
 
 ## Events and polling
 
