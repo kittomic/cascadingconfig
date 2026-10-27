@@ -1,0 +1,4 @@
+func New(...Option) cascadingconfig.IncludeResolver
+func WithClient(*http.Client) Option
+type Option interface
+type Option interface, unexported methods

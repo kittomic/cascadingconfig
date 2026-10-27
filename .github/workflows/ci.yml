@@ -1,0 +1,126 @@
+# CI runs the same scripts as lefthook's pre-push (DL-283), so a check passes or fails the same way in both places.
+#
+# Go's module and build caches, which also hold go test's results (DL-288), and golangci-lint's cache are restored at
+# the start of every run and saved at the end, under a key per commit. A PR's run restores its own last caches or its
+# base branch's; GitHub evicts the least recently used once the repository's caches pass 10 GB.
+name: CI
+
+on:
+  pull_request:
+    branches: [wip, main]
+  push:
+    branches: [wip, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans the whole history, and restore-mtimes.go needs it
+          persist-credentials: false
+      # Installs the tools pinned in .config/mise.toml.
+      - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+      # go test's cache compares the files a test opens by modification time, which a checkout sets to now (DL-288).
+      - name: Restore modification times
+        run: go run scripts/restore-mtimes.go
+      - name: Cache paths
+        id: paths
+        run: |
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+      - name: Restore caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.paths.outputs.mod }}
+            ${{ steps.paths.outputs.build }}
+            ~/.cache/golangci-lint
+          key: go-${{ runner.os }}-${{ hashFiles('.config/mise.toml', '**/go.sum') }}-${{ github.sha }}
+          restore-keys: go-${{ runner.os }}-${{ hashFiles('.config/mise.toml', '**/go.sum') }}-
+      - name: Tests on the latest and the minimum Go
+        run: scripts/check-go-versions.sh
+      - name: Each module without go.work
+        run: scripts/check-gowork-off.sh
+      - name: Lint
+        run: scripts/each-module.sh golangci-lint run ./...
+      - name: Vulnerabilities
+        run: scripts/each-module.sh govulncheck ./...
+      - name: Licence files
+        run: scripts/check-licenses.sh
+      - name: Dependency budget and licences
+        run: scripts/check-deps.sh
+      - name: Markdown
+        run: rumdl check .
+      - name: Secrets
+        run: gitleaks git --redact --no-banner
+      - name: Save caches
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.paths.outputs.mod }}
+            ${{ steps.paths.outputs.build }}
+            ~/.cache/golangci-lint
+          key: go-${{ runner.os }}-${{ hashFiles('.config/mise.toml', '**/go.sum') }}-${{ github.sha }}
+
+  # macOS and Windows runners are free only for public repositories, so these run once the repository is public.
+  # Linux runs every test on every PR in the job above.
+  test:
+    name: Tests (${{ matrix.os }})
+    if: ${{ !github.event.repository.private }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # restore-mtimes.go needs each file's last commit
+          persist-credentials: false
+      - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        with:
+          install_args: go
+      # go test's cache compares the files a test opens by modification time, which a checkout sets to now (DL-288).
+      - name: Restore modification times
+        run: go run scripts/restore-mtimes.go
+      - name: Cache paths
+        id: paths
+        run: |
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+      - name: Restore caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.paths.outputs.mod }}
+            ${{ steps.paths.outputs.build }}
+          key: go-${{ runner.os }}-${{ hashFiles('.config/mise.toml', '**/go.sum') }}-${{ github.sha }}
+          restore-keys: go-${{ runner.os }}-${{ hashFiles('.config/mise.toml', '**/go.sum') }}-
+      # The race detector needs cgo, which the Windows runner doesn't set up, so it runs on macOS only.
+      - name: Tests
+        run: |
+          race=""
+          if [[ "$RUNNER_OS" == "macOS" ]]; then race="-race"; fi
+          scripts/each-module.sh go test $race ./...
+      - name: Save caches
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.paths.outputs.mod }}
+            ${{ steps.paths.outputs.build }}
+          key: go-${{ runner.os }}-${{ hashFiles('.config/mise.toml', '**/go.sum') }}-${{ github.sha }}

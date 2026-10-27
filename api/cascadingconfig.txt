@@ -1,0 +1,602 @@
+const Append MergeStrategy = 3
+const BindCeilingPaths Binding = "CEILING_PATHS"
+const BindConfigDir Binding = "CONFIG_DIR"
+const BindConfigFile Binding = "CONFIG_FILE"
+const BindConfigFormats Binding = "CONFIG_FORMATS"
+const BindEnv Binding = "ENV"
+const BindGlobalConfigFile Binding = "GLOBAL_CONFIG_FILE"
+const BindIgnoredConfigPaths Binding = "IGNORED_CONFIG_PATHS"
+const BindOverrideConfigFilenames Binding = "OVERRIDE_CONFIG_FILENAMES"
+const BindSystemConfigDir Binding = "SYSTEM_CONFIG_DIR"
+const BindSystemConfigFile Binding = "SYSTEM_CONFIG_FILE"
+const BootstrapCeilingPaths BootstrapKey = "ceiling_paths"
+const BootstrapEnv BootstrapKey = "env"
+const BootstrapFormats BootstrapKey = "formats"
+const BootstrapIgnoredConfigPaths BootstrapKey = "ignored_config_paths"
+const BootstrapMergeSearchPlaces BootstrapKey = "mergeSearchPlaces"
+const BootstrapOverrideConfigFilenames BootstrapKey = "override_config_filenames"
+const BootstrapSearchPlaces BootstrapKey = "searchPlaces"
+const CacheCached CacheState = "cached"
+const CacheFetched CacheState = ""
+const CacheRevalidated CacheState = "revalidated"
+const CacheStale CacheState = "stale"
+const CodeBadGateway Code = 502
+const CodeBadRequest Code = 400
+const CodeCanceled Code = 499
+const CodeConflict Code = 409
+const CodeForbidden Code = 403
+const CodeGatewayTimeout Code = 504
+const CodeInternal Code = 500
+const CodeLoopDetected Code = 508
+const CodeNotFound Code = 404
+const CodeNotImplemented Code = 501
+const CodeTooLarge Code = 413
+const CodeUnprocessable Code = 422
+const CodeUnsupportedMediaType Code = 415
+const ConflictFail FormatConflict = 2
+const ConflictFirst FormatConflict = 1
+const ConflictMerge FormatConflict = 0
+const DeepMerge MergeStrategy = 1
+const DiffAdded DiffKind = 1
+const DiffChanged DiffKind = 3
+const DiffRemoved DiffKind = 2
+const FirstMatch Resolution = 1
+const IncludeFlat IncludeNesting = 0
+const IncludeNested IncludeNesting = 1
+const LayerDuplicate LayerStatus = 5
+const LayerEmpty LayerStatus = 2
+const LayerFailed LayerStatus = 4
+const LayerIgnored LayerStatus = 1
+const LayerLoaded LayerStatus = 0
+const LayerUnreadable LayerStatus = 3
+const LayerUntrusted LayerStatus = 6
+const MergeAll Resolution = 0
+const OriginAppended OriginKind = 3
+const OriginFunc OriginKind = 6
+const OriginMerged OriginKind = 2
+const OriginNull OriginKind = 5
+const OriginPrepended OriginKind = 4
+const OriginSet OriginKind = 1
+const OriginUnset OriginKind = 7
+const PermissionAllow Permission = 0
+const PermissionError Permission = 2
+const PermissionIgnore Permission = 1
+const Prepend MergeStrategy = 4
+const Replace MergeStrategy = 2
+const RequireAny Require = 0
+const RequireFile Require = 1
+const RequireNonEmpty Require = 2
+const RootFileDir RootMode = 1
+const RootSearchDir RootMode = 0
+const ScopeDefaults ScopeName = "defaults"
+const ScopeOverride ScopeName = "override"
+const ScopeProject ScopeName = "project"
+const ScopeSystem ScopeName = "system"
+const ScopeUser ScopeName = "user"
+const SearchGlobal SearchStrategy = 2
+const SearchNone SearchStrategy = 0
+const SearchProject SearchStrategy = 1
+const StopAtHome WalkStop = 0
+const StopAtMarker WalkStop = 3
+const StopAtRoot WalkStop = 1
+const StopAtStart WalkStop = 2
+const TrustProject TrustLevel = 0
+const TrustSystem TrustLevel = 2
+const TrustUser TrustLevel = 1
+const UnknownKeysError UnknownKeys = 1
+const UnknownKeysIgnore UnknownKeys = 2
+const UnknownKeysWarn UnknownKeys = 0
+const VariantEnv Variant = 1
+const VariantEnvLocal Variant = 3
+const VariantLocal Variant = 2
+const VariantShared Variant = 0
+const WarnBootstrapKeyDropped WarningCode = "bootstrap-key-dropped"
+const WarnBootstrapUnknownKey WarningCode = "bootstrap-unknown-key"
+const WarnBrokenSymlink WarningCode = "broken-symlink"
+const WarnDuplicateKey WarningCode = "duplicate-key"
+const WarnEnvVarClash WarningCode = "env-var-clash"
+const WarnEnvVarSkipped WarningCode = "env-var-skipped"
+const WarnFilePermissions WarningCode = "file-permissions"
+const WarnFormatConflict WarningCode = "format-conflict"
+const WarnIncludeCache WarningCode = "include-cache"
+const WarnNoHome WarningCode = "no-home"
+const WarnNotAFile WarningCode = "not-a-file"
+const WarnReloadFailed WarningCode = "reload-failed"
+const WarnReservedKey WarningCode = "reserved-key"
+const WarnStaleInclude WarningCode = "stale-include"
+const WarnUnknownKey WarningCode = "unknown-key"
+const WarnUnreadable WarningCode = "unreadable"
+const WarnUntrusted WarningCode = "untrusted"
+const WarnWatchFailed WarningCode = "watch-failed"
+func After(ScopeName) ScopeOption
+func Allow(...Matcher) PolicyOption
+func AllowFor(string, ...Matcher) PolicyOption
+func AllowResolvers(...string) PolicyOption
+func Before(ScopeName) ScopeOption
+func BootstrapFiles(...Pattern) ScopeOption
+func CodeOf(error) Code
+func ConfigRoot(string) ScopeOption
+func Confine(...string) PolicyOption
+func Custom(Scope) ScopeKind
+func DecodeAt[P PathSpec](*Result, P, any) error
+func DecodeDocument(Decoder, string, []byte) (Document, error)
+func DisabledBy(Binding) ScopeOption
+func EmbeddedFS(fs.FS, ...Pattern) ScopeKind
+func EnvVars(string, ...EnvVarsOption) ScopeKind
+func Errors(error) []error
+func ExplicitFile(...string) ScopeKind
+func Extension(...string) Matcher
+func FileName(string) Matcher
+func FilePermissions(func(FileCheck) (Permission, string)) PolicyOption
+func FixedDir(string, ...Pattern) ScopeKind
+func Glob(string) Matcher
+func InheritDefault() PolicyOption
+func Load[T any](context.Context, *Loader) (T, error)
+func MapEnv(func(string, string) (Path, any, bool)) EnvVarsOption
+func MatchFunc(func(string) bool) Matcher
+func MatchRef(func(IncludeRef) bool) Matcher
+func MiseGlobalPatterns() []Pattern
+func MountFS(string, fs.FS) FileSystem
+func New(string, ...Option) (*Loader, error)
+func NewError(Code, string, string, error) *BaseError
+func NewPreset(string, ...Option) Preset
+func NewWithPreset(string, Preset, ...Option) (*Loader, error)
+func Options(...Option) Option
+func OriginOf[P PathSpec](*Result, P) (Origin, bool)
+func ParsePath(string) (Path, error)
+func Prefix(string) Matcher
+func Regexp(string) Matcher
+func ReplacedByConfigFiles() ScopeOption
+func ReplacedByFile(Binding) ScopeOption
+func RequireConfig(Require, ...ScopeName) Option
+func RequirePinned() PolicyOption
+func RequireTrust(TrustStore) PolicyOption
+func StrictModes(FileCheck) (Permission, string)
+func Trust(TrustLevel) ScopeOption
+func TrustPaths(...string) TrustStore
+func Values(Tree) ScopeKind
+func ValuesFunc(func(context.Context) (Tree, error)) ScopeKind
+func Walk(...Pattern) ScopeKind
+func Watch[T any](context.Context, *Loader, func(context.Context, Change[T]), ...WatchOption) (*Watcher[T], error)
+func WithArrayMerge(MergeStrategy) Option
+func WithBinding(Binding, string) Option
+func WithBootstrapKeys(...BootstrapKey) Option
+func WithBootstrapLimit(ScopeName, ...BootstrapKey) Option
+func WithBootstrapTransform(func(context.Context, Layer, Tree) (Tree, error)) Option
+func WithCeilingPaths(...string) Option
+func WithConfigFiles(...string) Option
+func WithConfigFilesOnly() Option
+func WithDebounce(time.Duration, time.Duration) WatchOption
+func WithDecodeHook(DecodeHook) Option
+func WithDecoder(Decoder) Option
+func WithDefaultFormats(...string) Option
+func WithDefaultPolicy(...PolicyOption) Option
+func WithDefaults(any) Option
+func WithEnvs(...string) Option
+func WithFileFormat(Matcher, ...string) Option
+func WithFileSystem(FileSystem) Option
+func WithFlatPaths() Option
+func WithFormatConflict(FormatConflict) Option
+func WithFormats(...string) Option
+func WithIgnoredPaths(...string) Option
+func WithIncludeCache(string, time.Duration) Option
+func WithIncludeKey(string, IncludeNesting) Option
+func WithIncludeResolver(IncludeResolver) Option
+func WithIncludeTimeout(time.Duration) Option
+func WithLayerTransform(func(context.Context, Layer, Tree) (Tree, error)) Option
+func WithLogLevel(slog.Leveler) Option
+func WithLogger(*slog.Logger) Option
+func WithMaxFileSize(int64) Option
+func WithMaxIncludeDepth(int) Option
+func WithMaxIncludeSize(int64) Option
+func WithMaxIncludes(int) Option
+func WithMergeFunc[P PathSpec](P, MergeFunc) Option
+func WithMergeRule[P PathSpec](P, MergeStrategy) Option
+func WithNotifier(func() (Notifier, error)) Option
+func WithPlatformDirs(PlatformDirs) Option
+func WithPollInterval(time.Duration) WatchOption
+func WithPolling() WatchOption
+func WithProbes() Option
+func WithReloadOnAnyEvent() WatchOption
+func WithRemotePoll(time.Duration, ...Matcher) WatchOption
+func WithResolution(Resolution) Option
+func WithResultTransform(func(context.Context, Tree) (Tree, error)) Option
+func WithRootMarker(...string) Option
+func WithScope(ScopeName, ScopeKind, ...ScopeOption) Option
+func WithScopePolicy(ScopeName, ...PolicyOption) Option
+func WithScopes(...ScopeName) Option
+func WithSearchStrategy(SearchStrategy) Option
+func WithStartDir(string) Option
+func WithStopDir(string) Option
+func WithTag(string) Option
+func WithUnknownKeys(UnknownKeys) Option
+func WithUnsetKey(string) Option
+func WithWalkStop(WalkStop) Option
+func WithZeroFields() Option
+func WithoutBinding(Binding) Option
+func WithoutBootstrapKeys(...BootstrapKey) Option
+func WithoutIncludeCache() Option
+func WithoutIncludeKey() Option
+func WithoutIncludeResolver(string) Option
+func WithoutRemoteIncludes() Option
+func WithoutScopes(...ScopeName) Option
+func WithoutUnsetKey() Option
+func WithoutWeakTyping() Option
+method (*BaseError) Code() Code
+method (*BaseError) Error() string
+method (*BaseError) Unwrap() error
+method (*ConflictError) Code() Code
+method (*ConflictError) Error() string
+method (*ConflictError) Is(error) bool
+method (*ConflictError) Unwrap() error
+method (*CycleError) Code() Code
+method (*CycleError) Error() string
+method (*CycleError) Is(error) bool
+method (*CycleError) Unwrap() error
+method (*DecodeError) Code() Code
+method (*DecodeError) Error() string
+method (*DecodeError) Is(error) bool
+method (*DecodeError) Unwrap() error
+method (*FetchError) Code() Code
+method (*FetchError) Error() string
+method (*FetchError) Is(error) bool
+method (*FetchError) Unwrap() error
+method (*IOError) Code() Code
+method (*IOError) Error() string
+method (*IOError) Is(error) bool
+method (*IOError) Unwrap() error
+method (*KoanfProvider) Read() (map[string]any, error)
+method (*KoanfProvider) ReadBytes() ([]byte, error)
+method (*Loader) KoanfProvider() *KoanfProvider
+method (*Loader) Load(context.Context) (*Result, error)
+method (*Loader) Watch(context.Context, func(context.Context, Change[Tree]), ...WatchOption) (*Watcher[Tree], error)
+method (*MergeError) Code() Code
+method (*MergeError) Error() string
+method (*MergeError) Is(error) bool
+method (*MergeError) Unwrap() error
+method (*NotFoundError) Code() Code
+method (*NotFoundError) Error() string
+method (*NotFoundError) Is(error) bool
+method (*NotFoundError) Unwrap() error
+method (*OptionError) Code() Code
+method (*OptionError) Error() string
+method (*OptionError) Is(error) bool
+method (*OptionError) Unwrap() error
+method (*ParseError) Code() Code
+method (*ParseError) Error() string
+method (*ParseError) Is(error) bool
+method (*ParseError) Unwrap() error
+method (*Path) UnmarshalText([]byte) error
+method (*PolicyError) Code() Code
+method (*PolicyError) Error() string
+method (*PolicyError) Is(error) bool
+method (*PolicyError) Unwrap() error
+method (*ReferenceError) Code() Code
+method (*ReferenceError) Error() string
+method (*ReferenceError) Is(error) bool
+method (*ReferenceError) Unwrap() error
+method (*Report) MarshalJSON() ([]byte, error)
+method (*Report) String() string
+method (*Result) Decode(any) error
+method (*Result) Describe() *Report
+method (*Result) Tree() Tree
+method (*TooLargeError) Code() Code
+method (*TooLargeError) Error() string
+method (*TooLargeError) Is(error) bool
+method (*TooLargeError) Unwrap() error
+method (*TransformError) Code() Code
+method (*TransformError) Error() string
+method (*TransformError) Is(error) bool
+method (*TransformError) Unwrap() error
+method (*UnsupportedFormatError) Code() Code
+method (*UnsupportedFormatError) Error() string
+method (*UnsupportedFormatError) Is(error) bool
+method (*UnsupportedFormatError) Unwrap() error
+method (*UnsupportedSchemeError) Code() Code
+method (*UnsupportedSchemeError) Error() string
+method (*UnsupportedSchemeError) Is(error) bool
+method (*UnsupportedSchemeError) Unwrap() error
+method (*Watcher[T]) Close() error
+method (*Watcher[T]) Current() T
+method (*Watcher[T]) Done() <-chan struct{}
+method (*Watcher[T]) Reload(context.Context) error
+method (DiffKind) String() string
+method (KeyDiff) String() string
+method (LayerStatus) MarshalText() ([]byte, error)
+method (LayerStatus) String() string
+method (OriginKind) MarshalText() ([]byte, error)
+method (OriginKind) String() string
+method (Path) MarshalText() ([]byte, error)
+method (Path) String() string
+method (Preset) Extend(...Option) Preset
+method (Preset) ExtendAs(string, ...Option) Preset
+method (Preset) Name() string
+method (TrustLevel) MarshalText() ([]byte, error)
+method (TrustLevel) String() string
+method (Variant) MarshalText() ([]byte, error)
+method (Variant) String() string
+type BaseError struct
+type BaseError struct, Err error
+type BaseError struct, Op string
+type BaseError struct, Path string
+type BaseError struct, Scope string
+type Binding string
+type BindingInfo struct
+type BindingInfo struct, Binding Binding
+type BindingInfo struct, Set bool
+type BindingInfo struct, Var string
+type BootstrapKey string
+type CacheState string
+type Change[T any] struct
+type Change[T any] struct, Diff []KeyDiff
+type Change[T any] struct, Err error
+type Change[T any] struct, New T
+type Change[T any] struct, Old T
+type Change[T any] struct, Result *Result
+type Code int
+type Coder interface
+type Coder interface, Code() Code
+type Coder interface, Error() string
+type ConflictError struct
+type ConflictError struct, Files []string
+type ConflictError struct, embedded BaseError
+type CycleError struct
+type CycleError struct, embedded BaseError
+type DecodeError struct
+type DecodeError struct, Key Path
+type DecodeError struct, Unknown bool
+type DecodeError struct, embedded BaseError
+type DecodeHook func(reflect.Type, reflect.Type, any) (any, error)
+type Decoder interface
+type Decoder interface, Decode([]byte) (Document, error)
+type Decoder interface, Extensions() []string
+type Decoder interface, Format() string
+type Decoder interface, MediaTypes() []string
+type DiffKind int
+type Discovery struct
+type Discovery struct, Envs []string
+type Discovery struct, FS FileSystem
+type Discovery struct, Formats []string
+type Discovery struct, Home string
+type Discovery struct, Logger *slog.Logger
+type Discovery struct, LookupEnv func(string) (string, bool)
+type Discovery struct, Name string
+type Discovery struct, PlatformEnvs []string
+type Discovery struct, Scope ScopeName
+type Discovery struct, StartDir string
+type Document struct
+type Document struct, Empty bool
+type Document struct, Tree Tree
+type Document struct, Warnings []Warning
+type EnvInfo struct
+type EnvInfo struct, Platform []string
+type EnvInfo struct, Selected []string
+type EnvInfo struct, Source string
+type EnvVarsOption interface
+type EnvVarsOption interface, unexported methods
+type FetchError struct
+type FetchError struct, Timeout bool
+type FetchError struct, embedded BaseError
+type Fetched struct
+type Fetched struct, Content []byte
+type Fetched struct, Identity string
+type Fetched struct, MediaType string
+type Fetched struct, Validator string
+type FileCheck struct
+type FileCheck struct, Dir bool
+type FileCheck struct, GOOS string
+type FileCheck struct, Info fs.FileInfo
+type FileCheck struct, Path string
+type FileCheck struct, Scope ScopeName
+type FileCheck struct, UID int
+type FileSystem interface
+type FileSystem interface, EvalSymlinks(string) (string, error)
+type FileSystem interface, OpenRoot(string) (Root, error)
+type FileSystem interface, SameFile(fs.FileInfo, fs.FileInfo) bool
+type FormatConflict int
+type IOError struct
+type IOError struct, embedded BaseError
+type IncludeNesting int
+type IncludeRef struct
+type IncludeRef struct, Check func(string) error
+type IncludeRef struct, From Layer
+type IncludeRef struct, Location string
+type IncludeRef struct, MaxSize int64
+type IncludeRef struct, Path string
+type IncludeRef struct, Raw string
+type IncludeRef struct, Ref string
+type IncludeRef struct, Scheme string
+type IncludeRef struct, Validator string
+type IncludeRef struct, Version string
+type IncludeResolver interface
+type IncludeResolver interface, Resolve(context.Context, IncludeRef) (*Fetched, error)
+type IncludeResolver interface, Schemes() []string
+type KeyDiff struct
+type KeyDiff struct, Kind DiffKind
+type KeyDiff struct, New any
+type KeyDiff struct, NewOrigin Origin
+type KeyDiff struct, Old any
+type KeyDiff struct, OldOrigin Origin
+type KeyDiff struct, Path Path
+type KoanfProvider struct
+type Layer struct
+type Layer struct, ConfigRoot string
+type Layer struct, Env string
+type Layer struct, Format string
+type Layer struct, IncludedBy string
+type Layer struct, Path string
+type Layer struct, Pattern string
+type Layer struct, Reason string
+type Layer struct, Remote *Remote
+type Layer struct, Scope ScopeName
+type Layer struct, Status LayerStatus
+type Layer struct, Trust TrustLevel
+type Layer struct, Variant Variant
+type Layer struct, Warnings []Warning
+type LayerStatus int
+type Loader struct
+type Matcher interface
+type Matcher interface, unexported methods
+type MergeError struct
+type MergeError struct, Key Path
+type MergeError struct, Lower string
+type MergeError struct, embedded BaseError
+type MergeFunc func(Path, any, any) (any, error)
+type MergeStrategy int
+type NotFoundError struct
+type NotFoundError struct, embedded BaseError
+type Notifier interface
+type Notifier interface, Add(string) error
+type Notifier interface, Close() error
+type Notifier interface, Errors() <-chan error
+type Notifier interface, Events() <-chan string
+type Notifier interface, Remove(string) error
+type Option interface
+type Option interface, unexported methods
+type OptionError struct
+type OptionError struct, embedded BaseError
+type Origin struct
+type Origin struct, Elements []Layer
+type Origin struct, EnvVar string
+type Origin struct, History []OriginStep
+type Origin struct, Kind OriginKind
+type Origin struct, Layer Layer
+type OriginKind int
+type OriginStep struct
+type OriginStep struct, Kind OriginKind
+type OriginStep struct, Layer Layer
+type OwnerInfo interface
+type OwnerInfo interface, Owner() (int, bool)
+type ParseError struct
+type ParseError struct, Column int
+type ParseError struct, Format string
+type ParseError struct, Line int
+type ParseError struct, embedded BaseError
+type Path []string
+type PathSpec interface{~string | ~[]string}
+type Pattern struct
+type Pattern struct, Key string
+type Pattern struct, Root RootMode
+type Pattern struct, SkipHomeAndRoot bool
+type Pattern struct, Template string
+type Pattern struct, Variant Variant
+type Permission int
+type PlatformDirs interface
+type PlatformDirs interface, unexported methods
+type PolicyError struct
+type PolicyError struct, embedded BaseError
+type PolicyInfo struct
+type PolicyInfo struct, Allow []string
+type PolicyInfo struct, AllowFor map[string][]string
+type PolicyInfo struct, Confine []string
+type PolicyInfo struct, FilePermissions bool
+type PolicyInfo struct, Inherited bool
+type PolicyInfo struct, RequirePinned bool
+type PolicyInfo struct, RequireTrust bool
+type PolicyInfo struct, Resolvers []string
+type PolicyOption interface
+type PolicyOption interface, unexported methods
+type PositionError interface
+type PositionError interface, Error() string
+type PositionError interface, Position() (int, int)
+type Preset struct
+type Probe struct
+type Probe struct, Dir string
+type Probe struct, Pattern string
+type Probe struct, Scope ScopeName
+type ReferenceError struct
+type ReferenceError struct, embedded BaseError
+type Remote struct
+type Remote struct, Cache CacheState
+type Remote struct, Identity string
+type Remote struct, Pinned bool
+type Remote struct, Ref string
+type Remote struct, Scheme string
+type Report struct
+type Report struct, Bindings []BindingInfo
+type Report struct, Bootstrap []Layer
+type Report struct, Envs EnvInfo
+type Report struct, Formats []string
+type Report struct, Layers []Layer
+type Report struct, Preset string
+type Report struct, Probes []Probe
+type Report struct, Scopes []ScopeInfo
+type Report struct, Warnings []Warning
+type Require uint
+type Resolution int
+type Result struct
+type Root interface
+type Root interface, Close() error
+type Root interface, Open(string) (fs.File, error)
+type Root interface, ReadDir(string) ([]fs.DirEntry, error)
+type Root interface, Stat(string) (fs.FileInfo, error)
+type RootMode int
+type Scope interface
+type Scope interface, Discover(context.Context, Discovery) ([]Source, error)
+type ScopeInfo struct
+type ScopeInfo struct, Kind string
+type ScopeInfo struct, Name ScopeName
+type ScopeInfo struct, Policy *PolicyInfo
+type ScopeInfo struct, Selected bool
+type ScopeInfo struct, Skipped string
+type ScopeInfo struct, Trust TrustLevel
+type ScopeKind interface
+type ScopeKind interface, unexported methods
+type ScopeName string
+type ScopeOption interface
+type ScopeOption interface, unexported methods
+type SearchStrategy int
+type Source struct
+type Source struct, ConfigRoot string
+type Source struct, Env string
+type Source struct, Format string
+type Source struct, Path string
+type Source struct, Tree Tree
+type Source struct, Variant Variant
+type TooLargeError struct
+type TooLargeError struct, embedded BaseError
+type TransformError struct
+type TransformError struct, embedded BaseError
+type Tree = map[string]any
+type TrustLevel int
+type TrustStore interface
+type TrustStore interface, Trusted(context.Context, string, string) (bool, error)
+type UnknownKeys int
+type UnsupportedFormatError struct
+type UnsupportedFormatError struct, embedded BaseError
+type UnsupportedSchemeError struct
+type UnsupportedSchemeError struct, embedded BaseError
+type Variant int
+type WalkStop int
+type Warning struct
+type Warning struct, Code WarningCode
+type Warning struct, Key Path
+type Warning struct, Message string
+type Warning struct, Path string
+type WarningCode string
+type WatchOption interface
+type WatchOption interface, unexported methods
+type Watchable interface
+type Watchable interface, WatchDirs(context.Context, Discovery) ([]string, error)
+type Watcher[T any] struct
+var CosmiconfigLayout Preset
+var EnvPathsDirs PlatformDirs
+var ErrConflict error
+var ErrDecode error
+var ErrFetch error
+var ErrIO error
+var ErrIncludeCycle error
+var ErrInvalidOption error
+var ErrInvalidReference error
+var ErrMerge error
+var ErrNotFound error
+var ErrNotModified error
+var ErrParse error
+var ErrPolicy error
+var ErrTooLarge error
+var ErrTransform error
+var ErrUnsupportedFormat error
+var ErrUnsupportedScheme error
+var MiseHardenedLayout Preset
+var MiseLayout Preset
+var XDGDirs PlatformDirs

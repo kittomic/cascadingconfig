@@ -1,0 +1,16 @@
+$ ccx-trusted   # before trusting
+deploying to local with 1 replicas
+skipped /home/me/project/ccx-trusted.toml: not trusted; run "ccx-trusted trust" to approve it
+$ ccx-trusted trust  # approve
+trusted /home/me/project/ccx-trusted.toml
+$ ccx-trusted   # after trusting
+deploying to staging with 3 replicas
+$ ccx-trusted trust  # nothing changed
+nothing new to trust
+$ ccx-trusted   # after an edit
+deploying to local with 1 replicas
+skipped /home/me/project/ccx-trusted.toml: not trusted; run "ccx-trusted trust" to approve it
+$ ccx-trusted trust  # approve the edit
+trusted /home/me/project/ccx-trusted.toml
+$ ccx-trusted   # after trusting the edit
+deploying to production with 1 replicas

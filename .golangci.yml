@@ -33,6 +33,13 @@ linters:
         linters:
           - gosec
           - unparam
+      # The docs' usage snippets, held unchanged (DL-250). They leave out error handling and name unused parameters
+      # for readability, so these checks don't apply to them.
+      - path: docexamples_test\.go
+        linters:
+          - ineffassign
+          - revive
+          - staticcheck
 
 formatters:
   enable:
@@ -41,7 +48,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/kittomic/agentic-platform
+        - github.com/kittomic/cascadingconfig
 
 issues:
   max-issues-per-linter: 0

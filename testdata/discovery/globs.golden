@@ -1,0 +1,6 @@
+s /d/conf.d/10-a.json shared - /d loaded
+s /d/conf.d/10-a.toml shared - /d loaded
+s /d/conf.d/20-b.json shared - /d loaded
+s /d/conf.d/aa/myapp.json shared - /d/conf.d/aa loaded
+s /d/conf.d/zz/myapp.json shared - /d/conf.d/zz loaded
+s /d/conf.d/30-c.dev.json env dev /d loaded

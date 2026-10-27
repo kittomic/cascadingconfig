@@ -1,0 +1,27 @@
+preset    mise.Preset
+formats   toml, yaml, json
+platform  unix, linux, linux-x64
+
+scopes:
+  system    FixedDir  system   selected
+  user      FixedDir  user     selected
+  project   Walk      project  selected
+  override  FixedDir  user     selected
+
+policies:
+  default  resolvers file, git, http, https, oci
+
+layers:
+  project  loaded  /home/me/work/myapp.toml  toml
+
+bindings:
+  MYAPP_CEILING_PATHS              CEILING_PATHS              not set
+  MYAPP_CONFIG_DIR                 CONFIG_DIR                 not set
+  MYAPP_CONFIG_FILE                CONFIG_FILE                not set
+  MYAPP_CONFIG_FORMATS             CONFIG_FORMATS             not set
+  MYAPP_ENV                        ENV                        not set
+  MYAPP_GLOBAL_CONFIG_FILE         GLOBAL_CONFIG_FILE         not set
+  MYAPP_IGNORED_CONFIG_PATHS       IGNORED_CONFIG_PATHS       not set
+  MYAPP_OVERRIDE_CONFIG_FILENAMES  OVERRIDE_CONFIG_FILENAMES  not set
+  MYAPP_SYSTEM_CONFIG_DIR          SYSTEM_CONFIG_DIR          not set
+  MYAPP_SYSTEM_CONFIG_FILE         SYSTEM_CONFIG_FILE         not set

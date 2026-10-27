@@ -1,0 +1,14 @@
+go 1.26.0
+
+use (
+	.
+	./examples
+	./format/toml
+	./format/yaml
+	./internal/apicheck
+	./internal/compat
+	./internal/conformance
+	./ociresolver
+	./presets
+	./watch/fsnotify
+)

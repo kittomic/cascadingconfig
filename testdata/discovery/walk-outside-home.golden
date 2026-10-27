@@ -1,0 +1,3 @@
+project /myapp.json shared - / loaded
+project /srv/myapp.json shared - /srv loaded
+project /srv/app/myapp.json shared - /srv/app loaded
