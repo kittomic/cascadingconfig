@@ -37,12 +37,23 @@ var ErrNotModified = errors.New("cascadingconfig: not modified")
 
 // Remote describes a remote include in the report (DL-203).
 type Remote struct {
-	Scheme   string `json:"scheme"`
-	Ref      string `json:"ref"` // the normalised reference
-	Identity string `json:"identity,omitempty"`
-	Pinned   bool   `json:"pinned"`
-	Cache    string `json:"cache,omitempty"` // "" when fetched, "cached", "revalidated", or "stale"
+	Scheme   string     `json:"scheme"`
+	Ref      string     `json:"ref"` // the normalised reference
+	Identity string     `json:"identity,omitempty"`
+	Pinned   bool       `json:"pinned"`
+	Cache    CacheState `json:"cache,omitempty"`
 }
+
+// CacheState says where a remote include's content came from (DL-276).
+type CacheState string
+
+// Cache states.
+const (
+	CacheFetched     CacheState = ""            // fetched from its source
+	CacheCached      CacheState = "cached"      // from the include cache, within its TTL or pinned
+	CacheRevalidated CacheState = "revalidated" // from the cache, after the source said it hadn't changed
+	CacheStale       CacheState = "stale"       // from the cache, because fetching failed
+)
 
 // The defaults for remote includes (DL-198, DL-199, DL-207, DL-210).
 const (

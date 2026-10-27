@@ -74,8 +74,8 @@ func (ld *loading) trace(rep *Report, took time.Duration) {
 		}
 		logger.LogAttrs(ld.ctx, slog.LevelDebug, "layer "+l.Status.String(), attrs...)
 		if l.Remote != nil {
-			outcome := l.Remote.Cache
-			if outcome == "" {
+			outcome := string(l.Remote.Cache)
+			if l.Remote.Cache == CacheFetched {
 				outcome = "fetched"
 			}
 			logger.LogAttrs(ld.ctx, slog.LevelDebug, "remote include "+outcome, slog.String("op", "remote"),

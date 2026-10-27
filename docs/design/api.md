@@ -693,7 +693,7 @@ type Remote struct {
 	Ref      string // the normalised reference
 	Identity string
 	Pinned   bool
-	Cache    string // "" when fetched, "cached", or "stale"
+	Cache    CacheState // CacheFetched (""), CacheCached, CacheRevalidated or CacheStale (DL-276)
 }
 
 // Added to existing types:
