@@ -1,5 +1,7 @@
 # cascadingconfig
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/kittomic/cascadingconfig.svg)](https://pkg.go.dev/github.com/kittomic/cascadingconfig)
+
 A Go library that finds, merges and decodes layered configuration files, the way [mise] and [cosmiconfig] do. System,
 user and project config, environment-specific files, environment variables and flags are merged in a defined order into
 one typed struct, and every value can be traced back to the file or variable that set it.
@@ -23,6 +25,10 @@ one typed struct, and every value can be traced back to the file or variable tha
 ```console
 go get github.com/kittomic/cascadingconfig/presets
 ```
+
+It needs Go 1.26 or later. Linux and macOS are tested on the real OS. Windows paths and behaviour are tested through
+`cctest`'s fake host, and the tests that don't depend on Unix paths also run on Windows. The `git` resolver needs the
+`git` program, 2.24 or later (2.29 for SHA-256 repositories).
 
 ## Quick start
 

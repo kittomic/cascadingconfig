@@ -1,7 +1,13 @@
 # Contributing
 
-This covers setting up the repository, the checks every change passes, and how changes are made. To report a security
-problem, see [SECURITY.md](SECURITY.md) instead of opening an issue.
+Thanks for helping. This covers what to do before you start, setting up the repository, the checks every change passes,
+and how a change is made. To report a security problem, see [SECURITY.md](SECURITY.md) instead of opening an issue.
+
+## Before you start
+
+- **Features and behaviour changes:** open an issue first, so the design can be agreed before you write code. The
+  library promises exact precedence and security behaviour, so most changes need a decision before an implementation.
+- **Bug fixes and docs:** a PR is fine on its own. A bug fix comes with a test that fails without it.
 
 ## Setup
 
@@ -26,18 +32,29 @@ Until CI exists, the hooks are the only enforcement, so **never skip them** with
 
 Each check is a script in `scripts/`, so CI can run the same ones.
 
-## How changes are made
+## How a change is made
 
-- **Design first.** A behaviour is decided in the docs before code relies on it. When code turns up a question the docs
-  don't answer, the work stops until the docs do.
-- **Tests first.** Acceptance tests are written from the docs, shown to fail, committed on their own and reviewed before
-  the implementation. A test that has been approved changes only in its own `test(scope): revise …` commit, which says
-  why.
-- **No test reads the real host.** Tests use `cctest`'s in-memory filesystem and fake host. A whole file that
-  legitimately trips a linter gets a path rule in `.golangci.yml`, not `//nolint` comments.
-- **Branches:** work happens on a branch per milestone, merged into `wip` by a PR with a merge commit, never a squash.
-  `main` takes only releases. [The implementation plan](docs/planning/implementation-plan.md#workflow) sets out the
-  steps of a milestone.
+- **Docs first.** A behaviour is decided in the docs before code relies on it: the [guide](docs/guide/) for what users
+  see, and design.md's [decision log](docs/design/design.md#decision-log) for why. If your change raises a question the
+  docs don't answer, ask it in the issue or PR.
+- **Tests first.** A new behaviour comes with tests written from the docs, which fail without the change. Changing an
+  existing test's expectations needs its own commit, `test(scope): revise …`, which says why.
+- **No test reads the real host.** Tests use `cctest`'s in-memory filesystem and fake host, never your home directory or
+  environment. A whole file that legitimately trips a linter gets a path rule in `.golangci.yml`, not `//nolint`
+  comments.
+- **No new dependencies** without an issue first: each module's dependencies are budgeted in
+  [project-layout.md](docs/contributing/project-layout.md#dependency-analysis).
+
+## Pull requests
+
+- **Target `wip`,** the integration branch. `main` takes only releases.
+- **Merges are merge commits,** never squashes, so keep each commit one logical change with its own message.
+- **The PR template** lists what a reviewer checks.
+- **Licensing:** your contribution is under the [Apache License 2.0](LICENSE), as its section 5 provides. There is no
+  CLA, and commits need no sign-off.
+
+The maintainer's own workflow, a milestone at a time, is in
+[the implementation plan](docs/planning/implementation-plan.md#workflow).
 
 ## Decision records
 

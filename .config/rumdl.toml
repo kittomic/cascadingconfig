@@ -20,3 +20,7 @@ style = "dash"
 [MD013]
 reflow = true
 reflow-mode = "normalize"
+
+# GitHub puts the PR's title above the template, so the template starts at level 2.
+[per-file-ignores]
+".github/pull_request_template.md" = ["MD041"]

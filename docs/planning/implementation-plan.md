@@ -79,13 +79,15 @@ checks. Parsers and path validation also get fuzz tests (`go test -fuzz`).
 | M11c2 | Fixes from the examples        | core, `examples`                         | M11c       |
 | M11d1 | README and guide, part 1       | docs, `examples`, `internal/apicheck`    | M11c2      |
 | M11d2 | Guide, part 2                  | docs, `examples`                         | M11d1      |
-| —   | Release stage                     | all                                      | M11d, M12  |
 | M12 | Conformance                       | `format/*`, core (`internal/json`)       | M6         |
 | M13a | Packaging and API polish        | all                                      | M12        |
 | M13b | Structure, comments and tests   | core, tests                              | M13a       |
+| M14a | Release docs                    | all released modules, docs               | M13b       |
+| M14b | CI                              | tooling, fixes in any module             | M14a       |
+| M14c | First release                   | all released modules                     | M14b       |
 
-M2 and M3 can be done in either order, as can M8b and M8c. M6 can run any time after M1. M12 comes before the release
-stage, but needs only M6.
+M2 and M3 can be done in either order, as can M8b and M8c. M6 can run any time after M1. M12 comes before the release,
+but needs only M6.
 
 ## M0: Repository and tooling
 
@@ -863,24 +865,6 @@ index and its first three pages.
 **Scope:** the remaining guide pages: merging, includes, security, watching, provenance and logging, testing your app,
 and errors, checked as in M11d1.
 
-## Release stage
-
-Not scheduled yet: nothing goes public, and `wip` doesn't go to `main`, until this stage starts. It has its own gap
-list.
-
-- **Package documentation:** each package's `doc.go` gives an overview that reads well on pkg.go.dev.
-- **CONTRIBUTING.md and the README:** revisited before anything is public; M11a and M11d wrote them for `wip`.
-- **Licences:** confirm that the licences of `mapstructure`, `go-toml`, `go-yaml`, `fsnotify` and `oras-go` are
-  compatible with Apache-2.0, and check their maintenance status (an open item from
-  [api.md](../design/api.md#package-layout-decisions)).
-- **CI (GitHub Actions):** a workflow that runs the same `scripts/` on every PR to `wip` and `main`, with merging
-  blocked until they pass. It's added now at the latest, or earlier if a second contributor joins.
-- **Release:** `wip` goes to `main` by fast-forward or merge commit, never by squash.
-- **Vulnerability reporting:** `SECURITY.md` points at GitHub's private vulnerability reporting, which GitHub only
-  offers on public repositories. Enable it in the repository settings when the repository is made public.
-- **Tags:** the core `v0.1.0` first, then the other modules, then `presets`, in the order set out in
-  [project-layout.md](../contributing/project-layout.md#versioning-and-releases).
-
 ## M12: Conformance
 
 **Scope** (DL-174): measure each built-in decoder against its format's test suite. Spec-correctness is a guiding
@@ -930,12 +914,51 @@ M13 comes from a review of the code's style and layout (DL-273), in two stages, 
 shared warning helper, no decision-log citations in exported doc comments, no milestone references in comments, and
 tests run in parallel where they share no state. No behaviour or API change.
 
+## M14: Release
+
+Nothing goes public, and `wip` doesn't go to `main`, until M14c. Every step there that changes something outside the
+repository (making it public, its settings, each set of tags) is confirmed first.
+
+### M14a: Release docs
+
+**Scope:** DL-280 to DL-282.
+
+- **Dependencies** (DL-280): [decision record 0005](../design/decisions/0005-dependencies-before-release.md) confirms
+  the licences and maintenance, and records each dependency's exit.
+- **Package docs** (DL-281): the core's sectioned overview with Example functions, a paragraph for each other package,
+  and a README for each released module other than the core. The Example functions are checked by `go test`, but are
+  documentation, so they're reviewed in the PR rather than test-first.
+- **README and CONTRIBUTING.md** (DL-282), the PR template, and future-ideas.md.
+
+### M14b: CI
+
+**Scope:** DL-283, and DL-280's dependency checks.
+
+- **The workflow:** `.github/workflows/ci.yml` running `scripts/`, the OS matrix, Dependabot and the weekly govulncheck.
+  Tooling, so not test-first.
+- **First runs on Linux and Windows:** the suite has only run on macOS. Fixes go in `fix:` commits; one that changes an
+  approved test is raised first, as usual.
+- **Dependencies:** `scripts/check-deps.sh` gains the licence list, and oras-go moves to v2.7.0 if its changelog allows.
+
+### M14c: First release
+
+**Scope:** DL-284 to DL-286.
+
+1. `wip` goes to `main` by merge commit.
+2. The repository goes public, with DL-285's settings and DL-283's branch protection.
+3. The core is tagged `v0.1.0`.
+4. A PR drops the `replace` from `format/toml`, `format/yaml`, `ociresolver` and `watch/fsnotify` and adds the check
+   against it; once merged, each is tagged.
+5. A PR does the same for `presets`, which is tagged last.
+6. The GitHub Release, the outside build through the proxy, and the pkg.go.dev pages.
+7. `wip` is retired (DL-284), and this plan's workflow and CONTRIBUTING.md say so.
+
 ## Decisions
 
 | # | Question                  | Decision                                                                                                     |
 | - | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. |
-| 2 | CI                        | **Deferred** until the release stage, or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
+| 1 | Branching                 | A branch and PR per milestone, **targeting `wip`**, not `main`. `main` takes only releases, from `wip`. The acceptance tests are reviewed locally before the push, since pre-push won't take red tests. The PR is the record. From v0.1.0 on, DL-284 retires `wip`. |
+| 2 | CI                        | **Deferred** until M14b (DL-283), or earlier if a second contributor joins. Until then every check runs from lefthook, as a script in `scripts/` that CI will reuse. |
 | 3 | Clock injection           | An internal clock interface, settable only through `cctest`. No public `WithClock` option.                    |
 | 4 | Public `cctest` package   | Yes: in-memory filesystem, fake notifier, fake clock and golden-file helpers ([api.md](../design/api.md#test-helpers)). |
 | 5 | `internal/compat` module  | Yes, a test-only module for koanf parity tests, so koanf never enters the core `go.mod`.                     |
