@@ -1,0 +1,39 @@
+# Temporary: runs every test on Windows in its own process, so one panic doesn't hide the rest. Never merged.
+name: Windows probe
+on:
+  pull_request:
+    branches: [wip]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        with:
+          install_args: go
+      - name: Every test alone
+        run: |
+          bin="$RUNNER_TEMP/t.exe"
+          for mod in $(go list -m -f '{{.Dir}}'); do
+            cd "$mod"
+            for pkg in $(go list ./...); do
+              rm -f "$bin"
+              go test -c -o "$bin" "$pkg" >/dev/null 2>&1 || { echo "BUILD $pkg"; continue; }
+              [ -f "$bin" ] || continue
+              dir="$(go list -f '{{.Dir}}' "$pkg")"
+              for t in $(cd "$dir" && "$bin" -test.list '.*'); do
+                if ! out="$(cd "$dir" && "$bin" -test.run "^${t}\$" -test.count=1 2>&1)"; then
+                  why="$(echo "$out" | grep -m1 -E 'panic:|_test\.go:[0-9]+:|got:' | tr -d '\r' | cut -c1-200)"
+                  echo "FAIL $pkg $t | $why"
+                fi
+              done
+            done
+          done

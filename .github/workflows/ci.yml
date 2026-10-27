@@ -3,6 +3,7 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore: ["**"]
     branches: [wip, main]
   push:
     branches: [wip, main]
