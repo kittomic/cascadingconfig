@@ -252,7 +252,7 @@ func TestBootstrapWalkKeys(t *testing.T) {
 	wantPaths(t, res, app+"/env.toml", app+"/myapp.x.toml")
 }
 
-// DL-132, DL-78: unknown keys, include and _unset warn; WithoutBootstrapKey and WithBootstrapLimit drop keys with a
+// DL-132, DL-78: unknown keys, include and _unset warn; WithoutBootstrapKeys and WithBootstrapLimit drop keys with a
 // warning; MiseHardenedLayout limits project files to env and formats.
 func TestBootstrapKeyLimits(t *testing.T) {
 	rc := app + "/.myapprc.toml"
@@ -267,7 +267,7 @@ func TestBootstrapKeyLimits(t *testing.T) {
 	}
 	wantPaths(t, res, app+"/myapp.dev.toml")
 
-	res = miseLoad(t, memfs.New(files), inDir(app, nil), WithoutBootstrapKey(BootstrapFormats))
+	res = miseLoad(t, memfs.New(files), inDir(app, nil), WithoutBootstrapKeys(BootstrapFormats))
 	wantPaths(t, res, app+"/myapp.json", app+"/myapp.dev.toml")
 	if !hasCode(bootWarnings(res), WarnBootstrapUnknownKey) {
 		t.Errorf("a disabled key didn't warn: %v", bootWarnings(res))

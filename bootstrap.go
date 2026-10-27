@@ -77,14 +77,17 @@ func WithBootstrapKeys(keys ...BootstrapKey) Option {
 	})
 }
 
-// WithoutBootstrapKey turns a bootstrap key off, so bootstrap files can't change that setting.
-func WithoutBootstrapKey(key BootstrapKey) Option {
+// WithoutBootstrapKeys turns bootstrap keys off, so bootstrap files can't change those settings.
+func WithoutBootstrapKeys(keys ...BootstrapKey) Option {
+	keys = slices.Clone(keys)
 	return optionFunc(func(c *config) {
-		if !slices.Contains(bootstrapKeys, key) {
-			c.fail("WithoutBootstrapKey", "%q isn't a bootstrap key", key)
-			return
+		for _, key := range keys {
+			if !slices.Contains(bootstrapKeys, key) {
+				c.fail("WithoutBootstrapKeys", "%q isn't a bootstrap key", key)
+				continue
+			}
+			delete(c.bootstrapKeys, key)
 		}
-		delete(c.bootstrapKeys, key)
 	})
 }
 

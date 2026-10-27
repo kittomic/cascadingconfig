@@ -209,14 +209,14 @@ func WithTag(string) Option
 func WithUnknownKeys(UnknownKeys) Option
 func WithUnsetKey(string) Option
 func WithWalkStop(WalkStop) Option
-func WithoutBootstrapKey(BootstrapKey) Option
+func WithoutBootstrapKeys(...BootstrapKey) Option
 func WithoutEnvBinding(Binding) Option
 func WithoutIncludeCache() Option
 func WithoutIncludeKey() Option
 func WithoutIncludeResolver(string) Option
 func WithoutRemoteIncludes() Option
 func WithoutScopes(...ScopeName) Option
-func WithoutUnset() Option
+func WithoutUnsetKey() Option
 method (*BaseError) Code() Code
 method (*BaseError) Error() string
 method (*BaseError) Unwrap() error

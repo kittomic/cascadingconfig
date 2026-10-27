@@ -328,9 +328,9 @@ func TestUnsetOptions(t *testing.T) {
 		want string
 	}{
 		{"renamed", []Option{WithUnsetKey("$unset")}, "$unset"},
-		{"off", []Option{WithoutUnset()}, ""},
-		{"off, then renamed", []Option{WithoutUnset(), WithUnsetKey("$unset")}, "$unset"},
-		{"renamed, then off", []Option{WithUnsetKey("$unset"), WithoutUnset()}, ""},
+		{"off", []Option{WithoutUnsetKey()}, ""},
+		{"off, then renamed", []Option{WithoutUnsetKey(), WithUnsetKey("$unset")}, "$unset"},
+		{"renamed, then off", []Option{WithUnsetKey("$unset"), WithoutUnsetKey()}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -290,7 +290,7 @@ layouts (DL-94).
 | Resolution     | **Settled** (DL-139): `WithResolution(MergeAll \| FirstMatch)`                                            |
 | Patterns       | `Pattern(template, variant, root)` inside a scope kind. `template` uses `{name}`, `{env}` and `{ext}`; `variant` is `VariantShared`, `VariantEnv`, `VariantLocal` or `VariantEnvLocal`; `root` says how the config root is derived (the scope dir, or the file's own dir). |
 | Includes       | **Settled** (DL-178): `WithIncludeKey(key, IncludeFlat \| IncludeNested)` and `WithoutIncludeKey()`       |
-| Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit` and `WithBootstrapTransform` |
+| Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKeys`, `WithBootstrapLimit` and `WithBootstrapTransform` |
 | Limits         | **Settled** (DL-198): `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
 | Directories    | **Settled** (DL-112): `WithPlatformDirs(XDGDirs)` for the mise layouts, and `EnvPathsDirs` for the cosmiconfig layout (M4d). It replaces the proposed `WithUserDir` and `WithSystemDir` pair. |
 | Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
@@ -324,7 +324,7 @@ func WithMergeRule[P PathSpec](path P, strategy MergeStrategy) Option
 func WithMergeFunc[P PathSpec](path P, f MergeFunc) Option
 func WithArrayMerge(strategy MergeStrategy) Option // Replace, Append or Prepend
 func WithUnsetKey(key string) Option
-func WithoutUnset() Option
+func WithoutUnsetKey() Option
 
 // Environments and files
 func WithEnvs(names ...string) Option
@@ -441,7 +441,7 @@ const (
 )
 
 func WithBootstrapKeys(keys ...BootstrapKey) Option
-func WithoutBootstrapKey(key BootstrapKey) Option
+func WithoutBootstrapKeys(keys ...BootstrapKey) Option
 func WithBootstrapLimit(scope ScopeName, keys ...BootstrapKey) Option
 func WithBootstrapTransform(f func(ctx context.Context, l Layer, t Tree) (Tree, error)) Option
 
@@ -876,10 +876,10 @@ func WithLogLevel(level slog.Leveler) Option // the lowest level the loader logs
 | Environments  | `WithEnvs`                                                                                                                  |
 | Formats       | `WithDecoder`, `WithFormats`, `WithDefaultFormats`, `WithFormatConflict`, `WithFileFormat`                                                       |
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
-| Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
+| Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnsetKey`, `WithLayerTransform`, `WithResultTransform`              |
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithIncludeTimeout`, `WithDefaultPolicy`, `WithScopePolicy` |
 | Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`                                                                                       |
-| Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
+| Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKeys`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
 | Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
 | Behaviour     | `RequireConfig`, `WithLogger`, `WithProbes`                                                                                 |
 
