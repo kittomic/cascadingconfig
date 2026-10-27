@@ -390,8 +390,8 @@ func layerRows(ls []Layer) [][]string {
 			if r.Identity != "" {
 				d += " @ " + r.Identity
 			}
-			if r.Cache != "" {
-				d += " (" + r.Cache + ")"
+			if r.Cache != CacheFetched {
+				d += " (" + string(r.Cache) + ")"
 			}
 			details = append(details, d)
 		}

@@ -295,7 +295,7 @@ mise.Preset.Extend(
   - **Concurrency:** `Discover` and `WatchDirs` can be called from several goroutines at once.
   - **Watching** is described under [Hot reload](#hot-reload).
 - **Env-var bindings:** none are created automatically. An app adds them explicitly, for example
-  `WithEnvBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
+  `WithBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
 - **Trust:** each scope kind has a default trust level, and `Trust(...)` overrides it. File-based kinds default to
   project trust, the lowest level. `EnvVars` and `Values` default to user trust (see [Scope trust](#scope-trust)).
 
@@ -877,7 +877,7 @@ defaults.
 - **Decoders:** `WithDecoder` for a format that already has one replaces it, so an app can swap a layout's decoder. Two
   formats claiming the same extension are an `*OptionError`.
 - **Locking the order:** an app author who wants to fix the order can turn off both overrides, with
-  `WithoutEnvBinding("CONFIG_FORMATS")` and `WithoutBootstrapKey("formats")`.
+  `WithoutBinding("CONFIG_FORMATS")` and `WithoutBootstrapKey("formats")`.
 
 **The environment variable:**
 
@@ -895,8 +895,8 @@ defaults.
 - **An empty value counts as unset**, as in mise.
 - **Errors:** an unknown format, or one with no registered decoder, is an `*OptionError` at `Load`, when the env var is
   read, not a silent skip.
-- **Opting out:** the app author can turn the binding off (`WithoutEnvBinding("CONFIG_FORMATS")`), as with every other
-  env binding (see D17).
+- **Opting out:** the app author can turn the binding off (`WithoutBinding("CONFIG_FORMATS")`), as with every other env
+  binding (see D17).
 - **Effect on the bootstrap file:** this is the only source outside the app's code that also changes how the bootstrap
   files themselves are found. The app's own option affects it too.
 
@@ -1709,14 +1709,14 @@ with every character outside `[A-Z0-9]` replaced by `_`.
   `.{env}` variants are added.
 - **`XDG_CONFIG_HOME`** is read as the base of the default user dir. It isn't a binding of ours.
 - **Keys** (DL-98) are of type `Binding`, a string type whose constants hold the suffix: `BindEnv` is `"ENV"` and
-  `BindConfigFormats` is `"CONFIG_FORMATS"`. Untyped constants convert, so `WithoutEnvBinding("ENV")` also compiles, and
-  a custom scope's key is any other suffix, such as `"MOUNTED_DIR"`.
-- **Declaring and renaming:** a layout declares the bindings it supports. `WithEnvBinding(key, name)` declares a binding
-  or renames it, and an empty name means the default `{NAME}_<suffix>`. For example,
-  `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` avoids a clash with an app that already uses `MYAPP_ENV` for something
+  `BindConfigFormats` is `"CONFIG_FORMATS"`. Untyped constants convert, so `WithoutBinding("ENV")` also compiles, and a
+  custom scope's key is any other suffix, such as `"MOUNTED_DIR"`.
+- **Declaring and renaming:** a layout declares the bindings it supports. `WithBinding(key, name)` declares a binding or
+  renames it, and an empty name means the default `{NAME}_<suffix>`. For example,
+  `WithBinding(BindEnv, "MYAPP_CONFIG_ENV")` avoids a clash with an app that already uses `MYAPP_ENV` for something
   else.
-- **Turning off:** any binding can be turned off, for example `WithoutEnvBinding(BindEnv)`. Turning off a built-in
-  binding that isn't declared does nothing; an unknown key is an `*OptionError`, which catches typos.
+- **Turning off:** any binding can be turned off, for example `WithoutBinding(BindEnv)`. Turning off a built-in binding
+  that isn't declared does nothing; an unknown key is an `*OptionError`, which catches typos.
 - **Checks:** a variable name must match `[A-Za-z_][A-Za-z0-9_]*`, and two bindings can't share one variable. Either
   mistake is an `*OptionError`.
 - **`CosmiconfigLayout`** declares only `{NAME}_CONFIG_FILE` and `{NAME}_CONFIG_FORMATS`, because cosmiconfig itself has
@@ -1911,7 +1911,7 @@ Our case is harder than either library's: discovery spans many directories and m
 
 <!-- example -->
 ```go
-w, err := cascadingconfig.Watch[Config](ctx, loader, func(c cascadingconfig.Change[Config]) {
+w, err := cascadingconfig.Watch[Config](ctx, loader, func(ctx context.Context, c cascadingconfig.Change[Config]) {
 	// c.Old, c.New: decoded snapshots; c.Diff: changed keys with provenance; c.Err: reload failure
 }, cascadingconfig.WithDebounce(100*time.Millisecond, time.Second))
 defer w.Close()
@@ -1962,6 +1962,9 @@ cfg := w.Current() // lock-free read of the latest good snapshot
 - **One at a time** (DL-223): one goroutine runs a reload, then the handler, then the next reload. While the handler
   runs, events keep coalescing, but the next reload waits for it to return. `Current()` is updated before the handler is
   called.
+- **The handler's context** (DL-279) is cancelled when the watcher closes, and marks the call: `Reload` with it queues
+  its handler call after the current one, where any other `Reload` waits for its call. `Close` doesn't wait for a
+  running handler, and `Done()` closes once the last call returns.
 - **Manual reload:** `w.Reload(ctx)` forces one, for example on `SIGHUP`. It also re-reads env vars and `Values`
   functions, which can't be watched. It takes any pending events with it, cancelling the debounce timer.
 
@@ -2338,6 +2341,13 @@ There are no open questions.
 | 270 | What conformance compares                   | TOML: accept or reject, and a valid case's tree against toml-test's typed JSON: integers as `int64`, floats as `float64` with `nan` and `inf`, strings and booleans exactly, offset date-times as instants with the same offset, and local date-times, dates and times as values. YAML: an error case must be rejected; any other must be accepted, with its tree equal to its `in.json`, numbers compared by value. JSON: each case as a document and wrapped as `{"v": …}`; `y_` cases accepted, `n_` cases rejected, `i_` cases' outcomes recorded; `format/json` and the core's built-in decoder agree on every case (DL-95). |
 | 271 | Recording conformance outcomes              | An outcomes file per suite lists each case that doesn't simply pass, one per line, with its category, `deviation` (citing its DL row), `failure` (a known library failure) or, for JSON's `i_` cases, `accepted` or `rejected`, and its reason. An unlisted case must pass, and a listed case that passes fails the test until its line goes. |
 | 272 | Publishing conformance                      | `docs/conformance.md`, a user doc, gives each suite's pinned version, its counts and its deviations with their reasons. The numbers are generated with `-update`, and a test fails when they're out of date. |
+| 273 | M13: polish before release                 | A review of style and layout found the module split, the single core package, the sealed option types and `internal/hooks` sound, and proposed fixes in two stages: M13a, packaging and API; M13b, structure, comments and parallel tests. The custom-scope interface keeps the name `Scope`, matching the docs' "custom scope", with a doc comment saying it supplies only discovery. |
+| 274 | Released modules' tests stay in their module | A released module's tests read no file outside it and import no other module's internal packages, so they pass from its module download. The design records' doc examples, their drift test and `internal/docsnippet` move to `internal/apicheck`; `presettest` reads its own copy of precedence.md, `presets/testdata/precedence.txt`, which apicheck checks against the original. `cctest` registers no flags: `Golden` honours an `-update` flag the test binary defines, or `CCTEST_UPDATE=1`. project-layout.md's tree lists every module in `go.work`, checked by apicheck. |
+| 275 | Options that add                            | A `With…s` option for a list that mirrors an environment variable adds to it, as the variable does: `WithCeilingPaths`, `WithIgnoredPaths` and `WithBootstrapKeys`. `WithoutBootstrapKey` becomes `WithoutBootstrapKeys(keys...)`, and `WithoutUnset` becomes `WithoutUnsetKey`, pairing with `WithUnsetKey`. |
+| 276 | `CacheState`                                | `Remote.Cache` is a `CacheState`, a string type with `CacheFetched` (`""`), `CacheCached`, `CacheRevalidated` and `CacheStale`; the report's JSON is unchanged. |
+| 277 | `WithBinding`                               | `WithEnvBinding` and `WithoutEnvBinding` become `WithBinding` and `WithoutBinding`: their argument is already a `Binding`, and "env" elsewhere names a deployment environment, as in `BindEnv`. |
+| 278 | Decoding options of our own                 | mapstructure's types leave the API, so it can be upgraded or replaced without breaking it. `WithDecodeHook(h)` adds a `DecodeHook`, `func(from, to reflect.Type, data any) (any, error)`, run before the default hooks; `WithZeroFields()` lets null clear a value set in Go; `WithoutWeakTyping()` turns off string-to-number conversion. `WithDecoderConfig` and the `DecodeHook()` function go. Replaces DL-149. |
+| 279 | A watcher without goroutine identity        | The handler is `func(ctx context.Context, c Change[T])`. Its context is cancelled when the watcher closes and carries a marker for this watcher: `Reload` with that context queues its handler call after the current one, and from any other context waits for it. `Close` doesn't wait for a running handler: once it returns no new call starts, and `Done()` closes after the last call has returned, so calling `Close` from the handler is safe. Replaces DL-223's use of goroutine ids. |
 
 ---
 

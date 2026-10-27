@@ -7,6 +7,7 @@ replace (
 	github.com/kittomic/cascadingconfig => ../
 	github.com/kittomic/cascadingconfig/format/toml => ../format/toml
 	github.com/kittomic/cascadingconfig/format/yaml => ../format/yaml
+	github.com/kittomic/cascadingconfig/internal/apicheck => ../internal/apicheck
 	github.com/kittomic/cascadingconfig/ociresolver => ../ociresolver
 	github.com/kittomic/cascadingconfig/presets => ../presets
 	github.com/kittomic/cascadingconfig/watch/fsnotify => ../watch/fsnotify
@@ -14,6 +15,7 @@ replace (
 
 require (
 	github.com/kittomic/cascadingconfig v0.0.0-00010101000000-000000000000
+	github.com/kittomic/cascadingconfig/internal/apicheck v0.0.0-00010101000000-000000000000
 	github.com/kittomic/cascadingconfig/presets v0.0.0-00010101000000-000000000000
 )
 

@@ -23,7 +23,7 @@ func TestBootstrapOptionErrors(t *testing.T) {
 			ops:  []string{"BootstrapFiles"},
 		},
 		{name: "an unknown key", opts: []cc.Option{scope, cc.WithBootstrapKeys("nope")}, ops: []string{"WithBootstrapKeys"}, contains: []string{"nope"}},
-		{name: "turning off an unknown key", opts: []cc.Option{scope, cc.WithoutBootstrapKey("nope")}, ops: []string{"WithoutBootstrapKey"}},
+		{name: "turning off an unknown key", opts: []cc.Option{scope, cc.WithoutBootstrapKeys("nope")}, ops: []string{"WithoutBootstrapKeys"}},
 		{name: "a limit on an unknown scope", opts: []cc.Option{scope, cc.WithBootstrapLimit("nope", cc.BootstrapEnv)}, ops: []string{"WithBootstrapLimit"}},
 		{name: "a limit with an unknown key", opts: []cc.Option{scope, cc.WithBootstrapLimit("s", "nope")}, ops: []string{"WithBootstrapLimit"}},
 		{name: "a nil transform", opts: []cc.Option{scope, cc.WithBootstrapTransform(nil)}, ops: []string{"WithBootstrapTransform"}},

@@ -105,16 +105,16 @@ type bindingDef struct {
 	name string
 }
 
-// WithEnvBinding declares a binding or renames it. An empty name means the default, {NAME}_<suffix>. The name must
+// WithBinding declares a binding or renames it. An empty name means the default, {NAME}_<suffix>. The name must
 // match [A-Za-z_][A-Za-z0-9_]*, and no two bindings may share one.
-func WithEnvBinding(b Binding, name string) Option {
+func WithBinding(b Binding, name string) Option {
 	return optionFunc(func(c *config) {
 		if b == "" || strings.TrimLeft(string(b), "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_") != "" {
-			c.fail("WithEnvBinding", "the binding key %q must be letters, digits and _", b)
+			c.fail("WithBinding", "the binding key %q must be letters, digits and _", b)
 			return
 		}
 		if name != "" && !isVarName(name) {
-			c.fail("WithEnvBinding", "the variable name %q for %q must match [A-Za-z_][A-Za-z0-9_]*", name, b)
+			c.fail("WithBinding", "the variable name %q for %q must match [A-Za-z_][A-Za-z0-9_]*", name, b)
 			return
 		}
 		if i := slices.IndexFunc(c.bindings, func(d bindingDef) bool { return d.key == b }); i >= 0 {
@@ -125,16 +125,16 @@ func WithEnvBinding(b Binding, name string) Option {
 	})
 }
 
-// WithoutEnvBinding turns a binding off. A built-in binding that isn't declared is left alone; an unknown key is an
+// WithoutBinding turns a binding off. A built-in binding that isn't declared is left alone; an unknown key is an
 // *OptionError.
-func WithoutEnvBinding(b Binding) Option {
+func WithoutBinding(b Binding) Option {
 	return optionFunc(func(c *config) {
 		if i := slices.IndexFunc(c.bindings, func(d bindingDef) bool { return d.key == b }); i >= 0 {
 			c.bindings = slices.Delete(c.bindings, i, i+1)
 			return
 		}
 		if !slices.Contains(builtinBindings, b) {
-			c.fail("WithoutEnvBinding", "the binding %q isn't declared", b)
+			c.fail("WithoutBinding", "the binding %q isn't declared", b)
 		}
 	})
 }
@@ -159,7 +159,7 @@ func (c *config) finishBindings() {
 			v = c.envName + "_" + string(d.key)
 		}
 		if other, ok := owner[v]; ok {
-			c.fail("WithEnvBinding", "the variable %q is used by both the %q and %q bindings", v, other, d.key)
+			c.fail("WithBinding", "the variable %q is used by both the %q and %q bindings", v, other, d.key)
 			continue
 		}
 		owner[v] = d.key

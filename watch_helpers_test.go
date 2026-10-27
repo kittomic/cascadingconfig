@@ -87,7 +87,7 @@ func (e *watchEnv) loader(opts ...cc.Option) *cc.Loader {
 // watch starts watching the tree, recording every change, and closes the watcher when the test ends.
 func (e *watchEnv) watch(wopts []cc.WatchOption, opts ...cc.Option) *cc.Watcher[cc.Tree] {
 	e.t.Helper()
-	w, err := e.loader(opts...).Watch(e.t.Context(), e.changes.add, wopts...)
+	w, err := e.loader(opts...).Watch(e.t.Context(), e.changes.handle, wopts...)
 	if err != nil {
 		e.t.Fatalf("Watch: %v", err)
 	}

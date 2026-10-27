@@ -55,7 +55,7 @@ func cacheState(t *testing.T, res *cc.Result, path string) string {
 	if l.Remote == nil {
 		t.Fatalf("layer %s has no Remote", path)
 	}
-	return l.Remote.Cache
+	return string(l.Remote.Cache)
 }
 
 // DL-19, DL-207: an unpinned reference is served from the cache until the TTL, by the loader's clock, has passed.

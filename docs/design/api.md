@@ -22,7 +22,8 @@ err = res.Decode(&cfg) // decode it whenever you like
 report := res.Describe()
 
 // optional: watch for changes
-w, err := cascadingconfig.Watch[Config](ctx, loader, func(c cascadingconfig.Change[Config]) { /* ... */ })
+w, err := cascadingconfig.Watch[Config](ctx, loader,
+	func(ctx context.Context, c cascadingconfig.Change[Config]) { /* ... */ })
 defer w.Close()
 ```
 
@@ -245,7 +246,10 @@ func (p Preset) Name() string
       `WithFormats()` with no arguments are `*OptionError`s, because an empty set can only be a mistake.
     - **Exceptions:** `WithProbes`, `WithFlatPaths` and `WithUnknownKeys` end in *s* but set a single setting. They
       follow the single-setting rule.
-  - **`Without…` removes** (`WithoutScopes`, `WithoutIncludeResolver`, `WithoutEnvBinding`, `WithoutUnset`).
+  - **`With…s` for a list that mirrors an environment variable adds** (`WithCeilingPaths`, `WithIgnoredPaths`,
+    `WithBootstrapKeys`), as its variable does, so a preset's entries and an app's combine (DL-275).
+  - **`Without…` removes** (`WithoutScopes`, `WithoutIncludeResolver`, `WithoutBinding`, `WithoutBootstrapKeys`,
+    `WithoutUnsetKey`).
   - **`Require…` turns on a check** (`RequireConfig`).
 - **Grouping:** `Options(opts...)` bundles several options into one, so an app can share a group.
 - **Errors** (DL-104): each problem is an `*OptionError` whose `Op` is the option's name, for example
@@ -287,11 +291,11 @@ layouts (DL-94).
 | Resolution     | **Settled** (DL-139): `WithResolution(MergeAll \| FirstMatch)`                                            |
 | Patterns       | `Pattern(template, variant, root)` inside a scope kind. `template` uses `{name}`, `{env}` and `{ext}`; `variant` is `VariantShared`, `VariantEnv`, `VariantLocal` or `VariantEnvLocal`; `root` says how the config root is derived (the scope dir, or the file's own dir). |
 | Includes       | **Settled** (DL-178): `WithIncludeKey(key, IncludeFlat \| IncludeNested)` and `WithoutIncludeKey()`       |
-| Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit` and `WithBootstrapTransform` |
+| Bootstrap      | **Settled** (DL-131, DL-132): `BootstrapFiles(patterns...)` on a scope, `WithBootstrapKeys`, `WithoutBootstrapKeys`, `WithBootstrapLimit` and `WithBootstrapTransform` |
 | Limits         | **Settled** (DL-198): `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
 | Directories    | **Settled** (DL-112): `WithPlatformDirs(XDGDirs)` for the mise layouts, and `EnvPathsDirs` for the cosmiconfig layout (M4d). It replaces the proposed `WithUserDir` and `WithSystemDir` pair. |
 | Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
-| Env bindings   | **Settled** (DL-98): `type Binding string`, with constants such as `BindConfigDir` (`"CONFIG_DIR"`), `BindEnv` and `BindConfigFormats`. `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` declares or renames a binding; an empty name means the default `{NAME}_<suffix>`. A custom scope can declare its own binding. |
+| Env bindings   | **Settled** (DL-98): `type Binding string`, with constants such as `BindConfigDir` (`"CONFIG_DIR"`), `BindEnv` and `BindConfigFormats`. `WithBinding(BindEnv, "MYAPP_CONFIG_ENV")` declares or renames a binding; an empty name means the default `{NAME}_<suffix>`. A custom scope can declare its own binding. |
 
 ### Settled signatures
 
@@ -321,7 +325,7 @@ func WithMergeRule[P PathSpec](path P, strategy MergeStrategy) Option
 func WithMergeFunc[P PathSpec](path P, f MergeFunc) Option
 func WithArrayMerge(strategy MergeStrategy) Option // Replace, Append or Prepend
 func WithUnsetKey(key string) Option
-func WithoutUnset() Option
+func WithoutUnsetKey() Option
 
 // Environments and files
 func WithEnvs(names ...string) Option
@@ -343,8 +347,8 @@ const (
 	BindConfigFormats           Binding = "CONFIG_FORMATS"
 )
 
-func WithEnvBinding(b Binding, name string) Option
-func WithoutEnvBinding(b Binding) Option
+func WithBinding(b Binding, name string) Option
+func WithoutBinding(b Binding) Option
 ```
 
 #### Settled in M4a
@@ -438,7 +442,7 @@ const (
 )
 
 func WithBootstrapKeys(keys ...BootstrapKey) Option
-func WithoutBootstrapKey(key BootstrapKey) Option
+func WithoutBootstrapKeys(keys ...BootstrapKey) Option
 func WithBootstrapLimit(scope ScopeName, keys ...BootstrapKey) Option
 func WithBootstrapTransform(f func(ctx context.Context, l Layer, t Tree) (Tree, error)) Option
 
@@ -495,10 +499,15 @@ func WithConfigFilesOnly() Option
 func Load[T any](ctx context.Context, l *Loader) (T, error)
 func (r *Result) Decode(v any) error
 func DecodeAt[P PathSpec](r *Result, path P, v any) error
-func DecodeHook() mapstructure.DecodeHookFunc // koanf's three hooks, composed
+
+// Decoding options of our own, so mapstructure stays internal (DL-278)
+type DecodeHook func(from, to reflect.Type, data any) (any, error)
+
+func WithDecodeHook(h DecodeHook) Option // added, run before the default hooks
+func WithZeroFields() Option
+func WithoutWeakTyping() Option
 
 func WithTag(tag string) Option
-func WithDecoderConfig(dc *mapstructure.DecoderConfig) Option
 func WithFlatPaths() Option
 
 type UnknownKeys int // UnknownKeysWarn (the default), UnknownKeysError, UnknownKeysIgnore
@@ -690,7 +699,7 @@ type Remote struct {
 	Ref      string // the normalised reference
 	Identity string
 	Pinned   bool
-	Cache    string // "" when fetched, "cached", or "stale"
+	Cache    CacheState // CacheFetched (""), CacheCached, CacheRevalidated or CacheStale (DL-276)
 }
 
 // Added to existing types:
@@ -756,12 +765,15 @@ type Credential struct {
 #### Settled in M9
 
 ```go
-// Watching (DL-220 to DL-223)
-func Watch[T any](ctx context.Context, l *Loader, fn func(Change[T]), opts ...WatchOption) (*Watcher[T], error)
-func (l *Loader) Watch(ctx context.Context, fn func(Change[Tree]), opts ...WatchOption) (*Watcher[Tree], error)
+// Watching (DL-220 to DL-223, DL-279)
+func Watch[T any](ctx context.Context, l *Loader, fn func(context.Context, Change[T]),
+	opts ...WatchOption) (*Watcher[T], error)
+func (l *Loader) Watch(ctx context.Context, fn func(context.Context, Change[Tree]),
+	opts ...WatchOption) (*Watcher[Tree], error)
 
 type Watcher[T any] struct { /* … */ }
 func (w *Watcher[T]) Current() T                     // the latest good snapshot, shared and read-only
+func (w *Watcher[T]) Done() <-chan struct{}       // closed once closed and the last handler call has returned (DL-279)
 func (w *Watcher[T]) Reload(ctx context.Context) error
 func (w *Watcher[T]) Close() error                   // the notifier's Close error, then nil
 
@@ -816,8 +828,10 @@ func New() (cascadingconfig.Notifier, error)
 
 - **Option errors:** from `Watch`, as `*OptionError`s: a negative `quiet`, a `maxWait` below `quiet`, a poll interval
   that isn't positive, and a negative remote poll interval. A nil notifier factory is an `*OptionError` from `New`.
-- **`Close` and `Reload` from the handler** (DL-223): `Close` returns without waiting, and `Reload` runs the reload and
-  returns, with its handler call after the current one. From any other goroutine, both wait.
+- **`Close` and `Reload` from the handler** (DL-279): the handler gets a context, cancelled when the watcher closes.
+  `Reload` with that context, or one derived from it, runs the reload and returns, its handler call following the
+  current one; with any other context it waits for that call. `Close` never waits for a running handler, and `Done()`
+  closes once the last call returns.
 - **`Report.String()`** shows `(revalidated)` like `(cached)`.
 
 #### Settled in M9b
@@ -873,11 +887,11 @@ func WithLogLevel(level slog.Leveler) Option // the lowest level the loader logs
 | Environments  | `WithEnvs`                                                                                                                  |
 | Formats       | `WithDecoder`, `WithFormats`, `WithDefaultFormats`, `WithFormatConflict`, `WithFileFormat`                                                       |
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
-| Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnset`, `WithLayerTransform`, `WithResultTransform`              |
+| Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnsetKey`, `WithLayerTransform`, `WithResultTransform`              |
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithIncludeTimeout`, `WithDefaultPolicy`, `WithScopePolicy` |
-| Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`                                                                                       |
-| Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKey`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
-| Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
+| Env bindings  | `WithBinding`, `WithoutBinding`                                                                                       |
+| Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKeys`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
+| Decoding      | `WithTag`, `WithDecodeHook`, `WithZeroFields`, `WithoutWeakTyping`, `WithFlatPaths`, `WithUnknownKeys`                      |
 | Behaviour     | `RequireConfig`, `WithLogger`, `WithProbes`                                                                                 |
 
 ### Example
@@ -956,10 +970,10 @@ func main() {
 | --------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Decoder library | `github.com/go-viper/mapstructure/v2` (v2.4.0)                               | The same library.                                    |
 | Struct tag      | `koanf`; `UnmarshalConf.Tag` overrides it                                    | `koanf` by default; `WithTag("config")` overrides it. |
-| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order (DL-148). koanf's hooks are unexported, so we reimplement them with the same behaviour. `DecodeHook()` returns them composed. |
+| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order (DL-148). koanf's hooks are unexported, so we reimplement them with the same behaviour. `WithDecodeHook` adds hooks before them (DL-278). |
 | Dates           | go-toml hands TOML date-times through as `time.Time`                          | Every date-time is an RFC 3339 string in the tree ([design.md](design.md#format-dialects)). The `TextUnmarshaler` hook already parses it into a `time.Time` field, because `time.Time` implements `UnmarshalText`, and a `string` field gets the text. A date-only or local date-time string into `time.Time` is a `*DecodeError`. Through `KoanfProvider`, koanf's own decoding sees the same strings and decodes them the same way. |
 | Weak typing     | `WeaklyTypedInput: true`                                                     | The same, so env-var strings such as `"8080"` decode into `int`. |
-| Custom decoder  | `UnmarshalConf.DecoderConfig` replaces the defaults                          | `WithDecoderConfig(*mapstructure.DecoderConfig)`, with the same semantics (DL-149): the app's config, hooks included, replaces ours, so an app that wants day durations composes `DecodeHook()` into its own. The config is copied when the option is applied. We set `Result`, and `TagName` falls back to `koanf` if empty. A `Metadata` in it is an `*OptionError`, because concurrent decodes would all write to it; unknown keys are in the report and the error instead. |
+| Custom decoder  | `UnmarshalConf.DecoderConfig` replaces the defaults                          | Options of our own, so mapstructure stays internal (DL-278, replacing DL-149): `WithDecodeHook` for hooks, `WithZeroFields`, `WithoutWeakTyping` and `WithTag`. Unknown keys are in the report and the error, and `WithUnknownKeys` makes them an error. |
 | Flat paths      | `UnmarshalConf.FlatPaths`                                                    | `WithFlatPaths()`.                                   |
 | Key delimiter   | `.` by default                                                               | `.`, as in [merge-rule paths](design.md#per-key-merge-rules). |
 
@@ -1014,7 +1028,7 @@ for a key from `EnvVars`.
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | null, unset or never set              | The tree: a key present with a nil value is null, and an absent key is unset or never set. `OriginOf` shows kind `OriginNull`, or an unset step in its history. |
 | That config cleared a default         | Supply defaults with [`WithDefaults`](#defaults), not as a pre-filled struct value. A higher `null` or `_unset` then removes them from the tree, and a pointer field reads `nil`. |
-| That `null` cleared a Go-side default | `WithDecoderConfig` with `ZeroFields: true`. Null then sets the field to its zero value. `_unset` still keeps the default, because the key is absent. `ZeroFields` also empties map fields before decoding into them, so pre-filled map entries are replaced, not merged. |
+| That `null` cleared a Go-side default | `WithZeroFields()`. Null then sets the field to its zero value. `_unset` still keeps the default, because the key is absent. It also empties map fields before decoding into them, so pre-filled map entries are replaced, not merged. |
 
 There is **no three-state field type** (such as a `Nullable[T]`). The tree and `OriginOf` already tell null, unset and
 never-set apart, so one isn't needed.
@@ -1070,8 +1084,8 @@ cascadingconfig.WithDefaults(Config{
     exception to "a custom scope needs `WithScopes`". `WithoutScopes(ScopeDefaults)` still removes it.
   - **A name clash** with a scope the app defines is the usual "already defined" `*OptionError`.
   - **A second `WithDefaults`** replaces the first.
-  - **The struct tag** is `WithTag`'s, or `WithDecoderConfig`'s `TagName`, read after every option is applied, so the
-    order of options doesn't matter.
+  - **The struct tag** is `WithTag`'s, or `koanf`, read after every option is applied, so the order of options doesn't
+    matter.
   - **Zero values:** a nil pointer is left out, but a non-nil pointer to a zero value is included. That is how an app
     sets an explicit zero default.
   - **Invalid values** are `*OptionError`s naming the field: a nil value, a value that isn't a struct, a pointer to one
@@ -1083,13 +1097,13 @@ cascadingconfig.WithDefaults(Config{
 - **One mechanism.** There's no `SetDefaults()` method or `Defaulter` interface.
 - **`w.Current()`** returns the latest good snapshot, lock-free. `w.Reload(ctx)` forces a reload, and `w.Close()` stops
   watching.
-- **Untyped watching:** `loader.Watch(ctx, func(cascadingconfig.Change[cascadingconfig.Tree]))`.
+- **Untyped watching:** `loader.Watch(ctx, func(context.Context, cascadingconfig.Change[cascadingconfig.Tree]))`.
 
 **Lifecycle:**
 
 - **`ctx` bounds the watcher.** Cancelling it stops watching, as `Close` does.
-- **`Close`** is idempotent. It waits for a running handler to return, and it's safe to call from inside the handler,
-  where it returns without waiting (DL-223).
+- **`Close`** is idempotent, and doesn't wait for a running handler, so it's safe to call from inside one. Once it
+  returns no new handler call starts, and `Done()` closes after the running one returns (DL-279).
 - **`Reload(ctx)`** returns an `error`. It calls the handler only if the reload changed something, failed, or is the
   first good reload after a failure (DL-222).
 - **What counts as a change:** a difference in the merged values, compared exactly (DL-233). Dates and times are RFC
@@ -1720,4 +1734,5 @@ exercise the loader without real files or timers:
   `USERPROFILE` instead of `HOME` for a real host, and case-insensitive env-var prefixes. Paths are still joined with
   the real OS's rules, so a Windows test checks where a directory came from, not its separators.
 - **`cctest.Golden(t, file, got)`** compares `got` with a file under `testdata`, and rewrites the file when the test
-  runs with `-update`. It's used for reports and discovery orders.
+  runs with an `-update` flag its package defines, or with `CCTEST_UPDATE=1`; cctest registers no flags (DL-274). It's
+  used for reports and discovery orders.

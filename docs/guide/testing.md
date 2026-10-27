@@ -71,7 +71,14 @@ clock.Advance(time.Second) // past the debounce; returns once the reload and the
 
 ## Golden files
 
-`cctest.Golden` compares output with a file in `testdata/`, and rewrites the file when the test runs with `-update`:
+`cctest.Golden` compares output with a file in `testdata/`, and rewrites the file when asked: with `CCTEST_UPDATE=1`, or
+with an `-update` flag your test package defines. cctest registers no flags of its own, so it never clashes with yours:
+
+```go
+var _ = flag.Bool("update", false, "rewrite golden files") // in any _test.go file of the package
+```
+
+Then compare:
 
 <!-- example -->
 ```go

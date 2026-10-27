@@ -73,8 +73,8 @@ port = 8080
 - **Order:** the keys are removed from the lower layers' result first, then the layer's own values merge on top, so a
   layer can unset a table and set parts of it again.
 - **A higher layer** can set an unset key again.
-- **The name:** `WithUnsetKey` renames the key, and `WithoutUnset` turns it off. Environment variables and flags can't
-  use it.
+- **The name:** `WithUnsetKey` renames the key, and `WithoutUnsetKey` turns it off. Environment variables and flags
+  can't use it.
 
 ## Null
 

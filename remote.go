@@ -128,7 +128,7 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 	var content []byte
 	switch {
 	case hit && (rr.pinned || c.now().Sub(cached.entry.Fetched) < c.cacheTTL):
-		got, content, l.Remote.Cache = cached.entry, cached.content, "cached"
+		got, content, l.Remote.Cache = cached.entry, cached.content, CacheCached
 	default:
 		validator := ""
 		if hit {
@@ -139,10 +139,10 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 		switch {
 		case err == nil:
 		case validator != "" && errors.Is(err, ErrNotModified):
-			got, content, l.Remote.Cache = cached.entry, cached.content, "revalidated"
+			got, content, l.Remote.Cache = cached.entry, cached.content, CacheRevalidated
 			got.Fetched = c.now()
 		case hit && errors.As(err, &fetchErr):
-			got, content, l.Remote.Cache = cached.entry, cached.content, "stale"
+			got, content, l.Remote.Cache = cached.entry, cached.content, CacheStale
 			l.Warnings = append(l.Warnings, Warning{
 				Code: WarnStaleInclude, Path: l.Path,
 				Message: fmt.Sprintf("%s: using a cached copy from %s, because fetching it failed: %v", l.Path,
@@ -154,7 +154,7 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 			}
 			return fail(err, "")
 		}
-		if l.Remote.Cache == "" {
+		if l.Remote.Cache == CacheFetched {
 			if err := checkIdentity(fe.Identity); err != nil {
 				return fail(&FetchError{BaseError: about(fmt.Errorf("%q: the resolver returned %w", raw, err))}, "")
 			}
@@ -180,7 +180,7 @@ func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*en
 		return fail(&UnsupportedFormatError{BaseError: inside(fmt.Errorf("no format rule, extension or media type (%q) has a registered decoder", got.MediaType))}, "")
 	}
 	l.Format = format
-	if l.Remote.Cache == "" || l.Remote.Cache == "revalidated" {
+	if l.Remote.Cache == CacheFetched || l.Remote.Cache == CacheRevalidated {
 		ld.cacheStore(rr.ref.Ref, got, content)
 	}
 	if ld.rec != nil {

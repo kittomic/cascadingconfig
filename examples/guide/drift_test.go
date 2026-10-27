@@ -3,7 +3,7 @@ package guide_test
 import (
 	"testing"
 
-	"github.com/kittomic/cascadingconfig/internal/docsnippet"
+	"github.com/kittomic/cascadingconfig/internal/apicheck/docsnippet"
 )
 
 // DL-266: every snippet marked <!-- example --> in docs/guide appears in docexamples_test.go, unchanged but for

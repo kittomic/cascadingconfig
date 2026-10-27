@@ -132,6 +132,6 @@ preset := mise.Preset.Extend(
 | `MYAPP_IGNORED_CONFIG_PATHS` | Files or directories never loaded                           |
 | `MYAPP_CONFIG_FORMATS`       | The formats searched, and their order                       |
 
-An option set in code wins over its variable. `WithEnvBinding` renames a variable and `WithoutEnvBinding` turns one off,
-for example when your app already uses `MYAPP_ENV` for something else. `cosmiconfig.Preset` reads only
-`MYAPP_CONFIG_FILE` and `MYAPP_CONFIG_FORMATS`.
+An option set in code wins over its variable. `WithBinding` renames a variable and `WithoutBinding` turns one off, for
+example when your app already uses `MYAPP_ENV` for something else. `cosmiconfig.Preset` reads only `MYAPP_CONFIG_FILE`
+and `MYAPP_CONFIG_FORMATS`.

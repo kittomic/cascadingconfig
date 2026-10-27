@@ -75,7 +75,7 @@ func watchDir(t *testing.T, dir string, wopts ...cc.WatchOption) (*cc.Watcher[cc
 		t.Fatalf("New: %v", err)
 	}
 	changes := make(chan cc.Change[cc.Tree], 16)
-	w, err := l.Watch(t.Context(), func(c cc.Change[cc.Tree]) { changes <- c },
+	w, err := l.Watch(t.Context(), func(_ context.Context, c cc.Change[cc.Tree]) { changes <- c },
 		append([]cc.WatchOption{cc.WithDebounce(20*time.Millisecond, 200*time.Millisecond)}, wopts...)...)
 	if err != nil {
 		t.Fatalf("Watch: %v", err)

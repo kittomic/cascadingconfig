@@ -47,7 +47,7 @@ func Content(p string) string {
 // on the fixture host, with the environments dev and linux, the extensions exts, the stem "a" and the directory "f".
 func Fixture(t *testing.T, layout string, exts []string) map[string]string {
 	t.Helper()
-	data, err := os.ReadFile("../../docs/precedence.md")
+	data, err := os.ReadFile("../testdata/precedence.txt") // a copy of docs/precedence.md, which apicheck checks (DL-274)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func WatchReal(t *testing.T, preset cascadingconfig.Preset, rel, before, after s
 		t.Fatalf("NewWithPreset: %v", err)
 	}
 	changes := make(chan cascadingconfig.Change[cascadingconfig.Tree], 8)
-	w, err := l.Watch(t.Context(), func(c cascadingconfig.Change[cascadingconfig.Tree]) { changes <- c },
+	w, err := l.Watch(t.Context(), func(_ context.Context, c cascadingconfig.Change[cascadingconfig.Tree]) { changes <- c },
 		cascadingconfig.WithDebounce(20*time.Millisecond, 200*time.Millisecond))
 	if err != nil {
 		t.Fatalf("Watch: %v", err)

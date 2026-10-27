@@ -16,6 +16,10 @@ const BootstrapIgnoredConfigPaths BootstrapKey = "ignored_config_paths"
 const BootstrapMergeSearchPlaces BootstrapKey = "mergeSearchPlaces"
 const BootstrapOverrideConfigFilenames BootstrapKey = "override_config_filenames"
 const BootstrapSearchPlaces BootstrapKey = "searchPlaces"
+const CacheCached CacheState = "cached"
+const CacheFetched CacheState = ""
+const CacheRevalidated CacheState = "revalidated"
+const CacheStale CacheState = "stale"
 const CodeBadGateway Code = 502
 const CodeBadRequest Code = 400
 const CodeCanceled Code = 499
@@ -116,7 +120,6 @@ func Confine(...string) PolicyOption
 func Custom(Scope) ScopeKind
 func DecodeAt[P PathSpec](*Result, P, any) error
 func DecodeDocument(Decoder, string, []byte) (Document, error)
-func DecodeHook() mapstructure.DecodeHookFunc
 func DisabledBy(Binding) ScopeOption
 func EmbeddedFS(fs.FS, ...Pattern) ScopeKind
 func EnvVars(string, ...EnvVarsOption) ScopeKind
@@ -154,8 +157,9 @@ func TrustPaths(...string) TrustStore
 func Values(Tree) ScopeKind
 func ValuesFunc(func(context.Context) (Tree, error)) ScopeKind
 func Walk(...Pattern) ScopeKind
-func Watch[T any](context.Context, *Loader, func(Change[T]), ...WatchOption) (*Watcher[T], error)
+func Watch[T any](context.Context, *Loader, func(context.Context, Change[T]), ...WatchOption) (*Watcher[T], error)
 func WithArrayMerge(MergeStrategy) Option
+func WithBinding(Binding, string) Option
 func WithBootstrapKeys(...BootstrapKey) Option
 func WithBootstrapLimit(ScopeName, ...BootstrapKey) Option
 func WithBootstrapTransform(func(context.Context, Layer, Tree) (Tree, error)) Option
@@ -163,12 +167,11 @@ func WithCeilingPaths(...string) Option
 func WithConfigFiles(...string) Option
 func WithConfigFilesOnly() Option
 func WithDebounce(time.Duration, time.Duration) WatchOption
+func WithDecodeHook(DecodeHook) Option
 func WithDecoder(Decoder) Option
-func WithDecoderConfig(*mapstructure.DecoderConfig) Option
 func WithDefaultFormats(...string) Option
 func WithDefaultPolicy(...PolicyOption) Option
 func WithDefaults(any) Option
-func WithEnvBinding(Binding, string) Option
 func WithEnvs(...string) Option
 func WithFileFormat(Matcher, ...string) Option
 func WithFileSystem(FileSystem) Option
@@ -209,14 +212,16 @@ func WithTag(string) Option
 func WithUnknownKeys(UnknownKeys) Option
 func WithUnsetKey(string) Option
 func WithWalkStop(WalkStop) Option
-func WithoutBootstrapKey(BootstrapKey) Option
-func WithoutEnvBinding(Binding) Option
+func WithZeroFields() Option
+func WithoutBinding(Binding) Option
+func WithoutBootstrapKeys(...BootstrapKey) Option
 func WithoutIncludeCache() Option
 func WithoutIncludeKey() Option
 func WithoutIncludeResolver(string) Option
 func WithoutRemoteIncludes() Option
 func WithoutScopes(...ScopeName) Option
-func WithoutUnset() Option
+func WithoutUnsetKey() Option
+func WithoutWeakTyping() Option
 method (*BaseError) Code() Code
 method (*BaseError) Error() string
 method (*BaseError) Unwrap() error
@@ -244,7 +249,7 @@ method (*KoanfProvider) Read() (map[string]any, error)
 method (*KoanfProvider) ReadBytes() ([]byte, error)
 method (*Loader) KoanfProvider() *KoanfProvider
 method (*Loader) Load(context.Context) (*Result, error)
-method (*Loader) Watch(context.Context, func(Change[Tree]), ...WatchOption) (*Watcher[Tree], error)
+method (*Loader) Watch(context.Context, func(context.Context, Change[Tree]), ...WatchOption) (*Watcher[Tree], error)
 method (*MergeError) Code() Code
 method (*MergeError) Error() string
 method (*MergeError) Is(error) bool
@@ -293,6 +298,7 @@ method (*UnsupportedSchemeError) Is(error) bool
 method (*UnsupportedSchemeError) Unwrap() error
 method (*Watcher[T]) Close() error
 method (*Watcher[T]) Current() T
+method (*Watcher[T]) Done() <-chan struct{}
 method (*Watcher[T]) Reload(context.Context) error
 method (DiffKind) String() string
 method (KeyDiff) String() string
@@ -320,6 +326,7 @@ type BindingInfo struct, Binding Binding
 type BindingInfo struct, Set bool
 type BindingInfo struct, Var string
 type BootstrapKey string
+type CacheState string
 type Change[T any] struct
 type Change[T any] struct, Diff []KeyDiff
 type Change[T any] struct, Err error
@@ -339,6 +346,7 @@ type DecodeError struct
 type DecodeError struct, Key Path
 type DecodeError struct, Unknown bool
 type DecodeError struct, embedded BaseError
+type DecodeHook func(reflect.Type, reflect.Type, any) (any, error)
 type Decoder interface
 type Decoder interface, Decode([]byte) (Document, error)
 type Decoder interface, Extensions() []string
@@ -499,7 +507,7 @@ type Probe struct, Scope ScopeName
 type ReferenceError struct
 type ReferenceError struct, embedded BaseError
 type Remote struct
-type Remote struct, Cache string
+type Remote struct, Cache CacheState
 type Remote struct, Identity string
 type Remote struct, Pinned bool
 type Remote struct, Ref string

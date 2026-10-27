@@ -33,20 +33,31 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
 │       └── go.mod                  module …/watch/fsnotify: requires github.com/fsnotify/fsnotify
 ├── presets/
 │   ├── go.mod                      module …/presets: requires all of the above
+│   ├── testdata/                   a copy of docs/precedence.md, for the presets' tests (DL-274)
 │   ├── mise/                       package mise:         mise.Preset
 │   ├── misehardened/               package misehardened: misehardened.Preset
 │   └── cosmiconfig/                package cosmiconfig:  cosmiconfig.Preset
-├── internal/                       core-only helpers (the JSON parser, tree copying, path safety, …); the merge
-│                                   engine is in the root package, because it uses the public types (DL-86)
-│   └── compat/
-│       └── go.mod                  module …/internal/compat (test-only, never released): koanf parity tests
+├── internal/                       core-only packages: hooks (cctest's way in), json (the JSON parser), memfs
+│                                   (cctest's filesystem), tree (copying), golden (golden files); the merge engine is
+│                                   in the root package, because it uses the public types (DL-86)
+│   ├── apicheck/
+│   │   └── go.mod                  module …/internal/apicheck (test-only, never released): the design records'
+│   │                               listings and doc examples, the api/ guard, names in user docs, the doc-snippet
+│   │                               checker, and this tree
+│   ├── compat/
+│   │   └── go.mod                  module …/internal/compat (test-only, never released): koanf parity tests
+│   └── conformance/
+│       └── go.mod                  module …/internal/conformance (test-only, never released): the formats' test
+│                                   suites, vendored in testdata, and their outcomes
 ├── examples/
-│   └── go.mod                      module …/examples (never released)
+│   └── go.mod                      module …/examples (never released): the example programs and the guide's snippets
+├── api/                            the released packages' exported APIs, one declaration per line (DL-257)
 ├── scripts/                        each-module.sh, check-go-versions.sh, check-gowork-off.sh, check-licenses.sh,
-│                                   check-deps.sh
+│                                   check-deps.sh, refresh-conformance.sh
 ├── docs/
 ├── LICENSE                         Apache-2.0; every module directory above also has its own copy
-├── README.md, SECURITY.md
+├── CHANGELOG.md                    and one in every released module's directory
+├── README.md, SECURITY.md, CONTRIBUTING.md
 ├── .config/, .golangci.yml, lefthook.yml
 └── .gitignore
 ```

@@ -62,7 +62,7 @@ func (c *config) finishDefaults() {
 		return
 	}
 	s := c.scopes[i]
-	t, err := defaultsTree(s.kind.(defaultsKind).value, c.tagName(), c.decoderConf != nil && c.decoderConf.Squash)
+	t, err := defaultsTree(s.kind.(defaultsKind).value, c.tagName())
 	if err != nil {
 		c.fail("WithDefaults", "%w", err)
 		s.invalid = true
@@ -72,7 +72,7 @@ func (c *config) finishDefaults() {
 }
 
 // defaultsTree converts a defaults value to a tree.
-func defaultsTree(v any, tag string, squash bool) (Tree, error) {
+func defaultsTree(v any, tag string) (Tree, error) {
 	rv := reflect.ValueOf(v)
 	for rv.IsValid() && rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
@@ -86,7 +86,7 @@ func defaultsTree(v any, tag string, squash bool) (Tree, error) {
 	case rv.Kind() != reflect.Struct && rv.Kind() != reflect.Map:
 		return nil, fmt.Errorf("the defaults must be a struct, a pointer to one, or a map with string keys, not %T", v)
 	}
-	cv := converter{tag: tag, squash: squash}
+	cv := converter{tag: tag}
 	out, err := cv.convert(rv, nil)
 	if err != nil {
 		return nil, err
@@ -100,8 +100,7 @@ func defaultsTree(v any, tag string, squash bool) (Tree, error) {
 
 // converter turns Go values into canonical values, reading struct tags as decoding does.
 type converter struct {
-	tag    string
-	squash bool // squash every embedded struct, as DecoderConfig.Squash does
+	tag string
 }
 
 var durationType = reflect.TypeFor[time.Duration]()
@@ -195,7 +194,7 @@ func (cv converter) fields(rv reflect.Value, at Path, out map[string]any) error 
 		if name == "-" {
 			continue
 		}
-		squash := slices.Contains(strings.Split(opts, ","), "squash") || cv.squash && f.Anonymous
+		squash := slices.Contains(strings.Split(opts, ","), "squash")
 		if squash {
 			for fv.Kind() == reflect.Pointer && !fv.IsNil() {
 				fv = fv.Elem()

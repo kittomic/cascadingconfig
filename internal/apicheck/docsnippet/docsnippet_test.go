@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kittomic/cascadingconfig/internal/docsnippet"
+	"github.com/kittomic/cascadingconfig/internal/apicheck/docsnippet"
 )
 
 // fence turns three single quotes into a code fence, since Go's raw strings can't hold backquotes.

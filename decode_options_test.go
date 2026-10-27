@@ -4,8 +4,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/go-viper/mapstructure/v2"
-
 	cc "github.com/kittomic/cascadingconfig"
 )
 
@@ -28,11 +26,6 @@ func TestDecodeOptionErrors(t *testing.T) {
 	}
 	runOptionErrorCases(t, []optionErrorCase{
 		{name: "an empty tag", opts: []cc.Option{scope, cc.WithTag("")}, ops: []string{"WithTag"}},
-		{name: "a nil decoder config", opts: []cc.Option{scope, cc.WithDecoderConfig(nil)}, ops: []string{"WithDecoderConfig"}},
-		{
-			name: "a decoder config with Metadata", opts: []cc.Option{scope, cc.WithDecoderConfig(&mapstructure.DecoderConfig{Metadata: &mapstructure.Metadata{}})},
-			ops: []string{"WithDecoderConfig"},
-		},
 		{name: "an unknown unknown-keys mode", opts: []cc.Option{scope, cc.WithUnknownKeys(cc.UnknownKeys(9))}, ops: []string{"WithUnknownKeys"}},
 		{name: "nil defaults", opts: []cc.Option{scope, cc.WithDefaults(nil)}, ops: []string{"WithDefaults"}},
 		{name: "scalar defaults", opts: []cc.Option{scope, cc.WithDefaults(5)}, ops: []string{"WithDefaults"}},

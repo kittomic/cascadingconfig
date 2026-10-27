@@ -104,7 +104,7 @@ func TestEnvVars(t *testing.T) {
 		"MYAPP_CONFIG_DIR":   "/elsewhere",
 		"OTHER_X":            "y",
 		"myapp_lower":        "z",
-	}, nil, WithEnvBinding(BindConfigDir, ""))
+	}, nil, WithBinding(BindConfigDir, ""))
 	wantTree(t, res, `{"server": {"port": "8080"}, "log_level": "debug"}`)
 	if got := valueLayer(t, res, "env").Trust; got != TrustUser {
 		t.Errorf("trust = %v, want TrustUser", got)

@@ -57,7 +57,7 @@ func WithUnsetKey(key string) Option {
 	})
 }
 
-// WithoutUnset turns unsetting off, so the unset key is plain data.
-func WithoutUnset() Option {
+// WithoutUnsetKey turns unsetting off, so the unset key is plain data.
+func WithoutUnsetKey() Option {
 	return optionFunc(func(c *config) { c.merge.unsetKey = "" })
 }
