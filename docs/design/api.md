@@ -144,8 +144,8 @@ loader, err := cascadingconfig.NewWithPreset("myapp", cascadingconfig.MiseLayout
    `presets/misehardened` gets the same 5 modules in its `go.mod`, `go.sum` and build as with separate modules. Only
    `go list -m all` grows, from 5 to 9.
 3. **Libraries.** **Decided:** `pelletier/go-toml/v2` and `goccy/go-yaml`. Neither has dependencies, and both report
-   line and column positions, which `*ParseError` needs. Their maintenance status and licences are to be confirmed
-   before the first release.
+   line and column positions, which `*ParseError` needs. Their licences and maintenance were confirmed before the first
+   release (DL-280).
 4. **git as a command** rather than `go-git`. **Decided:** yes. It needs no Go dependencies, and the
    [traversal design](design.md#traversal-protection) already relies on git commands. The `git` program must be
    installed at run time.
