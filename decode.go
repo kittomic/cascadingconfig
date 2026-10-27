@@ -57,7 +57,7 @@ func defaultHooks() mapstructure.DecodeHookFunc {
 }
 
 // DecodeHook converts a value while decoding: data, of type from, is about to fill a value of type to. It returns the
-// value to use instead, or data unchanged when it has nothing to do (DL-278).
+// value to use instead, or data unchanged when it has nothing to do.
 type DecodeHook func(from, to reflect.Type, data any) (any, error)
 
 // WithDecodeHook adds a decode hook. Hooks run in the order they're added, before the default hooks for durations,

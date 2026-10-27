@@ -7,7 +7,7 @@ import (
 	"github.com/kittomic/cascadingconfig"
 )
 
-// Notifier is a fake cascadingconfig.Notifier whose events the test sends (DL-231). Pass its New method to
+// Notifier is a fake cascadingconfig.Notifier whose events the test sends. Pass its New method to
 // cascadingconfig.WithNotifier. It's safe for concurrent use.
 //
 // Send and SendError return only once the watcher has finished with what they sent, including any reload that follows
@@ -122,8 +122,8 @@ func (n *Notifier) Watched() []string {
 	return dirs
 }
 
-// Close closes the channels the watcher reads, so a test can simulate a notifier that stops (DL-225). Send and
-// SendError then return at once. Closing twice is fine, and New opens the notifier again.
+// Close closes the channels the watcher reads, so a test can simulate a notifier that stops. Send and SendError then
+// return at once. Closing twice is fine, and New opens the notifier again.
 func (n *Notifier) Close() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()

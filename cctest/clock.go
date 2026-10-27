@@ -14,7 +14,7 @@ import (
 //
 // Timers fire only inside Advance and Set, synchronously and in time order, with the clock showing each timer's time
 // while it fires. The watcher's timers return only once the watcher has handled them, including any reload and handler
-// call, so when Advance returns, everything that fell due has happened (DL-231).
+// call, so when Advance returns, everything that fell due has happened.
 type Clock struct {
 	mu     sync.Mutex
 	now    time.Time

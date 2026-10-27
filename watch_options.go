@@ -83,16 +83,16 @@ type remoteRule struct {
 	matchers []Matcher
 }
 
-// WithDebounce sets how events are coalesced (DL-228): each event restarts the quiet period, and a burst reloads no
-// later than maxWait after its first event. The default is 100 ms and 1 s. A quiet of 0 reloads on every event. A
-// negative quiet, or a maxWait below quiet, is an *OptionError from Watch.
+// WithDebounce sets how events are coalesced: each event restarts the quiet period, and a burst reloads no later than
+// maxWait after its first event. The default is 100 ms and 1 s. A quiet of 0 reloads on every event. A negative quiet,
+// or a maxWait below quiet, is an *OptionError from Watch.
 func WithDebounce(quiet, maxWait time.Duration) WatchOption {
 	return watchOptionFunc(func(s *watchSettings) { s.quiet, s.maxWait = quiet, maxWait })
 }
 
 // WithPollInterval sets the interval for all polling: directories whose watch failed, everything when there's no
-// notifier, and everything with WithPolling (DL-226). The default is 2 s. An interval that isn't positive is an
-// *OptionError from Watch.
+// notifier, and everything with WithPolling. The default is 2 s. An interval that isn't positive is an *OptionError
+// from Watch.
 func WithPollInterval(d time.Duration) WatchOption {
 	return watchOptionFunc(func(s *watchSettings) { s.pollInterval = d })
 }
@@ -102,10 +102,10 @@ func WithPolling() WatchOption {
 	return watchOptionFunc(func(s *watchSettings) { s.polling = true })
 }
 
-// WithRemotePoll re-checks unpinned remote includes in the background every d (DL-230): those the matchers match, or
-// all of them with no matchers. The matchers see the normalised reference, as in allow-lists. When rules overlap, the
-// most recently given wins. A d of 0 means never; a negative d is an *OptionError from Watch. Remote polling is off
-// unless a rule turns it on.
+// WithRemotePoll re-checks unpinned remote includes in the background every d: those the matchers match, or all of them
+// with no matchers. The matchers see the normalised reference, as in allow-lists. When rules overlap, the most recently
+// given wins. A d of 0 means never; a negative d is an *OptionError from Watch. Remote polling is off unless a rule
+// turns it on.
 func WithRemotePoll(d time.Duration, m ...Matcher) WatchOption {
 	return watchOptionFunc(func(s *watchSettings) { s.remote = append(s.remote, remoteRule{d, slices.Clone(m)}) })
 }

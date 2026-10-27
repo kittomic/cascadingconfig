@@ -4,8 +4,8 @@ package cascadingconfig
 // (DL-71). They gain their bootstrap files, includes and policies in the milestones that implement them (DL-94).
 // Never reassign them.
 var (
-	// MiseLayout is mise's layout: the system, user, project and override scopes with mise's file names (DL-124), TOML
-	// first, then YAML, then JSON, and mise's env-var bindings. JSON is registered.
+	// MiseLayout is mise's layout: the system, user, project and override scopes with mise's file names, TOML first, then
+	// YAML, then JSON, and mise's env-var bindings. JSON is registered.
 	MiseLayout = NewPreset("MiseLayout",
 		WithDecoder(builtinJSONDecoder),
 		WithDefaultFormats("toml", "yaml", "json"),
@@ -22,7 +22,7 @@ var (
 		WithBinding(BindConfigFormats, ""),
 		WithBootstrapKeys(BootstrapEnv, BootstrapFormats, BootstrapCeilingPaths, BootstrapIgnoredConfigPaths,
 			BootstrapOverrideConfigFilenames),
-		// mise's include key: local paths here, remote references once the presets register resolvers (DL-178).
+		// mise's include key: local paths here, remote references once the presets register resolvers.
 		WithIncludeKey("include", IncludeFlat),
 
 		// Bootstrap files are mise's .miserc.toml locations (config-locations.md 3.7), lowest precedence first.
@@ -96,8 +96,8 @@ var (
 		WithScopes(ScopeSystem, ScopeUser, ScopeProject, ScopeOverride),
 	)
 
-	// MiseHardenedLayout is MiseLayout with hardened settings: project bootstrap files may only set env and formats,
-	// local includes are confined, files must pass StrictModes (DL-189), and remote includes are off (DL-205).
+	// MiseHardenedLayout is MiseLayout with hardened settings: project bootstrap files may only set env and formats, local
+	// includes are confined, files must pass StrictModes, and remote includes are off.
 	MiseHardenedLayout = MiseLayout.ExtendAs("MiseHardenedLayout",
 		WithBootstrapLimit(ScopeProject, BootstrapEnv, BootstrapFormats),
 		WithoutRemoteIncludes(),
@@ -108,9 +108,9 @@ var (
 		),
 	)
 
-	// CosmiconfigLayout is cosmiconfig's layout (DL-146): the first file found wins; the start directory only by
-	// default, with WithSearchStrategy to walk; the user directory where env-paths puts it; and the meta config in the
-	// current directory. JSON ranks above YAML, and arrays are appended.
+	// CosmiconfigLayout is cosmiconfig's layout: the first file found wins; the start directory only by default, with
+	// WithSearchStrategy to walk; the user directory where env-paths puts it; and the meta config in the current
+	// directory. JSON ranks above YAML, and arrays are appended.
 	CosmiconfigLayout = NewPreset("CosmiconfigLayout",
 		WithDecoder(builtinJSONDecoder),
 		WithDefaultFormats("json", "yaml"),

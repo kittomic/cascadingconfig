@@ -7,8 +7,8 @@ import (
 	"github.com/kittomic/cascadingconfig/watch/fsnotify"
 )
 
-// Preset is cascadingconfig.MiseHardenedLayout with TOML, YAML and fsnotify for watching, and no remote resolvers
-// (DL-248). Never reassign it.
+// Preset is cascadingconfig.MiseHardenedLayout with TOML, YAML and fsnotify for watching, and no remote resolvers.
+// Never reassign it.
 var Preset = cascadingconfig.MiseHardenedLayout.ExtendAs("misehardened.Preset",
 	cascadingconfig.WithDecoder(toml.Decoder()),
 	cascadingconfig.WithDecoder(yaml.Decoder()),

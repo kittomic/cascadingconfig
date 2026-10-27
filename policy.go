@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// WithDefaultPolicy sets the policy for every scope without one of its own (DL-188). The last call wins.
+// WithDefaultPolicy sets the policy for every scope without one of its own. The last call wins.
 func WithDefaultPolicy(opts ...PolicyOption) Option {
 	opts = slices.Clone(opts)
 	return optionFunc(func(c *config) {
@@ -21,7 +21,7 @@ func WithDefaultPolicy(opts ...PolicyOption) Option {
 }
 
 // WithScopePolicy sets scope's policy, which replaces the default as a whole; InheritDefault starts from the default
-// instead (DL-188). The last call for a scope wins. A scope that is never declared is an *OptionError (DL-189).
+// instead. The last call for a scope wins. A scope that is never declared is an *OptionError.
 func WithScopePolicy(scope ScopeName, opts ...PolicyOption) Option {
 	opts = slices.Clone(opts)
 	return optionFunc(func(c *config) {
@@ -168,7 +168,7 @@ func InheritDefault() PolicyOption {
 }
 
 // AllowResolvers sets the schemes whose resolvers the policy can use. With no schemes, every include is forbidden. A
-// scheme with no registered resolver is an *OptionError (DL-189).
+// scheme with no registered resolver is an *OptionError.
 func AllowResolvers(schemes ...string) PolicyOption {
 	schemes = slices.Clone(schemes)
 	return policyOpt{
@@ -234,8 +234,8 @@ func checkMatchers(c *config, op string, ms []Matcher) bool {
 // confinePlaceholders are the placeholders a Confine root can start with, besides ~.
 var confinePlaceholders = []string{"{config_root}", "{user}", "{system}", "{cwd}"}
 
-// Confine requires a local include to resolve, after symlinks, to one of roots or below it (DL-180). Roots are
-// absolute paths, or start with ~, {user}, {system}, {cwd} or {config_root}, the including file's config root.
+// Confine requires a local include to resolve, after symlinks, to one of roots or below it. Roots are absolute paths,
+// or start with ~, {user}, {system}, {cwd} or {config_root}, the including file's config root.
 func Confine(roots ...string) PolicyOption {
 	roots = slices.Clone(roots)
 	return policyOpt{
@@ -273,12 +273,12 @@ func checkRoot(r string) error {
 }
 
 // RequirePinned makes the policy accept only pinned remote references: a full git commit id, an OCI digest, or a URL
-// with an integrity fragment (DL-201). It's checked before anything is fetched.
+// with an integrity fragment. It's checked before anything is fetched.
 func RequirePinned() PolicyOption {
 	return policyOpt{op: "RequirePinned", set: func(p *policy) { p.pinned = true }}
 }
 
-// RequireTrust skips files the store hasn't approved, with a warning (DL-192).
+// RequireTrust skips files the store hasn't approved, with a warning.
 func RequireTrust(store TrustStore) PolicyOption {
 	return policyOpt{
 		op: "RequireTrust",
@@ -293,7 +293,7 @@ func RequireTrust(store TrustStore) PolicyOption {
 	}
 }
 
-// FilePermissions sets the check that every file read, and its containing directory, must pass (DL-191).
+// FilePermissions sets the check that every file read, and its containing directory, must pass.
 func FilePermissions(f func(FileCheck) (Permission, string)) PolicyOption {
 	return policyOpt{
 		op: "FilePermissions",

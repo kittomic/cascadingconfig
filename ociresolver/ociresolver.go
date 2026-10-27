@@ -32,14 +32,14 @@ const (
 	mediaTypeDocker  = "application/vnd.docker.distribution.manifest.v2+json"
 )
 
-// Credential is a registry credential (DL-217).
+// Credential is a registry credential.
 type Credential struct {
 	Username, Password string
 	RefreshToken       string // an identity token, exchanged for access tokens
 	AccessToken        string // a registry token, used as it is
 }
 
-// Option configures the resolver. It's sealed: only this package's With functions make one (DL-258).
+// Option configures the resolver. It's sealed: only this package's With functions make one.
 type Option interface{ apply(r *resolver) }
 
 type optionFunc func(r *resolver)
@@ -67,15 +67,14 @@ func WithClient(c *http.Client) Option {
 	return optionFunc(func(r *resolver) { r.client = c })
 }
 
-// WithMaxLayerSize caps each blob's declared size, each download and each decompressed layer; the default is 64 MiB
-// (DL-216).
+// WithMaxLayerSize caps each blob's declared size, each download and each decompressed layer; the default is 64 MiB.
 func WithMaxLayerSize(n int64) Option {
 	return optionFunc(func(r *resolver) { r.maxLayer = n })
 }
 
-// New returns a resolver for oci includes (DL-215). It resolves the reference to a manifest digest, then finds the file
-// among the manifest's layers: titled files as oras push stores them, and tar layers as images store them, read as
-// streams and verified against their digests. It's safe for concurrent use.
+// New returns a resolver for oci includes. It resolves the reference to a manifest digest, then finds the file among
+// the manifest's layers: titled files as oras push stores them, and tar layers as images store them, read as streams
+// and verified against their digests. It's safe for concurrent use.
 func New(opts ...Option) cascadingconfig.IncludeResolver {
 	r := &resolver{maxLayer: defaultMaxLayer, cache: auth.NewCache()}
 	for _, o := range opts {
