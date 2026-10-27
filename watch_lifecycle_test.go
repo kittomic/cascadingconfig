@@ -103,18 +103,18 @@ func TestWatchCloseFromHandler(t *testing.T) {
 	wantErr[*cc.BaseError](t, w.Reload(t.Context()), cc.CodeCanceled, "")
 }
 
-// DL-223: Reload from inside the handler runs the reload and returns its error; the change it causes is delivered
-// after the current call returns.
+// DL-223, DL-279: Reload from inside the handler, with the handler's context, runs the reload and returns its error;
+// the change it causes is delivered after the current call returns.
 func TestWatchReloadFromHandler(t *testing.T) {
 	e := newWatchEnv(t, map[string]string{rootCfg: `{"a": 1}`})
 	var w *cc.Watcher[cc.Tree]
 	var calls atomic.Int64
 	var reloadErr error
-	w, err := e.loader().Watch(t.Context(), func(_ context.Context, c cc.Change[cc.Tree]) {
+	w, err := e.loader().Watch(t.Context(), func(ctx context.Context, c cc.Change[cc.Tree]) {
 		e.changes.add(c)
 		if calls.Add(1) == 1 {
 			e.setVals(cc.Tree{"v": int64(1)})
-			reloadErr = w.Reload(context.Background())
+			reloadErr = w.Reload(ctx)
 			if got := len(e.changes.all()); got != 1 {
 				t.Errorf("inside the handler, Reload delivered its change before the handler returned")
 			}
