@@ -14,6 +14,13 @@ if [[ $# -eq 0 ]]; then
 	exit 2
 fi
 
+# Test packages that read files outside their module read CC_TEST_INPUTS, which go test's cache records, so it sees
+# the repository's state through it (DL-288): the index's blob hashes and any unstaged changes.
+if [[ -z "${CC_TEST_INPUTS:-}" ]]; then
+	CC_TEST_INPUTS="$(cd "$root" && { git ls-files -s && git diff; } | git hash-object --stdin)"
+	export CC_TEST_INPUTS
+fi
+
 dirs="$(cd "$root" && GOWORK="$root/go.work" go list -m -f '{{.Dir}}')"
 
 failed=""
