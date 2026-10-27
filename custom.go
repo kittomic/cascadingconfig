@@ -11,8 +11,9 @@ import (
 	"github.com/kittomic/cascadingconfig/internal/tree"
 )
 
-// Scope is the escape hatch for custom discovery (design.md: Custom scopes). Discover returns the scope's sources,
-// lowest precedence first. It can be called from several goroutines at once.
+// Scope discovers a custom scope's sources, for config no built-in scope kind can find. It supplies only discovery: the
+// scope's name, placement, trust and selection come from WithScope, with Custom(s) as its kind. Discover returns the
+// sources, lowest precedence first, and can be called from several goroutines at once.
 type Scope interface {
 	Discover(ctx context.Context, d Discovery) ([]Source, error)
 }
