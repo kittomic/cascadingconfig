@@ -23,10 +23,10 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
-	github.com/kittomic/cascadingconfig/format/toml v0.0.0-00010101000000-000000000000 // indirect
-	github.com/kittomic/cascadingconfig/format/yaml v0.0.0-00010101000000-000000000000 // indirect
-	github.com/kittomic/cascadingconfig/ociresolver v0.0.0-00010101000000-000000000000 // indirect
-	github.com/kittomic/cascadingconfig/watch/fsnotify v0.0.0-00010101000000-000000000000 // indirect
+	github.com/kittomic/cascadingconfig/format/toml v0.1.0 // indirect
+	github.com/kittomic/cascadingconfig/format/yaml v0.1.0 // indirect
+	github.com/kittomic/cascadingconfig/ociresolver v0.1.0 // indirect
+	github.com/kittomic/cascadingconfig/watch/fsnotify v0.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
