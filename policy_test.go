@@ -72,6 +72,7 @@ func runPolicyCases(t *testing.T, tests []policyCase) {
 // DL-24, DL-188, design.md Per-scope policies: a scope policy replaces the default as a whole; InheritDefault starts
 // from the default, wherever it appears; a later option replaces only its own setting.
 func TestScopePolicies(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	strict := cc.WithDefaultPolicy(cc.AllowResolvers("file"), cc.Confine("{config_root}"))
 	runPolicyCases(t, []policyCase{
@@ -128,6 +129,7 @@ func TestScopePolicies(t *testing.T) {
 // DL-188, DL-189: a fresh policy allows no resolver unless it lists one; the engine default allows every registered
 // resolver.
 func TestFreshPolicy(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	runPolicyCases(t, []policyCase{
 		{name: "engine default", projRef: "/srv/outside.json", want: `{"outside": 1}`},
@@ -152,6 +154,7 @@ func TestFreshPolicy(t *testing.T) {
 // DL-177: a policy without "file" forbids local includes in its scope, as a 403; removing the file resolver while an
 // include key is set is an *OptionError at New.
 func TestForbidLocalIncludes(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	runPolicyCases(t, []policyCase{{
 		name: "a policy without file", projRef: "inc.json",
@@ -170,6 +173,7 @@ func TestForbidLocalIncludes(t *testing.T) {
 
 // DL-24, design.md Per-scope policies, "Which scope judges an include": the root file's scope, through nested includes.
 func TestPolicyOfNestedIncludes(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := policyFS("", "inc.json")
 	fsys.WriteFile(work+"/inc.json", []byte(`{"include": "/srv/outside.json"}`), 0o644)
@@ -204,6 +208,7 @@ func TestPolicyOfExplicitFiles(t *testing.T) {
 // DL-176, design.md Allow-lists: a reference must match the global list and its scheme's list; local references are
 // matched as absolute slash paths after symlinks.
 func TestAllowLists(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fileOnly := func(opts ...cc.PolicyOption) []cc.Option {
 		return []cc.Option{cc.WithDefaultPolicy(append([]cc.PolicyOption{cc.AllowResolvers("file")}, opts...)...)}
@@ -260,6 +265,7 @@ func TestAllowLists(t *testing.T) {
 
 // DL-176: MatchRef gets the whole IncludeRef, so it can judge by the including file's scope.
 func TestMatchRef(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	var seen calls[cc.IncludeRef]
 	onlySys := cc.MatchRef(func(r cc.IncludeRef) bool {
@@ -345,6 +351,7 @@ func TestIncludePolicyOptionErrors(t *testing.T) {
 
 // DL-176 to DL-193: every include and policy option with valid values, together, is accepted.
 func TestPolicyOptionsValid(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	_, err := cc.New("myapp", scope, cc.WithIncludeKey("include", cc.IncludeNested),
 		cc.WithDefaultPolicy(cc.AllowResolvers("file"), cc.Allow(cc.Prefix("/"), cc.Glob("/**")),
@@ -373,6 +380,7 @@ func policyErrorMentions(t *testing.T, err error, rule string) {
 
 // DL-185: a rejection says which rule the reference broke.
 func TestPolicyErrorMessages(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name string

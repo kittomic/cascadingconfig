@@ -45,6 +45,7 @@ func trustProj(store cc.TrustStore) cc.Option {
 // DL-28, DL-192, design.md Trust store: an untrusted file is skipped with a warning as LayerUntrusted, and never
 // decoded, so one that doesn't parse doesn't fail the load. Scopes without RequireTrust never ask the store.
 func TestUntrustedFiles(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	store := &testStore{}
 	res := incOK(t, map[string]string{sysFile: `{"a": 1}`, rootCfg: `{"b": SECRET`}, trustProj(store))
@@ -65,6 +66,7 @@ func TestUntrustedFiles(t *testing.T) {
 // DL-192, design.md Trust store, "The digest": the lowercase hex SHA-256 of the raw bytes, byte-order mark included;
 // the path has symlinks resolved.
 func TestTrustStoreArguments(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	raw := "\uFEFF{\"b\": 2}"
 	sum := sha256.Sum256([]byte(raw))
@@ -83,6 +85,7 @@ func TestTrustStoreArguments(t *testing.T) {
 
 // DL-192: a store error fails the load as a *BaseError (500) with Op "trust store", wrapping the store's error.
 func TestTrustStoreError(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	boom := errors.New("store unavailable")
 	_, err := incFails(t, map[string]string{rootCfg: `{}`}, trustProj(&testStore{err: boom}))
@@ -97,6 +100,7 @@ func TestTrustStoreError(t *testing.T) {
 
 // DL-192, design.md Includes, "Trust": an included file inherits its includer's verdict, and the store isn't asked.
 func TestTrustOfIncludedFiles(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	store := &testStore{trusted: []string{rootCfg}}
 	res := incOK(t, map[string]string{rootCfg: `{"include": "base.json"}`, work + "/base.json": `{"b": 1}`},
@@ -119,6 +123,7 @@ func TestUntrustedExplicitFile(t *testing.T) {
 
 // DL-190, DL-192: an untrusted bootstrap file is skipped with a warning, so it can't choose the env.
 func TestUntrustedBootstrapFile(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	rc := work + "/.myapprc.json"
 	files := map[string]string{rc: `{"env": ["dev"]}`, work + "/myapp.dev.json": `{"dev": true}`}
@@ -194,6 +199,7 @@ func TestTrustPathsHome(t *testing.T) {
 
 // DL-192: a TrustPaths store in a policy works end to end.
 func TestTrustPathsInPolicy(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	res := incOK(t, map[string]string{rootCfg: `{"a": 1}`}, trustProj(cc.TrustPaths(work)))
 	wantTreeJSON(t, res.Tree(), `{"a": 1}`)

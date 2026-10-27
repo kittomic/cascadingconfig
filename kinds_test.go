@@ -165,6 +165,7 @@ func TestMapEnv(t *testing.T) {
 // design.md Value overrides, DL-113: a value scope can't remove keys, so the unset key is dropped with a warning,
 // wherever it appears.
 func TestValueScopesDropTheUnsetKey(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	res := mustLoad(t, memfs.New(map[string]string{"/d/config.json": `{"a": 1, "b": {"c": 1}}`}),
 		fixed("files", "/d", "config.json"),
@@ -185,6 +186,7 @@ func TestValueScopesDropTheUnsetKey(t *testing.T) {
 
 // The trust of FixedDir defaults to TrustProject.
 func TestFixedDirTrust(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	res := mustLoad(t, memfs.New(map[string]string{"/d/config.json": `{}`}), fixed("s", "/d", "config.json"), WithScopes("s"))
 	if len(res.found) != 1 {

@@ -14,6 +14,7 @@ import (
 // A project file is skipped until trusted, applies once trusted, and is skipped again after an edit until it's
 // trusted again. The store's file lives in a temporary directory, never the real user config directory.
 func TestTrusted(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys, world := exampletest.World(t, []string{"ccx-trusted.toml"}, nil, nil)
 	trustFile := "-trust-file=" + filepath.Join(t.TempDir(), "trusted.json")

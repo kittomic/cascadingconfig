@@ -69,6 +69,7 @@ func TestCustomOptionErrors(t *testing.T) {
 
 // DL-236, DL-240: the kind is "Scope", its default trust is TrustProject, Trust overrides it, and its policy is shown.
 func TestCustomKind(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/a.json": `{}`})
 	s := sources(cc.Source{Path: "/srv/a.json"})
@@ -122,6 +123,7 @@ func TestCustomDiscovery(t *testing.T) {
 
 // DL-238: a broken Source is a 500 naming the scope.
 func TestCustomBrokenSources(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/a.json": `{}`, "/srv/b.yaml": `a: 1`})
 	for name, src := range map[string]cc.Source{
@@ -160,6 +162,7 @@ func TestCustomDiscoverErrors(t *testing.T) {
 // DL-238, DL-240: Path sources load in the order returned, with their Variant and Env; a Format overrides the
 // extension; the config root is the file's directory unless the Source gives one; layers have no Pattern.
 func TestCustomPathSources(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{
 		"/srv/a.json": `{"v": 1, "a": 1}`, "/srv/sub/b.json": `{"v": 2}`, "/srv/c.conf": `{"c": true}`,
@@ -198,6 +201,7 @@ func TestCustomMissingPath(t *testing.T) {
 
 // DL-238: Path sources go through the pipeline: symlinks, ignored paths, dedup, includes and FirstMatch.
 func TestCustomPathPipeline(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	t.Run("symlink", func(t *testing.T) {
 		fsys := cctest.NewFS(map[string]string{"/data/real.json": `{"v": 1}`})
@@ -236,6 +240,7 @@ func TestCustomPathPipeline(t *testing.T) {
 
 // DL-238: permission checks and the trust store apply to Path sources, under the scope's policy.
 func TestCustomPathPolicies(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	t.Run("permissions", func(t *testing.T) {
 		fsys := cctest.NewFS(map[string]string{"/srv/a.json": `{"a": 1}`, "/srv/b.json": `{"b": 1}`})
@@ -264,6 +269,7 @@ func TestCustomPathPolicies(t *testing.T) {
 
 // DL-238: Path sources count for RequireConfig(RequireFile); Tree sources don't.
 func TestCustomRequireFile(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/a.json": `{"a": 1}`})
 	custOK(t, fsys, sources(cc.Source{Path: "/srv/a.json"}), cc.RequireConfig(cc.RequireFile))
@@ -308,6 +314,7 @@ func TestCustomNoProbes(t *testing.T) {
 
 // DL-238: Discover can run from several goroutines at once, with parallel loads.
 func TestCustomConcurrentLoads(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{"/srv/a.json": `{"a": 1}`})
 	s := sources(cc.Source{Path: "/srv/a.json"}, cc.Source{Tree: cc.Tree{"b": int64(2)}})

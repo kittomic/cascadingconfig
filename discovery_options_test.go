@@ -12,6 +12,7 @@ func fixedKind(patterns ...cc.Pattern) cc.Option {
 
 // DL-117 to DL-127: pattern fields, scope options and walk options that can only be mistakes.
 func TestDiscoveryOptionErrors(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	values := cc.Values(cc.Tree{})
 	runOptionErrorCases(t, []optionErrorCase{

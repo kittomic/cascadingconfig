@@ -56,6 +56,7 @@ func TestLoadDecodes(t *testing.T) {
 
 // DL-72: every load decodes into a fresh value, so a key deleted from a file loses its value on the next load.
 func TestLoadDecodesFresh(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{projFile: `{"server": {"host": "a", "port": 80}}`})
 	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), cc.WithDecoder(jsonDecoder()), twoScopes)
@@ -439,6 +440,7 @@ func TestDecodeFailedResult(t *testing.T) {
 
 // DL-160: KoanfProvider's Read runs a load and returns a copy of the tree, defaults included; ReadBytes is an error.
 func TestKoanfProvider(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{projFile: `{"a": 1}`})
 	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cctest.WithHost(testHost(nil)), cc.WithDecoder(jsonDecoder()),

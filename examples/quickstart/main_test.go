@@ -9,6 +9,7 @@ import (
 )
 
 func TestQuickstart(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name  string

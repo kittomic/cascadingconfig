@@ -66,6 +66,7 @@ func TestOSCaseSensitiveMatching(t *testing.T) {
 
 // D16: on a real filesystem, an unreadable file is skipped with a warning.
 func TestOSUnreadableFile(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root can read anything")
@@ -84,6 +85,7 @@ func TestOSUnreadableFile(t *testing.T) {
 
 // design.md Filesystem hook: MountFS makes an fs.FS appear at an absolute directory, and nothing else exists.
 func TestMountFS(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cc.MountFS("/virtual", fstest.MapFS{"myapp/config.json": {Data: []byte(`{"a": 1}`)}})
 	l, err := cc.New("myapp", cc.WithFileSystem(fsys), cc.WithDecoder(ccjson.Decoder()),

@@ -220,7 +220,10 @@ func jsonValues(data []byte) ([]any, error) {
 
 // DL-270: JSONTestSuite's parsing cases, each as a document and wrapped as {"v": …}: y_ cases must decode, n_ cases
 // must fail, and i_ cases' outcomes are recorded. The core's built-in decoder must agree with format/json on each.
-func TestJSON(t *testing.T) { report(t, "JSONTestSuite", judge(t, "JSONTestSuite", jsonResults(t))) }
+func TestJSON(t *testing.T) {
+	skipUnixPaths(t)
+	report(t, "JSONTestSuite", judge(t, "JSONTestSuite", jsonResults(t)))
+}
 
 // jsonResults runs every JSONTestSuite case, in both forms.
 func jsonResults(t *testing.T) map[string]result {

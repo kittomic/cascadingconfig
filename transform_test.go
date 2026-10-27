@@ -34,6 +34,7 @@ func seenPaths(seen *calls[cc.Layer]) []string {
 
 // DL-36, design.md Transform hooks: layer transforms run in registration order, on each layer, with its metadata.
 func TestLayerTransformOrder(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	appendTo := func(s string) cc.Option {
 		return cc.WithLayerTransform(func(_ context.Context, _ cc.Layer, t cc.Tree) (cc.Tree, error) {
@@ -93,6 +94,7 @@ func TestLayerTransformCoverage(t *testing.T) {
 
 // DL-186: a layer transform sees the include key before it's read, so it can expand variables in references.
 func TestLayerTransformBeforeIncludes(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	expand := cc.WithLayerTransform(func(_ context.Context, _ cc.Layer, t cc.Tree) (cc.Tree, error) {
 		if ref, ok := t["include"].(string); ok {
@@ -106,6 +108,7 @@ func TestLayerTransformBeforeIncludes(t *testing.T) {
 
 // DL-193: nil from a layer transform merges nothing, and the layer stays loaded.
 func TestLayerTransformNil(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	drop := cc.WithLayerTransform(func(_ context.Context, l cc.Layer, t cc.Tree) (cc.Tree, error) {
 		if l.Path == rootCfg {
@@ -123,6 +126,7 @@ func TestLayerTransformNil(t *testing.T) {
 // DL-36, DL-193: a layer transform's error, or a tree with a non-canonical value, is a *TransformError (422) naming
 // the file.
 func TestLayerTransformErrors(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	boom := errors.New("bad template")
 	t.Run("error", func(t *testing.T) {
@@ -194,6 +198,7 @@ func countOf(s []string, v string) int {
 // DL-36, DL-193, design.md Transform hooks: the result transform runs once, on the merged result. nil is an empty
 // result. OriginOf describes the merge: a key the transform adds has no origin, and the others keep theirs.
 func TestResultTransform(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	n := 0
 	add := cc.WithResultTransform(func(_ context.Context, t cc.Tree) (cc.Tree, error) {
@@ -255,6 +260,7 @@ func TestResultTransformOrder(t *testing.T) {
 
 // DL-193: a result transform returning a non-canonical value is a *TransformError.
 func TestResultTransformNonCanonical(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	_, err := incFails(t, map[string]string{rootCfg: `{}`}, cc.WithResultTransform(
 		func(_ context.Context, t cc.Tree) (cc.Tree, error) {
@@ -267,6 +273,7 @@ func TestResultTransformNonCanonical(t *testing.T) {
 // DL-76, DL-159, api.md Concurrency and ownership: transforms get their own copies, so changing their
 // input doesn't change the report or later loads; and parallel loads with transforms agree under -race.
 func TestTransformsOwnTheirInput(t *testing.T) {
+	skipUnixPaths(t)
 	t.Parallel()
 	fsys := cctest.NewFS(map[string]string{rootCfg: `{"server": {"host": "h", "ports": [1, 2]}}`})
 	mutate := cc.Options(
