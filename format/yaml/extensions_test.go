@@ -44,7 +44,7 @@ func TestYAMLExtensions(t *testing.T) {
 	}
 
 	res = load(t, map[string]string{"/etc/myapp/config.yml": "a: yml\n"}, map[string]string{"MYAPP_CONFIG_FORMATS": "yml"},
-		cc.WithEnvBinding(cc.BindConfigFormats, ""))
+		cc.WithBinding(cc.BindConfigFormats, ""))
 	if got := res.Tree(); !reflect.DeepEqual(got, cc.Tree{"a": "yml"}) {
 		t.Errorf("MYAPP_CONFIG_FORMATS=yml: Tree = %v", got)
 	}

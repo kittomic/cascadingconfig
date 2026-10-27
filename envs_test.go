@@ -20,7 +20,7 @@ var envFiles = fileSet(
 func envsLoaded(t *testing.T, change func(*hooks.Host), opts ...Option) []string {
 	t.Helper()
 	res := mustLoad(t, memfs.New(envFiles), append([]Option{
-		hostWith(nil, change), WithEnvBinding(BindEnv, ""),
+		hostWith(nil, change), WithBinding(BindEnv, ""),
 		WithScope("s", FixedDir("/d", Pattern{Template: "{name}.json"}, Pattern{Template: "{name}.{env}.json", Variant: VariantEnv})),
 		WithScopes("s"),
 	}, opts...)...)
@@ -112,7 +112,7 @@ func TestAmbiguousEnvironmentName(t *testing.T) {
 func TestUnsafeEnvironmentNames(t *testing.T) {
 	for _, value := range []string{"../x", "a/b", `a\b`, "dev,..", "a:b", strings.Repeat("e", 250)} {
 		t.Run(value, func(t *testing.T) {
-			l := loader(t, memfs.New(envFiles), hostWith(map[string]string{"MYAPP_ENV": value}, nil), WithEnvBinding(BindEnv, ""),
+			l := loader(t, memfs.New(envFiles), hostWith(map[string]string{"MYAPP_ENV": value}, nil), WithBinding(BindEnv, ""),
 				WithScope("s", FixedDir("/d", Pattern{Template: "{name}.{env}.json", Variant: VariantEnv})), WithScopes("s"))
 			_, err := l.Load(t.Context())
 			var oe *OptionError

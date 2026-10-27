@@ -294,7 +294,7 @@ layouts (DL-94).
 | Limits         | **Settled** (DL-198): `WithMaxIncludeSize(n)` for remote includes (default 1 MiB), alongside `WithMaxFileSize(n)` for local files |
 | Directories    | **Settled** (DL-112): `WithPlatformDirs(XDGDirs)` for the mise layouts, and `EnvPathsDirs` for the cosmiconfig layout (M4d). It replaces the proposed `WithUserDir` and `WithSystemDir` pair. |
 | Scope kinds    | `Values(tree)` for a fixed tree, and `ValuesFunc(func(ctx context.Context) (Tree, error))` for one read on every load |
-| Env bindings   | **Settled** (DL-98): `type Binding string`, with constants such as `BindConfigDir` (`"CONFIG_DIR"`), `BindEnv` and `BindConfigFormats`. `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` declares or renames a binding; an empty name means the default `{NAME}_<suffix>`. A custom scope can declare its own binding. |
+| Env bindings   | **Settled** (DL-98): `type Binding string`, with constants such as `BindConfigDir` (`"CONFIG_DIR"`), `BindEnv` and `BindConfigFormats`. `WithBinding(BindEnv, "MYAPP_CONFIG_ENV")` declares or renames a binding; an empty name means the default `{NAME}_<suffix>`. A custom scope can declare its own binding. |
 
 ### Settled signatures
 
@@ -346,8 +346,8 @@ const (
 	BindConfigFormats           Binding = "CONFIG_FORMATS"
 )
 
-func WithEnvBinding(b Binding, name string) Option
-func WithoutEnvBinding(b Binding) Option
+func WithBinding(b Binding, name string) Option
+func WithoutBinding(b Binding) Option
 ```
 
 #### Settled in M4a
@@ -878,7 +878,7 @@ func WithLogLevel(level slog.Leveler) Option // the lowest level the loader logs
 | Files         | `WithConfigFiles`, `WithFileSystem`, `WithNotifier`, `WithMaxFileSize`                                                      |
 | Merging       | `WithMergeRule`, `WithMergeFunc`, `WithArrayMerge`, `WithUnsetKey`, `WithoutUnsetKey`, `WithLayerTransform`, `WithResultTransform`              |
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithIncludeTimeout`, `WithDefaultPolicy`, `WithScopePolicy` |
-| Env bindings  | `WithEnvBinding`, `WithoutEnvBinding`                                                                                       |
+| Env bindings  | `WithBinding`, `WithoutBinding`                                                                                       |
 | Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKeys`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
 | Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
 | Behaviour     | `RequireConfig`, `WithLogger`, `WithProbes`                                                                                 |

@@ -240,7 +240,7 @@ func TestExplicitFileKind(t *testing.T) {
 // DL-125: DisabledBy skips a scope while its binding is set.
 func TestDisabledBy(t *testing.T) {
 	fsys := memfs.New(fileSet("/d/config.json"))
-	res := mustLoad(t, fsys, hostWith(map[string]string{"MYAPP_OFF": "1"}, nil), WithEnvBinding("OFF", ""),
+	res := mustLoad(t, fsys, hostWith(map[string]string{"MYAPP_OFF": "1"}, nil), WithBinding("OFF", ""),
 		WithScope("s", FixedDir("/d", Pattern{Template: "config.json"}), DisabledBy("OFF")), WithScopes("s"))
 	wantPaths(t, res)
 }

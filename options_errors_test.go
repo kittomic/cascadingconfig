@@ -191,17 +191,17 @@ func TestValuesErrors(t *testing.T) {
 // DL-98: binding options that can only be mistakes.
 func TestBindingErrors(t *testing.T) {
 	runOptionErrorCases(t, []optionErrorCase{
-		{name: "turning off an unknown key", opts: []cc.Option{scope, cc.WithoutEnvBinding("CONFIG_FORMAT")}, ops: []string{"WithoutEnvBinding"}, contains: []string{"CONFIG_FORMAT"}},
-		{name: "an empty key", opts: []cc.Option{scope, cc.WithEnvBinding("", "X")}, ops: []string{"WithEnvBinding"}},
-		{name: "a bad key", opts: []cc.Option{scope, cc.WithEnvBinding("A-B", "")}, ops: []string{"WithEnvBinding"}},
-		{name: "a leading digit", opts: []cc.Option{scope, cc.WithEnvBinding(cc.BindEnv, "1ABC")}, ops: []string{"WithEnvBinding"}},
-		{name: "a dash", opts: []cc.Option{scope, cc.WithEnvBinding(cc.BindEnv, "A-B")}, ops: []string{"WithEnvBinding"}},
-		{name: "a space", opts: []cc.Option{scope, cc.WithEnvBinding(cc.BindEnv, "A B")}, ops: []string{"WithEnvBinding"}},
-		{name: "an equals sign", opts: []cc.Option{scope, cc.WithEnvBinding(cc.BindEnv, "A=B")}, ops: []string{"WithEnvBinding"}},
+		{name: "turning off an unknown key", opts: []cc.Option{scope, cc.WithoutBinding("CONFIG_FORMAT")}, ops: []string{"WithoutBinding"}, contains: []string{"CONFIG_FORMAT"}},
+		{name: "an empty key", opts: []cc.Option{scope, cc.WithBinding("", "X")}, ops: []string{"WithBinding"}},
+		{name: "a bad key", opts: []cc.Option{scope, cc.WithBinding("A-B", "")}, ops: []string{"WithBinding"}},
+		{name: "a leading digit", opts: []cc.Option{scope, cc.WithBinding(cc.BindEnv, "1ABC")}, ops: []string{"WithBinding"}},
+		{name: "a dash", opts: []cc.Option{scope, cc.WithBinding(cc.BindEnv, "A-B")}, ops: []string{"WithBinding"}},
+		{name: "a space", opts: []cc.Option{scope, cc.WithBinding(cc.BindEnv, "A B")}, ops: []string{"WithBinding"}},
+		{name: "an equals sign", opts: []cc.Option{scope, cc.WithBinding(cc.BindEnv, "A=B")}, ops: []string{"WithBinding"}},
 		{
 			name: "two bindings, one variable",
-			opts: []cc.Option{scope, cc.WithEnvBinding(cc.BindEnv, "MYAPP_CONFIG_DIR"), cc.WithEnvBinding(cc.BindConfigDir, "")},
-			ops:  []string{"WithEnvBinding"}, contains: []string{"MYAPP_CONFIG_DIR"},
+			opts: []cc.Option{scope, cc.WithBinding(cc.BindEnv, "MYAPP_CONFIG_DIR"), cc.WithBinding(cc.BindConfigDir, "")},
+			ops:  []string{"WithBinding"}, contains: []string{"MYAPP_CONFIG_DIR"},
 		},
 	})
 }

@@ -93,7 +93,7 @@ func TestCeilings(t *testing.T) {
 					tc.change(h)
 				}
 			}
-			res := walkLoad(t, change, append([]Option{WithEnvBinding(BindCeilingPaths, "")}, tc.opts...)...)
+			res := walkLoad(t, change, append([]Option{WithBinding(BindCeilingPaths, "")}, tc.opts...)...)
 			wantPaths(t, res, tc.want...)
 		})
 	}

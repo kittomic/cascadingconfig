@@ -38,7 +38,7 @@ func TestPlatformDirs(t *testing.T) {
 		fixed("user", "{user}", "config.json"),
 		WithScopes("system", "user"),
 	}
-	bindings := []Option{WithEnvBinding(BindConfigDir, ""), WithEnvBinding(BindSystemConfigDir, "")}
+	bindings := []Option{WithBinding(BindConfigDir, ""), WithBinding(BindSystemConfigDir, "")}
 	tests := []struct {
 		name string
 		opts []Option

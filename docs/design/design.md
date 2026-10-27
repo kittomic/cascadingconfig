@@ -295,7 +295,7 @@ mise.Preset.Extend(
   - **Concurrency:** `Discover` and `WatchDirs` can be called from several goroutines at once.
   - **Watching** is described under [Hot reload](#hot-reload).
 - **Env-var bindings:** none are created automatically. An app adds them explicitly, for example
-  `WithEnvBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
+  `WithBinding("MOUNTED_DIR", "MYAPP_MOUNTED_CONFIG_DIR")`.
 - **Trust:** each scope kind has a default trust level, and `Trust(...)` overrides it. File-based kinds default to
   project trust, the lowest level. `EnvVars` and `Values` default to user trust (see [Scope trust](#scope-trust)).
 
@@ -877,7 +877,7 @@ defaults.
 - **Decoders:** `WithDecoder` for a format that already has one replaces it, so an app can swap a layout's decoder. Two
   formats claiming the same extension are an `*OptionError`.
 - **Locking the order:** an app author who wants to fix the order can turn off both overrides, with
-  `WithoutEnvBinding("CONFIG_FORMATS")` and `WithoutBootstrapKey("formats")`.
+  `WithoutBinding("CONFIG_FORMATS")` and `WithoutBootstrapKey("formats")`.
 
 **The environment variable:**
 
@@ -895,8 +895,8 @@ defaults.
 - **An empty value counts as unset**, as in mise.
 - **Errors:** an unknown format, or one with no registered decoder, is an `*OptionError` at `Load`, when the env var is
   read, not a silent skip.
-- **Opting out:** the app author can turn the binding off (`WithoutEnvBinding("CONFIG_FORMATS")`), as with every other
-  env binding (see D17).
+- **Opting out:** the app author can turn the binding off (`WithoutBinding("CONFIG_FORMATS")`), as with every other env
+  binding (see D17).
 - **Effect on the bootstrap file:** this is the only source outside the app's code that also changes how the bootstrap
   files themselves are found. The app's own option affects it too.
 
@@ -1709,14 +1709,14 @@ with every character outside `[A-Z0-9]` replaced by `_`.
   `.{env}` variants are added.
 - **`XDG_CONFIG_HOME`** is read as the base of the default user dir. It isn't a binding of ours.
 - **Keys** (DL-98) are of type `Binding`, a string type whose constants hold the suffix: `BindEnv` is `"ENV"` and
-  `BindConfigFormats` is `"CONFIG_FORMATS"`. Untyped constants convert, so `WithoutEnvBinding("ENV")` also compiles, and
-  a custom scope's key is any other suffix, such as `"MOUNTED_DIR"`.
-- **Declaring and renaming:** a layout declares the bindings it supports. `WithEnvBinding(key, name)` declares a binding
-  or renames it, and an empty name means the default `{NAME}_<suffix>`. For example,
-  `WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")` avoids a clash with an app that already uses `MYAPP_ENV` for something
+  `BindConfigFormats` is `"CONFIG_FORMATS"`. Untyped constants convert, so `WithoutBinding("ENV")` also compiles, and a
+  custom scope's key is any other suffix, such as `"MOUNTED_DIR"`.
+- **Declaring and renaming:** a layout declares the bindings it supports. `WithBinding(key, name)` declares a binding or
+  renames it, and an empty name means the default `{NAME}_<suffix>`. For example,
+  `WithBinding(BindEnv, "MYAPP_CONFIG_ENV")` avoids a clash with an app that already uses `MYAPP_ENV` for something
   else.
-- **Turning off:** any binding can be turned off, for example `WithoutEnvBinding(BindEnv)`. Turning off a built-in
-  binding that isn't declared does nothing; an unknown key is an `*OptionError`, which catches typos.
+- **Turning off:** any binding can be turned off, for example `WithoutBinding(BindEnv)`. Turning off a built-in binding
+  that isn't declared does nothing; an unknown key is an `*OptionError`, which catches typos.
 - **Checks:** a variable name must match `[A-Za-z_][A-Za-z0-9_]*`, and two bindings can't share one variable. Either
   mistake is an `*OptionError`.
 - **`CosmiconfigLayout`** declares only `{NAME}_CONFIG_FILE` and `{NAME}_CONFIG_FORMATS`, because cosmiconfig itself has

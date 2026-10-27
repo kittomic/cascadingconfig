@@ -130,7 +130,7 @@ func summary(c *config) any {
 // api.md New and NewWithPreset: NewWithPreset(n, p, a) behaves exactly like NewWithPreset(n, p.Extend(a)), and a zero
 // Preset is the same as New.
 func TestNewWithPresetEquivalence(t *testing.T) {
-	p := NewPreset("p", defineScopes("a", "b"), WithEnvBinding(BindEnv, ""), WithDecoder(tomlDecoder))
+	p := NewPreset("p", defineScopes("a", "b"), WithBinding(BindEnv, ""), WithDecoder(tomlDecoder))
 	extra := []Option{WithoutScopes("a"), WithEnvs("dev"), WithFormats("toml")}
 
 	direct := summary(cfgOf(t, "app", p, extra...))
@@ -353,7 +353,7 @@ func TestBindingNameDerivation(t *testing.T) {
 		"é-x":    "__X_ENV",
 	} {
 		t.Run(app, func(t *testing.T) {
-			c := cfgOf(t, app, Preset{}, oneScope, WithEnvBinding(BindEnv, ""))
+			c := cfgOf(t, app, Preset{}, oneScope, WithBinding(BindEnv, ""))
 			if got := c.bindingNames()[BindEnv]; got != want {
 				t.Errorf("ENV binding = %q, want %q", got, want)
 			}
@@ -369,24 +369,24 @@ func TestBindings(t *testing.T) {
 		opts []Option
 		want map[Binding]string
 	}{
-		{"declared", []Option{WithEnvBinding(BindEnv, "")}, map[Binding]string{BindEnv: "MYAPP_ENV"}},
-		{"declared with a name", []Option{WithEnvBinding(BindEnv, "MYAPP_CONFIG_ENV")}, map[Binding]string{BindEnv: "MYAPP_CONFIG_ENV"}},
+		{"declared", []Option{WithBinding(BindEnv, "")}, map[Binding]string{BindEnv: "MYAPP_ENV"}},
+		{"declared with a name", []Option{WithBinding(BindEnv, "MYAPP_CONFIG_ENV")}, map[Binding]string{BindEnv: "MYAPP_CONFIG_ENV"}},
 		{
-			"renamed", []Option{WithEnvBinding(BindEnv, ""), WithEnvBinding(BindEnv, "OTHER")},
+			"renamed", []Option{WithBinding(BindEnv, ""), WithBinding(BindEnv, "OTHER")},
 			map[Binding]string{BindEnv: "OTHER"},
 		},
 		{
-			"renamed back", []Option{WithEnvBinding(BindEnv, "OTHER"), WithEnvBinding(BindEnv, "")},
+			"renamed back", []Option{WithBinding(BindEnv, "OTHER"), WithBinding(BindEnv, "")},
 			map[Binding]string{BindEnv: "MYAPP_ENV"},
 		},
 		{
-			"turned off", []Option{WithEnvBinding(BindEnv, ""), WithEnvBinding(BindConfigDir, ""), WithoutEnvBinding(BindEnv)},
+			"turned off", []Option{WithBinding(BindEnv, ""), WithBinding(BindConfigDir, ""), WithoutBinding(BindEnv)},
 			map[Binding]string{BindConfigDir: "MYAPP_CONFIG_DIR"},
 		},
-		{"turning off one not declared", []Option{WithoutEnvBinding(BindConfigFormats)}, map[Binding]string{}},
-		{"a custom key", []Option{WithEnvBinding("MOUNTED_DIR", "")}, map[Binding]string{"MOUNTED_DIR": "MYAPP_MOUNTED_DIR"}},
+		{"turning off one not declared", []Option{WithoutBinding(BindConfigFormats)}, map[Binding]string{}},
+		{"a custom key", []Option{WithBinding("MOUNTED_DIR", "")}, map[Binding]string{"MOUNTED_DIR": "MYAPP_MOUNTED_DIR"}},
 		{
-			"a custom key turned off", []Option{WithEnvBinding("MOUNTED_DIR", ""), WithoutEnvBinding("MOUNTED_DIR")},
+			"a custom key turned off", []Option{WithBinding("MOUNTED_DIR", ""), WithoutBinding("MOUNTED_DIR")},
 			map[Binding]string{},
 		},
 	}

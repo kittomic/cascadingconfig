@@ -156,6 +156,7 @@ func ValuesFunc(func(context.Context) (Tree, error)) ScopeKind
 func Walk(...Pattern) ScopeKind
 func Watch[T any](context.Context, *Loader, func(Change[T]), ...WatchOption) (*Watcher[T], error)
 func WithArrayMerge(MergeStrategy) Option
+func WithBinding(Binding, string) Option
 func WithBootstrapKeys(...BootstrapKey) Option
 func WithBootstrapLimit(ScopeName, ...BootstrapKey) Option
 func WithBootstrapTransform(func(context.Context, Layer, Tree) (Tree, error)) Option
@@ -168,7 +169,6 @@ func WithDecoderConfig(*mapstructure.DecoderConfig) Option
 func WithDefaultFormats(...string) Option
 func WithDefaultPolicy(...PolicyOption) Option
 func WithDefaults(any) Option
-func WithEnvBinding(Binding, string) Option
 func WithEnvs(...string) Option
 func WithFileFormat(Matcher, ...string) Option
 func WithFileSystem(FileSystem) Option
@@ -209,8 +209,8 @@ func WithTag(string) Option
 func WithUnknownKeys(UnknownKeys) Option
 func WithUnsetKey(string) Option
 func WithWalkStop(WalkStop) Option
+func WithoutBinding(Binding) Option
 func WithoutBootstrapKeys(...BootstrapKey) Option
-func WithoutEnvBinding(Binding) Option
 func WithoutIncludeCache() Option
 func WithoutIncludeKey() Option
 func WithoutIncludeResolver(string) Option

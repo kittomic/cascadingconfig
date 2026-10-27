@@ -183,7 +183,7 @@ func TestReportProbes(t *testing.T) {
 func TestReportContext(t *testing.T) {
 	env := map[string]string{"MYAPP_OFF": "1", "MYAPP_ENV": "staging", "MYAPP_CEILING_PATHS": "/SECRET-ceiling"}
 	l := newLoader(t, nil, env, twoScopes,
-		cc.WithEnvBinding("OFF", ""), cc.WithEnvBinding(cc.BindEnv, ""), cc.WithEnvBinding(cc.BindCeilingPaths, ""),
+		cc.WithBinding("OFF", ""), cc.WithBinding(cc.BindEnv, ""), cc.WithBinding(cc.BindCeilingPaths, ""),
 		cc.WithScope("off", cc.FixedDir("/srv", cc.Pattern{Template: "x.json"}), cc.DisabledBy("OFF")),
 		cc.WithScope("unused", cc.FixedDir("/srv", cc.Pattern{Template: "y.json"})),
 		cc.WithScopes("sys", "proj", "off"),
