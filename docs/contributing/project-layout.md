@@ -92,10 +92,11 @@ cascadingconfig/                    module github.com/kittomic/cascadingconfig (
   consumers.
 - **Release check:** each module is also built and tested with `GOWORK=off`, from lefthook's pre-push and from CI. That
   catches a module that silently depends on unreleased core changes.
-- **Replacing the core:** modules that are never released (`internal/compat`, `examples`) may `replace` the core with
-  the repository's copy, so they build with `GOWORK=off` too. Until the first release, so may the modules that will be
-  released (`format/toml`, `format/yaml` and the rest), because the repository is private and the core can't be fetched
-  (DL-162). From the first release on, a released module never does: M11 swaps in the released version and adds a check.
+- **Replacing the core:** modules that are never released (`examples` and those under `internal/`) may `replace` the
+  core and the other modules with the repository's copies, so they build with `GOWORK=off` too. A released module never
+  does, since an app that requires it never sees a `replace`: it requires released versions, and
+  `scripts/check-no-replace.sh` fails if one has a `replace` (DL-162, DL-286). Until v0.1.0 they did, because the
+  repository was private and the core couldn't be fetched.
 
 ## Tooling changes
 
@@ -118,6 +119,7 @@ done
 | `golangci-lint` (pre-push)         | Loop over the modules.                                                                          |
 | `govulncheck` (pre-push)           | Loop over the modules. Then each module is checked against its own dependencies.               |
 | `deps` (pre-push, from M6)         | `scripts/check-deps.sh` builds a throwaway consumer for each setup whose modules exist and checks the counts below (DL-173). |
+| `no-replace` (pre-push, from M14c) | `scripts/check-no-replace.sh` fails if a released module's `go.mod` has a `replace` (DL-162). |
 | `markdown` (pre-push, from M11a)   | `rumdl check .` on every markdown file, so a moved doc or renamed heading can't break a link in a file that wasn't staged (DL-254). |
 
 In workspace mode, `go test ./...` from the root may already match packages in every workspace module. That should be

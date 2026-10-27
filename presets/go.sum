@@ -4,6 +4,16 @@ github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPE
 github.com/go-viper/mapstructure/v2 v2.5.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
 github.com/goccy/go-yaml v1.19.2/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
+github.com/kittomic/cascadingconfig v0.1.0 h1:E6rZXOq+kleOe77aVBP9SZ/guMn86JsTCxrr7Gzkw1I=
+github.com/kittomic/cascadingconfig v0.1.0/go.mod h1:DNvqHQJvkVbrWQ8tmmcx50cxPmsDc7lfaoNYuNda7cw=
+github.com/kittomic/cascadingconfig/format/toml v0.1.0 h1:q8OAdFdDBAHopENb+IYQvevOupBHO/ka/lzTJ5yDdhA=
+github.com/kittomic/cascadingconfig/format/toml v0.1.0/go.mod h1:0zdb7bQiLZYLX7+XdC8NJ7wymNlQz81pvhIK20NyL1I=
+github.com/kittomic/cascadingconfig/format/yaml v0.1.0 h1:ui0SEcMQiAVM4WSCbDIZt95PTYVkaKciUaN0S7AsNP0=
+github.com/kittomic/cascadingconfig/format/yaml v0.1.0/go.mod h1:NsisZZ2+5R3f+1caLR1zNKUaOT4FrS7JNwsVpW9Crks=
+github.com/kittomic/cascadingconfig/ociresolver v0.1.0 h1:KIzH1VjrzYAx6Mq9uORCjjsJ6auSlwQaQJMwVHKcXvA=
+github.com/kittomic/cascadingconfig/ociresolver v0.1.0/go.mod h1:H7JeKoC0NhSq6fTbfZFgS9Dk999h3jbr6vGK95ypOUw=
+github.com/kittomic/cascadingconfig/watch/fsnotify v0.1.0 h1:UpfLLbcAP8MPSdr+AQiK4z2+4xjxqZoaC6aapLBT+vo=
+github.com/kittomic/cascadingconfig/watch/fsnotify v0.1.0/go.mod h1:/sbYNhHY+6/vnqyvdSVZvQ/q9R4IXCX5UOju3suakDc=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=

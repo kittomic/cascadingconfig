@@ -26,8 +26,8 @@ they reach CI, so **never skip them** with `--no-verify` or `LEFTHOOK=0`.
 - **Before each commit:** formatting, golangci-lint on what changed, `go mod tidy`, rumdl on staged markdown, and a
   gitleaks scan.
 - **Before each push:** every module's tests with `-race` on the latest Go and on the minimum Go, every module on its
-  own without `go.work`, golangci-lint and govulncheck everywhere, the licence files, the dependency budget, and rumdl
-  on every markdown file, so no link is left broken.
+  own without `go.work`, golangci-lint and govulncheck everywhere, the licence files, no `replace` in released modules,
+  the dependency budget, and rumdl on every markdown file, so no link is left broken.
 - **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org), such as `feat(watch): …` or
   `docs: …`.
 

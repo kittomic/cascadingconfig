@@ -55,6 +55,11 @@ pre-push:
     licenses:
       run: scripts/check-licenses.sh
 
+    no-replace:
+      files: git ls-files 'go.mod' '*/go.mod' 'scripts/check-no-replace.sh'
+      # no released module replaces another (DL-162)
+      run: scripts/check-no-replace.sh
+
     deps:
       files: git ls-files 'go.mod' '*/go.mod' 'scripts/check-deps.sh'
       # the dependency budget in docs/contributing/project-layout.md (DL-173)
