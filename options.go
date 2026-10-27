@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-viper/mapstructure/v2"
-
 	"github.com/kittomic/cascadingconfig/internal/hooks"
 )
 
@@ -117,8 +115,7 @@ type config struct {
 	markers         []string // WithRootMarker
 	configFilesOnly bool     // WithConfigFilesOnly
 
-	tag         string                      // WithTag; empty means the decoder config's, or koanf
-	decoderConf *mapstructure.DecoderConfig // WithDecoderConfig, copied; nil means koanf's defaults
+	tag         string // WithTag; empty means the decoder config's, or koanf
 	flatPaths   bool
 	unknownKeys UnknownKeys
 	requires    []requirement // RequireConfig, in order

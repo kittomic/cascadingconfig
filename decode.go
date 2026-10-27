@@ -50,11 +50,38 @@ func DecodeAt[P PathSpec](r *Result, path P, v any) error {
 	return r.decode(p, v)
 }
 
-// DecodeHook returns the decode hooks koanf uses, composed in koanf's order: day-suffix durations ("7d"), other
-// duration strings, and encoding.TextUnmarshaler, which also parses RFC 3339 strings into time.Time. An app that sets
-// its own hooks with WithDecoderConfig can compose these into them.
-func DecodeHook() mapstructure.DecodeHookFunc {
+// defaultHooks are the decode hooks koanf uses, composed in koanf's order: day-suffix durations ("7d"), other duration
+// strings, and encoding.TextUnmarshaler, which also parses RFC 3339 strings into time.Time.
+func defaultHooks() mapstructure.DecodeHookFunc {
 	return mapstructure.ComposeDecodeHookFunc(dayDurationHook, mapstructure.StringToTimeDurationHookFunc(), textUnmarshalerHook)
+}
+
+// DecodeHook converts a value while decoding: data, of type from, is about to fill a value of type to. It returns the
+// value to use instead, or data unchanged when it has nothing to do (DL-278).
+type DecodeHook func(from, to reflect.Type, data any) (any, error)
+
+// WithDecodeHook adds a decode hook. Hooks run in the order they're added, before the default hooks for durations,
+// day-suffix durations and encoding.TextUnmarshaler. A nil hook is an *OptionError.
+func WithDecodeHook(h DecodeHook) Option {
+	return optionFunc(func(c *config) {
+		_, _ = c, h // not implemented yet
+	})
+}
+
+// WithZeroFields makes a null clear a value already set in Go, such as a field of the value being decoded into or a
+// map entry, as mapstructure's ZeroFields does. Without it, a null leaves the field as it was, as koanf does.
+func WithZeroFields() Option {
+	return optionFunc(func(c *config) {
+		_ = c // not implemented yet
+	})
+}
+
+// WithoutWeakTyping turns off the conversions koanf makes while decoding, such as a string "8080" into an int, so a
+// value must already have the field's type.
+func WithoutWeakTyping() Option {
+	return optionFunc(func(c *config) {
+		_ = c // not implemented yet
+	})
 }
 
 // WithTag sets the struct tag that decoding and WithDefaults read, instead of koanf. An empty tag is an *OptionError.
@@ -65,28 +92,6 @@ func WithTag(tag string) Option {
 			return
 		}
 		c.tag = tag
-	})
-}
-
-// WithDecoderConfig replaces the decoder configuration, hooks included, as koanf's UnmarshalConf.DecoderConfig does.
-// The config is copied. Result is set on every decode, and an empty TagName falls back to the tag. A nil config, or
-// one with Metadata, is an *OptionError: unknown keys are in the report and the error instead.
-func WithDecoderConfig(dc *mapstructure.DecoderConfig) Option {
-	var copied *mapstructure.DecoderConfig
-	if dc != nil {
-		cp := *dc
-		copied = &cp
-	}
-	return optionFunc(func(c *config) {
-		switch {
-		case copied == nil:
-			c.fail("WithDecoderConfig", "the config is nil")
-		case copied.Metadata != nil:
-			c.fail("WithDecoderConfig", "Metadata isn't supported, because concurrent decodes would share it; "+
-				"unknown keys are in the report and the error")
-		default:
-			c.decoderConf = copied
-		}
 	})
 }
 
@@ -119,26 +124,17 @@ func WithUnknownKeys(u UnknownKeys) Option {
 	})
 }
 
-// tagName returns the struct tag: WithTag's, or the decoder config's, or koanf, in koanf's order.
+// tagName returns the struct tag: WithTag's, or koanf.
 func (c *config) tagName() string {
-	switch {
-	case c.tag != "":
+	if c.tag != "" {
 		return c.tag
-	case c.decoderConf != nil && c.decoderConf.TagName != "":
-		return c.decoderConf.TagName
-	default:
-		return "koanf"
 	}
+	return "koanf"
 }
 
 // decoderConfig returns a fresh decoder config for one decode into v, as koanf builds it.
 func (c *config) decoderConfig(v any, md *mapstructure.Metadata) *mapstructure.DecoderConfig {
-	var dc mapstructure.DecoderConfig
-	if c.decoderConf != nil {
-		dc = *c.decoderConf
-	} else {
-		dc = mapstructure.DecoderConfig{DecodeHook: DecodeHook(), WeaklyTypedInput: true}
-	}
+	dc := mapstructure.DecoderConfig{DecodeHook: defaultHooks(), WeaklyTypedInput: true}
 	dc.Result, dc.TagName, dc.Metadata = v, c.tagName(), md
 	return &dc
 }

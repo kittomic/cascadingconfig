@@ -120,7 +120,6 @@ func Confine(...string) PolicyOption
 func Custom(Scope) ScopeKind
 func DecodeAt[P PathSpec](*Result, P, any) error
 func DecodeDocument(Decoder, string, []byte) (Document, error)
-func DecodeHook() mapstructure.DecodeHookFunc
 func DisabledBy(Binding) ScopeOption
 func EmbeddedFS(fs.FS, ...Pattern) ScopeKind
 func EnvVars(string, ...EnvVarsOption) ScopeKind
@@ -168,8 +167,8 @@ func WithCeilingPaths(...string) Option
 func WithConfigFiles(...string) Option
 func WithConfigFilesOnly() Option
 func WithDebounce(time.Duration, time.Duration) WatchOption
+func WithDecodeHook(DecodeHook) Option
 func WithDecoder(Decoder) Option
-func WithDecoderConfig(*mapstructure.DecoderConfig) Option
 func WithDefaultFormats(...string) Option
 func WithDefaultPolicy(...PolicyOption) Option
 func WithDefaults(any) Option
@@ -213,6 +212,7 @@ func WithTag(string) Option
 func WithUnknownKeys(UnknownKeys) Option
 func WithUnsetKey(string) Option
 func WithWalkStop(WalkStop) Option
+func WithZeroFields() Option
 func WithoutBinding(Binding) Option
 func WithoutBootstrapKeys(...BootstrapKey) Option
 func WithoutIncludeCache() Option
@@ -221,6 +221,7 @@ func WithoutIncludeResolver(string) Option
 func WithoutRemoteIncludes() Option
 func WithoutScopes(...ScopeName) Option
 func WithoutUnsetKey() Option
+func WithoutWeakTyping() Option
 method (*BaseError) Code() Code
 method (*BaseError) Error() string
 method (*BaseError) Unwrap() error
@@ -344,6 +345,7 @@ type DecodeError struct
 type DecodeError struct, Key Path
 type DecodeError struct, Unknown bool
 type DecodeError struct, embedded BaseError
+type DecodeHook func(reflect.Type, reflect.Type, any) (any, error)
 type Decoder interface
 type Decoder interface, Decode([]byte) (Document, error)
 type Decoder interface, Extensions() []string

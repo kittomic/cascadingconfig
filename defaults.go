@@ -62,7 +62,7 @@ func (c *config) finishDefaults() {
 		return
 	}
 	s := c.scopes[i]
-	t, err := defaultsTree(s.kind.(defaultsKind).value, c.tagName(), c.decoderConf != nil && c.decoderConf.Squash)
+	t, err := defaultsTree(s.kind.(defaultsKind).value, c.tagName(), false)
 	if err != nil {
 		c.fail("WithDefaults", "%w", err)
 		s.invalid = true

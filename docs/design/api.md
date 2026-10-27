@@ -498,10 +498,15 @@ func WithConfigFilesOnly() Option
 func Load[T any](ctx context.Context, l *Loader) (T, error)
 func (r *Result) Decode(v any) error
 func DecodeAt[P PathSpec](r *Result, path P, v any) error
-func DecodeHook() mapstructure.DecodeHookFunc // koanf's three hooks, composed
+
+// Decoding options of our own, so mapstructure stays internal (DL-278)
+type DecodeHook func(from, to reflect.Type, data any) (any, error)
+
+func WithDecodeHook(h DecodeHook) Option // added, run before the default hooks
+func WithZeroFields() Option
+func WithoutWeakTyping() Option
 
 func WithTag(tag string) Option
-func WithDecoderConfig(dc *mapstructure.DecoderConfig) Option
 func WithFlatPaths() Option
 
 type UnknownKeys int // UnknownKeysWarn (the default), UnknownKeysError, UnknownKeysIgnore
@@ -880,7 +885,7 @@ func WithLogLevel(level slog.Leveler) Option // the lowest level the loader logs
 | Includes      | `WithIncludeResolver`, `WithoutIncludeResolver`, `WithoutRemoteIncludes`, `WithIncludeCache`, `WithoutIncludeCache`, `WithIncludeTimeout`, `WithDefaultPolicy`, `WithScopePolicy` |
 | Env bindings  | `WithBinding`, `WithoutBinding`                                                                                       |
 | Bootstrap     | `WithBootstrapKeys`, `WithoutBootstrapKeys`, `WithBootstrapLimit`, `WithBootstrapTransform`                                  |
-| Decoding      | `WithTag`, `WithDecoderConfig`, `WithFlatPaths`, `WithUnknownKeys`                                                          |
+| Decoding      | `WithTag`, `WithDecodeHook`, `WithZeroFields`, `WithoutWeakTyping`, `WithFlatPaths`, `WithUnknownKeys`                      |
 | Behaviour     | `RequireConfig`, `WithLogger`, `WithProbes`                                                                                 |
 
 ### Example
@@ -959,10 +964,10 @@ func main() {
 | --------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Decoder library | `github.com/go-viper/mapstructure/v2` (v2.4.0)                               | The same library.                                    |
 | Struct tag      | `koanf`; `UnmarshalConf.Tag` overrides it                                    | `koanf` by default; `WithTag("config")` overrides it. |
-| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order (DL-148). koanf's hooks are unexported, so we reimplement them with the same behaviour. `DecodeHook()` returns them composed. |
+| Default hooks   | day-suffix durations (`"7d"`), `StringToTimeDurationHookFunc`, `encoding.TextUnmarshaler` | The same three, in the same order (DL-148). koanf's hooks are unexported, so we reimplement them with the same behaviour. `WithDecodeHook` adds hooks before them (DL-278). |
 | Dates           | go-toml hands TOML date-times through as `time.Time`                          | Every date-time is an RFC 3339 string in the tree ([design.md](design.md#format-dialects)). The `TextUnmarshaler` hook already parses it into a `time.Time` field, because `time.Time` implements `UnmarshalText`, and a `string` field gets the text. A date-only or local date-time string into `time.Time` is a `*DecodeError`. Through `KoanfProvider`, koanf's own decoding sees the same strings and decodes them the same way. |
 | Weak typing     | `WeaklyTypedInput: true`                                                     | The same, so env-var strings such as `"8080"` decode into `int`. |
-| Custom decoder  | `UnmarshalConf.DecoderConfig` replaces the defaults                          | `WithDecoderConfig(*mapstructure.DecoderConfig)`, with the same semantics (DL-149): the app's config, hooks included, replaces ours, so an app that wants day durations composes `DecodeHook()` into its own. The config is copied when the option is applied. We set `Result`, and `TagName` falls back to `koanf` if empty. A `Metadata` in it is an `*OptionError`, because concurrent decodes would all write to it; unknown keys are in the report and the error instead. |
+| Custom decoder  | `UnmarshalConf.DecoderConfig` replaces the defaults                          | Options of our own, so mapstructure stays internal (DL-278, replacing DL-149): `WithDecodeHook` for hooks, `WithZeroFields`, `WithoutWeakTyping` and `WithTag`. Unknown keys are in the report and the error, and `WithUnknownKeys` makes them an error. |
 | Flat paths      | `UnmarshalConf.FlatPaths`                                                    | `WithFlatPaths()`.                                   |
 | Key delimiter   | `.` by default                                                               | `.`, as in [merge-rule paths](design.md#per-key-merge-rules). |
 
@@ -1017,7 +1022,7 @@ for a key from `EnvVars`.
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | null, unset or never set              | The tree: a key present with a nil value is null, and an absent key is unset or never set. `OriginOf` shows kind `OriginNull`, or an unset step in its history. |
 | That config cleared a default         | Supply defaults with [`WithDefaults`](#defaults), not as a pre-filled struct value. A higher `null` or `_unset` then removes them from the tree, and a pointer field reads `nil`. |
-| That `null` cleared a Go-side default | `WithDecoderConfig` with `ZeroFields: true`. Null then sets the field to its zero value. `_unset` still keeps the default, because the key is absent. `ZeroFields` also empties map fields before decoding into them, so pre-filled map entries are replaced, not merged. |
+| That `null` cleared a Go-side default | `WithZeroFields()`. Null then sets the field to its zero value. `_unset` still keeps the default, because the key is absent. It also empties map fields before decoding into them, so pre-filled map entries are replaced, not merged. |
 
 There is **no three-state field type** (such as a `Nullable[T]`). The tree and `OriginOf` already tell null, unset and
 never-set apart, so one isn't needed.
@@ -1073,8 +1078,8 @@ cascadingconfig.WithDefaults(Config{
     exception to "a custom scope needs `WithScopes`". `WithoutScopes(ScopeDefaults)` still removes it.
   - **A name clash** with a scope the app defines is the usual "already defined" `*OptionError`.
   - **A second `WithDefaults`** replaces the first.
-  - **The struct tag** is `WithTag`'s, or `WithDecoderConfig`'s `TagName`, read after every option is applied, so the
-    order of options doesn't matter.
+  - **The struct tag** is `WithTag`'s, or `koanf`, read after every option is applied, so the order of options doesn't
+    matter.
   - **Zero values:** a nil pointer is left out, but a non-nil pointer to a zero value is included. That is how an app
     sets an explicit zero default.
   - **Invalid values** are `*OptionError`s naming the field: a nil value, a value that isn't a struct, a pointer to one

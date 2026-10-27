@@ -24,8 +24,10 @@ type Config struct {
   is written `"30s"` or `"7d"`, a date-time is RFC 3339 text and fills a `time.Time`, and any type with an
   `UnmarshalText` method decodes from a string.
 - **Another tag:** `WithTag("config")` matches a different struct tag.
-- **mapstructure itself:** `WithDecoderConfig` takes a whole `mapstructure.DecoderConfig`, and `DecodeHook()` returns
-  the default hooks, to compose into your own.
+- **Your own conversions:** `WithDecodeHook` adds a hook, a function of the source type, the field's type and the value,
+  which runs before the default hooks, so it can handle a type of yours or override a default.
+- **Stricter decoding:** `WithoutWeakTyping()` turns off conversions such as `"8080"` into an `int`, and
+  `WithZeroFields()` lets a `null` clear a value already set in Go.
 
 There are three ways to decode:
 
