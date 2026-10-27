@@ -9,52 +9,6 @@ import (
 	"strings"
 )
 
-// resolve follows one include reference that from wrote: it applies the include limits (DL-210), then resolves a
-// remote reference, or a path inside a remote file, through its resolver, and anything else as a local file.
-// ancestors are the chain down to from, the root file first.
-func (p *processor) resolve(from *entry, ancestors []*entry, raw string) *entry {
-	ld, c := p.ld, p.ld.c
-	root := ancestors[0]
-	p.refs++
-	switch {
-	case p.refs > c.maxIncludes:
-		err := &TooLargeError{BaseError: includeAbout(from, fmt.Errorf(
-			"%q is include reference number %d in this load, over the limit of %d", raw, p.refs, c.maxIncludes))}
-		return failInclude(ld.includeLayer(from, root, raw), err, "over the limit of includes in one load")
-	case len(ancestors) > c.maxIncludeDepth:
-		err := &CycleError{BaseError: includeAbout(from, fmt.Errorf(
-			"%q would be nested %d levels deep, over the limit of %d", raw, len(ancestors), c.maxIncludeDepth))}
-		return failInclude(ld.includeLayer(from, root, raw), err, "nested too deeply")
-	}
-	if _, remote := remoteScheme(raw); remote || from.remote != nil {
-		return p.resolveRemote(from, root, raw, ancestors)
-	}
-	return ld.resolveInclude(from, root, raw, ancestors, p.found)
-}
-
-// includeLayer is the layer of an include that from wrote, with its metadata from root, the first file of the chain
-// (DL-184).
-func (ld *loading) includeLayer(from, root *entry, raw string) Layer {
-	return Layer{
-		Path: raw, Scope: root.layer.Scope, Variant: root.layer.Variant, Env: root.layer.Env, Trust: root.layer.Trust,
-		ConfigRoot: root.layer.ConfigRoot, IncludedBy: from.layer.Path, Status: LayerLoaded,
-	}
-}
-
-// includeAbout is the base of an error about a reference: it names the including file (DL-185).
-func includeAbout(from *entry, err error) BaseError {
-	return BaseError{Op: "include", Path: from.layer.Path, Scope: string(from.layer.Scope), Err: err}
-}
-
-// failInclude is an included layer that failed with err.
-func failInclude(l Layer, err error, reason string) *entry {
-	if reason == "" {
-		reason = failReason(err)
-	}
-	l.Status, l.Reason = LayerFailed, reason
-	return &entry{layer: l, err: err, included: true}
-}
-
 // resolveRemote fetches the remote file that raw names, or that raw, a plain path in the remote file from, names
 // relative to it (DL-204), and returns it as an entry to walk.
 func (p *processor) resolveRemote(from, root *entry, raw string, ancestors []*entry) *entry {
