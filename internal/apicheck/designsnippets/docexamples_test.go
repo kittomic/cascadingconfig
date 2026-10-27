@@ -1,4 +1,4 @@
-package mise_test
+package designsnippets_test
 
 import (
 	"context"
