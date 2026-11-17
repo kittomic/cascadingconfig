@@ -19,5 +19,5 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	oras.land/oras-go/v2 v2.6.4 // indirect
+	oras.land/oras-go/v2 v2.7.0 // indirect
 )
